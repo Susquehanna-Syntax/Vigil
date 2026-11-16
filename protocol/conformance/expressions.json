@@ -1,0 +1,2771 @@
+{
+  "cases": [
+    {
+      "name": "eq_string_true",
+      "expr": "agent.os == \"linux\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "eq_string_false",
+      "expr": "agent.os == \"windows\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "neq_string_true",
+      "expr": "agent.os != \"windows\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "neq_string_false",
+      "expr": "agent.os != \"linux\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "eq_number_true",
+      "expr": "host.count == 7",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "eq_number_false",
+      "expr": "host.count == 8",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "neq_number_true",
+      "expr": "host.count != 6",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "missing_name_compares_equal_to_none",
+      "expr": "inputs.nope == None",
+      "context": {},
+      "result": true
+    },
+    {
+      "name": "missing_name_neq_string_is_true",
+      "expr": "inputs.nope != \"x\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "missing_name_eq_string_is_false",
+      "expr": "host.absent == \"linux\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "missing_nested_name_compares_equal_to_none",
+      "expr": "agent.no.deep == None",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "present_dotted_value_read",
+      "expr": "agent.nested.deep == \"value\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "bool_context_value_equals_unparenthesised_int_one",
+      "expr": "agent.flag == 1",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "unparenthesised_int_one_equals_bool_context_value",
+      "expr": "1 == agent.flag",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "and_both_true",
+      "expr": "agent.os == \"linux\" and host.count == 7",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "and_one_false",
+      "expr": "agent.os == \"linux\" and host.count == 8",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "or_one_true",
+      "expr": "agent.os == \"windows\" or host.count == 7",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "or_both_false",
+      "expr": "agent.os == \"windows\" or host.count == 8",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "not_true_becomes_false",
+      "expr": "not agent.os == \"linux\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "not_false_becomes_true",
+      "expr": "not agent.os == \"windows\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "and_binds_tighter_than_or",
+      "expr": "agent.os == \"windows\" or host.count == 7 and agent.pkg_manager == \"dnf\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "parenthesised_or_inside_and",
+      "expr": "(agent.os == \"windows\" or host.count == 7) and agent.pkg_manager == \"apt\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "or_chained_three_operands_last_true",
+      "expr": "agent.os == \"windows\" or host.count == 8 or inputs.yes == \"yes\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "in_tuple_hit",
+      "expr": "agent.pkg_manager in (\"apt\", \"dnf\")",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "in_tuple_miss",
+      "expr": "agent.pkg_manager in (\"brew\", \"zypper\")",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "not_in_tuple_hit",
+      "expr": "agent.pkg_manager not in (\"brew\", \"zypper\")",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "not_in_tuple_miss",
+      "expr": "agent.pkg_manager not in (\"apt\", \"pacman\")",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "in_missing_name_tuple_is_false",
+      "expr": "inputs.nope in (1, 2)",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "not_in_missing_name_tuple_is_true",
+      "expr": "inputs.nope not in (1, 2)",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "in_none_context_value_is_false",
+      "expr": "7 in host.missing_num",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "not_in_none_context_value_is_true",
+      "expr": "7 not in host.missing_num",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "in_list_literal_hit",
+      "expr": "host.name in [\"web-01\", \"db-01\"]",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "in_string_container_hit",
+      "expr": "\"eb-0\" in host.name",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "in_number_container_is_false_not_error",
+      "expr": "\"x\" in host.count",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "not_in_number_container_is_true",
+      "expr": "\"x\" not in host.count",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "lt_true",
+      "expr": "host.count < 10",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "le_boundary_true",
+      "expr": "host.count <= 7",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "le_false",
+      "expr": "host.count <= 6",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "gt_true",
+      "expr": "host.count > 3",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "ge_boundary_true",
+      "expr": "host.count >= 7",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "ge_false",
+      "expr": "host.count >= 8",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "chained_comparison_true",
+      "expr": "3 < host.count < 10",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "chained_comparison_second_link_false",
+      "expr": "3 < host.count < 5",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "ordering_against_string_is_false_not_error",
+      "expr": "\"7\" < host.count",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "ordering_against_bool_is_false_not_error",
+      "expr": "host.count > agent.flag",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "unparenthesised_true_greater_equal_one_is_false",
+      "expr": "True >= 1",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "unparenthesised_zero_equal_false_is_true",
+      "expr": "0 == False",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "ordering_against_missing_name_is_false",
+      "expr": "inputs.nope < 5",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "ordering_with_missing_name_on_the_right_is_false",
+      "expr": "host.count < inputs.nope",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "bool_context_value_equals_true_keyword_is_true",
+      "expr": "agent.flag == True",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "steps_status_read_true",
+      "expr": "steps.install.status == \"ok\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "steps_status_read_other_step",
+      "expr": "steps.check.status == \"skipped\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "steps_status_mismatch_false",
+      "expr": "steps.install.status == \"failed\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "steps_missing_id_status_is_none_so_false",
+      "expr": "steps.nope.status == \"ok\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "steps_result_field_true",
+      "expr": "steps.install.result.path == \"/etc/x\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "steps_result_field_number_true",
+      "expr": "steps.install.result.n == 4",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "steps_result_field_bool_context_value_true",
+      "expr": "steps.install.result.changed == agent.flag",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "steps_result_absent_field_is_false_against_string",
+      "expr": "steps.check.result.missing == \"x\"",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "name": "host_tags_dotted_read",
+      "expr": "\"prod\" in host.tags",
+      "context": {
+        "agent": {
+          "os": "linux",
+          "pkg_manager": "apt",
+          "version": 3,
+          "nested": {
+            "deep": "value"
+          },
+          "flag": true
+        },
+        "host": {
+          "name": "web-01",
+          "tags": [
+            "prod",
+            "eu"
+          ],
+          "count": 7,
+          "missing_num": null
+        },
+        "inputs": {
+          "name": "htop",
+          "yes": "yes",
+          "retries": 2,
+          "nil": null
+        },
+        "steps": {
+          "install": {
+            "status": "ok",
+            "result": {
+              "changed": true,
+              "path": "/etc/x",
+              "n": 4
+            }
+          },
+          "check": {
+            "status": "skipped",
+            "result": {}
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "name": "empty_context_makes_predicates_false_not_error",
+      "expr": "agent.os == \"linux\"",
+      "context": {},
+      "result": false
+    },
+    {
+      "name": "function_call_len",
+      "expr": "len(agent.os) == 4",
+      "error": true
+    },
+    {
+      "name": "function_call_str",
+      "expr": "str(host.count) == \"7\"",
+      "error": true
+    },
+    {
+      "name": "subscript_bracket",
+      "expr": "agent[\"os\"] == \"linux\"",
+      "error": true
+    },
+    {
+      "name": "tuple_subscript_even_after_in",
+      "expr": "1 in (1, 2)[0]",
+      "error": true
+    },
+    {
+      "name": "lambda",
+      "expr": "(lambda x: x)(1) == 1",
+      "error": true
+    },
+    {
+      "name": "list_comprehension",
+      "expr": "[c for c in agent.os] == [\"l\"]",
+      "error": true
+    },
+    {
+      "name": "dict_comprehension",
+      "expr": "{k: 1 for k in host.tags} == {}",
+      "error": true
+    },
+    {
+      "name": "set_comprehension",
+      "expr": "{c for c in agent.os} == set()",
+      "error": true
+    },
+    {
+      "name": "generator_expression",
+      "expr": "any(x for x in host.tags)",
+      "error": true
+    },
+    {
+      "name": "fstring",
+      "expr": "f\"{agent.os}\" == \"linux\"",
+      "error": true
+    },
+    {
+      "name": "underscore_attribute_on_context_value",
+      "expr": "agent.__class__ == None",
+      "error": true
+    },
+    {
+      "name": "dunder_attribute_on_root",
+      "expr": "host.__dict__ == None",
+      "error": true
+    },
+    {
+      "name": "agent_chain_deeper_than_two",
+      "expr": "agent.a.b.c == 1",
+      "error": true
+    },
+    {
+      "name": "inputs_chain_deeper_than_two",
+      "expr": "inputs.a.b.c == \"x\"",
+      "error": true
+    },
+    {
+      "name": "steps_chain_four_levels_deep",
+      "expr": "steps.install.result.a.b == 1",
+      "error": true
+    },
+    {
+      "name": "unknown_root_name",
+      "expr": "server.secret == \"x\"",
+      "error": true
+    },
+    {
+      "name": "bare_unknown_root",
+      "expr": "environment == 1",
+      "error": true
+    },
+    {
+      "name": "starred_tuple",
+      "expr": "(*host.tags,) == ()",
+      "error": true
+    },
+    {
+      "name": "ternary_conditional",
+      "expr": "1 if agent.os == \"linux\" else 2",
+      "error": true
+    },
+    {
+      "name": "walrus_named_expr",
+      "expr": "(x := 1) == 1",
+      "error": true
+    },
+    {
+      "name": "binary_xor_not_allowed",
+      "expr": "1 ^ 1 == 0",
+      "error": true
+    },
+    {
+      "name": "await_expression",
+      "expr": "await agent.os",
+      "error": true
+    },
+    {
+      "name": "syntax_error_trailing_operator",
+      "expr": "agent.os ==",
+      "error": true
+    },
+    {
+      "name": "empty_string",
+      "expr": "",
+      "error": true
+    },
+    {
+      "name": "whitespace_only",
+      "expr": "   ",
+      "error": true
+    },
+    {
+      "name": "steps_bare_reference_shape_error",
+      "expr": "steps == None",
+      "steps_shape_error": true
+    },
+    {
+      "name": "steps_two_level_reference_shape_error",
+      "expr": "steps.install == None",
+      "steps_shape_error": true
+    },
+    {
+      "name": "steps_result_without_field_shape_error",
+      "expr": "steps.install.result == None",
+      "steps_shape_error": true
+    },
+    {
+      "name": "steps_status_with_extra_level_shape_error",
+      "expr": "steps.install.status.extra == 1",
+      "steps_shape_error": true
+    }
+  ]
+}
