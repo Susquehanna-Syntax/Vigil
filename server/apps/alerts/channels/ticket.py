@@ -68,7 +68,7 @@ class Ticket(ChannelType):
         Field("auth_header", "Authorization header", kind="secret", required=False,
               help='Sent as the Authorization header, for example "Bearer <token>" or '
                    '"Basic <base64>".'),
-        Field("body", "Request body", required=False,
+        Field("body", "Request body", kind="json", required=False,
               help="JSON with {{title}}, {{text}}, {{host}}, {{site}}, {{severity}}, "
                    "{{event}}, {{value}}, {{rule}}, {{link}}. "
                    "Leave blank for a default body."),

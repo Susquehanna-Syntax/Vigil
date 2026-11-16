@@ -91,6 +91,8 @@ function _channelFieldHtml(f, value, secretSet) {
   } else if (f.kind === 'list') {
     const text = Array.isArray(value) ? value.join('\n') : (value || '');
     input = `<textarea class="form-control" rows="3" ${attrs}>${escHtml(text)}</textarea>`;
+  } else if (f.kind === 'json') {
+    input = `<textarea class="form-control channel-json" rows="6" spellcheck="false" ${attrs}>${escHtml(value || '')}</textarea>`;
   } else if (f.kind === 'choice') {
     const cur = value || f.default || '';
     input = `<select class="form-control" ${attrs}>${f.choices.map((ch) =>

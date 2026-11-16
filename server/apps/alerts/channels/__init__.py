@@ -19,6 +19,7 @@ import base64
 import binascii
 import contextvars
 import ipaddress
+import re
 import json as jsonlib
 import socket
 import urllib.parse
@@ -47,7 +48,9 @@ class Field:
     back), ``secret_url`` (a URL that carries its own token, as chat webhooks
     do: checked like a ``url``, stored like a ``secret``, and shown only as
     its scheme and host), ``list`` (strings; a comma or newline separated
-    string is split), or ``choice`` (one of ``choices``).
+    string is split), ``choice`` (one of ``choices``), or ``json`` (a JSON
+    template whose ``{{name}}`` placeholders sit inside strings; checked on
+    save with every placeholder filled, and shown as a multi-line box).
     """
 
     name: str
@@ -218,8 +221,18 @@ def clean_config(channel_type: ChannelType, raw, existing: dict | None = None):
         if f.kind == "choice" and value not in f.choices:
             errors[f.name] = f"must be one of {', '.join(f.choices)}"
             continue
+        if f.kind == "json":
+            try:
+                jsonlib.loads(_PLACEHOLDER.sub("x", value))
+            except ValueError as exc:
+                errors[f.name] = f"must be JSON once its placeholders are filled in ({exc})"
+                continue
         config[f.name] = value
     return config, errors
+
+
+#: A ``{{name}}`` placeholder in a ``json`` field.
+_PLACEHOLDER = re.compile(r"\{\{\s*\w+\s*\}\}")
 
 
 def plain_config(channel_type: ChannelType, config: dict) -> dict:

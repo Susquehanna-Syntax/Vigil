@@ -474,3 +474,34 @@ class TicketTests(_Net, TestCase):
         self.transport.return_value = 500
         with self.assertRaises(channels.ChannelError):
             channels.get("ticket").send({"url": self.URL}, message())
+
+
+class TicketBodyCheckedOnSaveTests(TestCase):
+    """The request body is checked when the channel is saved, not first when an
+    alert fires and nobody is watching."""
+
+    def _clean(self, body):
+        return channels.clean_config(channels.get("ticket"),
+                                     {"url": "https://tickets.test/api", "body": body})
+
+    def test_a_template_that_is_json_once_filled_is_kept(self):
+        body = '{"summary": "{{title}}", "fields": {"host": "{{ host }}", "n": 1}}'
+        config, errors = self._clean(body)
+        self.assertEqual(errors, {})
+        self.assertEqual(config["body"], body)
+
+    def test_a_blank_body_is_fine(self):
+        config, errors = self._clean("")
+        self.assertEqual(errors, {})
+        self.assertNotIn("body", config)
+
+    def test_a_broken_template_is_refused_on_save(self):
+        for body in ('{"summary": "{{title}}"', '{"summary": {{title}}}', "not json"):
+            with self.subTest(body=body):
+                _, errors = self._clean(body)
+                self.assertIn("body", errors)
+                self.assertIn("JSON", errors["body"])
+
+    def test_the_form_shows_the_body_as_a_json_box(self):
+        kinds = {f.name: f.kind for f in channels.get("ticket").fields}
+        self.assertEqual(kinds["body"], "json")

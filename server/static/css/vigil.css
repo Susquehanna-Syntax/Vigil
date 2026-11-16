@@ -4970,3 +4970,6 @@ select.form-control[multiple] option:checked {
   background: rgba(var(--rgb-mint), var(--tint-a)) linear-gradient(0deg, rgba(var(--rgb-mint), var(--tint-a)), rgba(var(--rgb-mint), var(--tint-a)));
   color: var(--mint-ink); font-weight: 600;
 }
+
+/* A channel's JSON template (the ticket channel's request body). */
+.form-control.channel-json { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
