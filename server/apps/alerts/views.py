@@ -2,7 +2,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.utils.timezone import now
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -48,7 +48,15 @@ DEFAULT_ALERT_PAGE = 200
 MAX_ALERT_PAGE = 500
 
 
-@extend_schema(responses={200: AlertResponseSerializer(many=True)})
+@extend_schema(
+    parameters=[
+        OpenApiParameter("state", str, enum=[s.value for s in Alert.State],
+                         description="Which alerts to list. Default: firing."),
+        OpenApiParameter("limit", int,
+                         description=f"How many, newest first. Default {DEFAULT_ALERT_PAGE}, "
+                                     f"at most {MAX_ALERT_PAGE}."),
+    ],
+    responses={200: AlertResponseSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("alerts")
