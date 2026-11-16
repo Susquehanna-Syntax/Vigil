@@ -231,6 +231,9 @@ function makeTimeChart(canvasId, color, label) {
       scales: {
         x: {
           type: 'time',
+          // Declared so axisUnits() can set time.unit as a plain value; never
+          // assign an object onto chart.options (see setTimeRange).
+          time: { unit: false },
           grid: { color: tok('--s3'), drawTicks: false },
           border: { color: tok('--s3') },
           ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
@@ -290,6 +293,9 @@ function makeNetChart(canvasId) {
       scales: {
         x: {
           type: 'time',
+          // Declared so axisUnits() can set time.unit as a plain value; never
+          // assign an object onto chart.options (see setTimeRange).
+          time: { unit: false },
           grid: { color: tok('--s3'), drawTicks: false },
           border: { color: tok('--s3') },
           ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
@@ -324,6 +330,13 @@ function ensureCharts() {
   if (!chartMem) chartMem = makeTimeChart('chart-mem', '#baa8e8', 'Memory');
   if (!chartSwap) chartSwap = makeTimeChart('chart-swap', '#f0b888', 'Swap');
   if (!chartNet) chartNet = makeNetChart('chart-net');
+}
+
+// Past a day, the automatic unit picked ticks ~22 hours apart labelled by
+// time of day alone ("12AM, 10PM, 8PM"), which read as going backwards. Dates
+// are what a week or a month wants.
+function axisUnits(chart) {
+  chart.options.scales.x.time.unit = monitorTimeRange > 1440 ? 'day' : false;
 }
 
 // ── Update chart data ──
@@ -361,6 +374,7 @@ async function refreshMonitor() {
   btn.style.opacity = '0.5';
 
   ensureCharts();
+  [chartCpu, chartMem, chartSwap, chartNet].forEach(axisUnits);
 
   const limit = monitorTimeRange <= 60 ? 200 : monitorTimeRange <= 360 ? 400 : 800;
 
