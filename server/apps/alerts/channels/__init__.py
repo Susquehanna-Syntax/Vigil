@@ -400,5 +400,6 @@ from . import (  # noqa: F401
     pushover,
     slack,
     teams,
+    ticket,
     webhook,
 )

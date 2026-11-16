@@ -417,3 +417,54 @@ class PushoverTests(_Net, TestCase):
         with self.assertRaises(channels.ChannelError):
             channels.get("pushover").send({"user": "u_secret", "token": "a_secret"},
                                           message())
+
+
+class TicketTests(_Net, TestCase):
+    URL = "https://tickets.test/api/v2/tickets"
+
+    def _send(self, **extra):
+        """Send through the channel and return what left for the server: the
+        body as a dict, plus the headers."""
+        config = {"url": self.URL}
+        config.update(extra.pop("config", {}))
+        channels.get("ticket").send(config, message(**extra))
+        return json.loads(self.transport.call_args.args[6]), self.transport.call_args.args[7]
+
+    def test_a_blank_body_sends_the_default_request(self):
+        sent, headers = self._send()
+        self.assertEqual(sent["title"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["host"], "web-1")
+        self.assertEqual(sent["severity"], "critical")
+        method, scheme, address, port, hostname, path = self.transport.call_args.args[:6]
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "tickets.test", "/api/v2/tickets"))
+        self.assertEqual(headers["Content-Type"], "application/json")
+
+    def test_a_custom_body_arrives_with_its_placeholders_filled(self):
+        sent, _headers = self._send(config={"body": (
+            '{"fields": {"summary": "{{title}}", '
+            '"labels": ["vigil", "{{severity}}"]}}')})
+        self.assertEqual(sent, {"fields": {"summary": "[FIRING] [CRITICAL] Alert: web-1",
+                                           "labels": ["vigil", "critical"]}})
+
+    def test_a_quote_or_newline_in_the_alert_cannot_break_the_json(self):
+        sent, _headers = self._send(text='he said "no"\nand left')
+        self.assertEqual(sent["description"].split("\n")[0], 'he said "no"')
+        self.assertEqual(json.loads(
+            self.transport.call_args.args[6].decode())["description"],
+            'he said "no"\nand left\nHost: web-1\nSite: Leeds\nValue: 97.0\nRule: High CPU')
+
+    def test_the_authorization_header_arrives_only_when_the_admin_set_one(self):
+        self.assertNotIn("Authorization", self._send()[1])
+        _sent, headers = self._send(config={"auth_header": "Bearer tk_abc"})
+        self.assertEqual(headers["Authorization"], "Bearer tk_abc")
+
+    def test_a_body_that_is_not_json_is_refused_before_any_request(self):
+        with self.assertRaises(channels.ChannelError):
+            channels.get("ticket").send({"url": self.URL, "body": '{"a": }'}, message())
+        self.transport.assert_not_called()
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("ticket").send({"url": self.URL}, message())
