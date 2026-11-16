@@ -139,3 +139,72 @@ def dispatch_alert_notification(alert, event="firing"):
     hooks.emit("alert_sent" if event == "firing" else "alert_resolved",
                alert=alert)
     return True
+
+
+#: How many hosts are named in a grouped notice before "and N more".
+GROUP_NAMES_SHOWN = 10
+
+
+def dispatch_offline_group(alerts, event="firing") -> list:
+    """One notice for several offline alerts of hosts of one site.
+
+    event "firing" says the hosts stopped checking in, "resolved" that they
+    are checking in again. Hosts in maintenance are left out, as
+    dispatch_alert_notification leaves them out. Returns the alerts the notice
+    covered (empty when every host was in maintenance and nothing was sent).
+    """
+    from .maintenance import in_maintenance
+
+    covered = [a for a in alerts if not (a.host_id and in_maintenance(a.host))]
+    if not covered:
+        return []
+    first = covered[0]
+    names = sorted(a.host.hostname for a in covered)
+    shown = ", ".join(names[:GROUP_NAMES_SHOWN])
+    if len(names) > GROUP_NAMES_SHOWN:
+        shown += f" and {len(names) - GROUP_NAMES_SHOWN} more"
+
+    targets = NotificationChannel.objects.filter(enabled=True)
+    if event == "firing":
+        targets = targets.filter(on_firing=True)
+    else:
+        targets = targets.filter(on_resolved=True)
+
+    payload = _build_payload(first, event)
+    payload.update({
+        "alert_id": None,
+        "alert_ids": [str(a.id) for a in covered],
+        "host": f"{len(covered)} hosts",
+        "host_id": None,
+        "hosts": names,
+        "metric_value": None,
+    })
+    base = message_for(payload, first.host)
+    where = f" in {base.site}" if base.site else ""
+    if event == "firing":
+        text = f"{len(covered)} hosts{where} stopped checking in: {shown}"
+    else:
+        text = f"{len(covered)} hosts{where} are checking in again: {shown}"
+    payload["message"] = text
+
+    # Not dataclasses.replace(base, ...): it copies the title too, which says
+    # one host's name, and shares this message's payload by reference.
+    message = channels.Message(
+        event=event,
+        title=f"Alert: {payload['host']}",
+        text=text,
+        severity=base.severity,
+        host=base.host,
+        payload=payload,
+        site=base.site,
+    )
+    for channel in _channels_for_host(targets, first.host):
+        deliver(channel, message)
+
+    # Each alert still feeds the event bus, as one-by-one dispatch does, so
+    # alert-triggered automations and the audit log see every host.
+    from vigil import hooks
+    for alert in covered:
+        hooks.emit("alert_sent" if event == "firing" else "alert_resolved",
+                   alert=alert)
+    return covered

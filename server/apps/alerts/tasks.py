@@ -19,13 +19,17 @@ FLAP_WINDOW_SECONDS = 900
 #: Every offline alert's message starts with this; check-in matches on it.
 OFFLINE_PREFIX = "Host offline:"
 
+#: This many hosts of one site going offline (or coming back) in the same pass
+#: of the stale-host job send one notice instead of one each.
+GROUP_MIN = 3
+
 
 from apps.hosts.models import Host
 from apps.instance.config import setting
 from apps.metrics.models import MetricPoint
 
 from .models import Alert, AlertRule
-from .notifications import dispatch_alert_notification
+from .notifications import dispatch_alert_notification, dispatch_offline_group
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,24 @@ def _parent_down(host):
     if scoping.site_id_of(parent) != scoping.site_id_of(host):
         return None
     return parent
+
+
+def _send_offline_notices(alerts, event) -> list:
+    """Send firing or resolved notices for offline alerts: 3 or more of one
+    site as one grouped notice, the rest one by one. Returns the alerts whose
+    notice went out."""
+    by_site = {}
+    for alert in alerts:
+        by_site.setdefault(scoping.site_id_of(alert.host), []).append(alert)
+    sent = []
+    for group in by_site.values():
+        if len(group) >= GROUP_MIN:
+            sent.extend(dispatch_offline_group(group, event=event))
+            continue
+        for alert in group:
+            if dispatch_alert_notification(alert, event=event):
+                sent.append(alert)
+    return sent
 
 
 def _check_rule(rule, host, current_time):
@@ -274,6 +296,7 @@ def _mark_stale_hosts_offline():
     count = stale.update(status=Host.Status.OFFLINE)
     if count:
         logger.info("Marked %d stale hosts as offline", count)
+    to_page = []
     for host in stale_list:
         already_firing = Alert.objects.filter(
             host=host,
@@ -301,9 +324,12 @@ def _mark_stale_hosts_offline():
         # A host behind an offline parent is not paged for: the parent's own
         # alert is the page. _send_late_offline_notices sends this one later,
         # once the parent is back and this host is still down.
-        if parent is None and dispatch_alert_notification(alert, event="firing"):
-            alert.notified_at = now()
-            alert.save(update_fields=["notified_at"])
+        if parent is None:
+            to_page.append(alert)
+
+    for alert in _send_offline_notices(to_page, "firing"):
+        alert.notified_at = now()
+        alert.save(update_fields=["notified_at"])
     _send_late_offline_notices()
     sent = _send_owed_resolutions()
     return f"{count} hosts marked offline, {sent} back-online notices sent"
@@ -312,17 +338,15 @@ def _mark_stale_hosts_offline():
 def _send_owed_resolutions() -> int:
     """Send the resolved notices that check-ins left owing (see
     apps.hosts.views.agent). Only an alert whose firing notice went out
-    announces its end."""
-    sent = 0
-    for alert in Alert.objects.filter(resolve_pending=True).select_related("host"):
-        if alert.notified_at is not None:
-            dispatch_alert_notification(alert, event="resolved")
-            sent += 1
-        # An offline notice still un-sent here belongs to an outage nobody was
-        # paged for: its end stays quiet with its beginning, and the flag
-        # clears so no later pass pages over an outage nobody heard begin.
-        alert.resolve_pending = False
-        alert.save(update_fields=["resolve_pending"])
+    announces its end. The count is the number of alerts the notices covered,
+    so a grouped notice counts as the hosts it names."""
+    owed = list(Alert.objects.filter(resolve_pending=True).select_related("host"))
+    announced = [a for a in owed if a.notified_at is not None]
+    sent = len(_send_offline_notices(announced, "resolved"))
+    # An offline notice still un-sent here belongs to an outage nobody was
+    # paged for: its end stays quiet with its beginning, and the flag clears
+    # so no later pass pages over an outage nobody heard begin.
+    Alert.objects.filter(pk__in=[a.pk for a in owed]).update(resolve_pending=False)
     return sent
 
 
