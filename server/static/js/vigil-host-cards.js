@@ -44,6 +44,9 @@ function openHostDetail(card) {
   // card data, then refresh from the API so a just-updated agent shows
   // its new version without a full page reload.
   _renderDetailAgentVersion(d.agentVersion || '');
+  // A previous host's update line must never show on the next host; the API
+  // refresh below paints the real one.
+  _renderDetailAgentUpdate(null);
   _refreshDetailAgentVersion(d.id);
 
   // Force-update control: only meaningful when the host actually runs
@@ -218,6 +221,7 @@ async function _refreshDetailAgentVersion(hostId) {
     // Guard against a drawer switch while this was in flight.
     if (panel.dataset.hostId !== hostId) return;
     _renderDetailAgentVersion(data.agent_version || '');
+    _renderDetailAgentUpdate(data.agent_update || null);
   } catch { /* keep the value painted from card data */ }
 }
 
@@ -239,6 +243,55 @@ async function _renderDetailAgentVersion(reported) {
   } else {
     el.style.color = 'var(--text-1)';
   }
+}
+
+/** How the agent's last self-update ended (sprint M8). Text only: every value
+ *  came from the agent. @param {{state?: string, from_version?: string, to_version?: string, reason?: string, at?: string}|null} u */
+function _renderDetailAgentUpdate(u) {
+  const el = document.getElementById('detail-agent-update');
+  if (!el) return;
+  el.replaceChildren();
+  el.className = 'detail-agent-update';
+  if (!u || !u.state) { el.hidden = true; return; }
+  // `at` arrives verbatim from the agent, so an unparseable one reads as
+  // "no time to show" — same contract timeAgo gives everywhere else.
+  const when = u.at ? timeAgo(u.at) : '';
+  const head = document.createElement('span');
+  if (u.state === 'confirmed') {
+    // An old success is not news.
+    if (_isStaleUpdateStamp(u.at)) { el.hidden = true; return; }
+    el.classList.add('detail-agent-update--ok');
+    head.textContent = `Updated to v${u.to_version || '?'}` + (when ? ` ${when}` : '');
+  } else if (u.state === 'rolled_back') {
+    el.classList.add('detail-agent-update--bad');
+    head.textContent = `Update to v${u.to_version || '?'} rolled back to v${u.from_version || '?'}`
+      + (when ? ` ${when}` : '');
+  } else if (u.state === 'not_applied') {
+    el.classList.add('detail-agent-update--bad');
+    head.textContent = `Update to v${u.to_version || '?'} did not take effect`
+      + (when ? ` ${when}` : '');
+  } else {
+    el.hidden = true;
+    return;
+  }
+  el.appendChild(head);
+  if (u.reason && u.state !== 'confirmed') {
+    const reason = document.createElement('span');
+    reason.className = 'detail-agent-update-reason';
+    reason.textContent = String(u.reason);
+    el.appendChild(reason);
+  }
+  el.hidden = false;
+}
+
+/** True when `at` is older than a week — the window in which a self-update
+ *  still counts as news. Missing or unparseable stamps are not stale: with no
+ *  date the server could not age the record out either. */
+function _isStaleUpdateStamp(at) {
+  if (!at) return false;
+  const then = new Date(at);
+  if (Number.isNaN(then.getTime())) return false;
+  return Date.now() - then.getTime() > 7 * 24 * 60 * 60 * 1000;
 }
 
 async function _loadDetailScore(hostId) {
