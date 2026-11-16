@@ -25,7 +25,7 @@ import time
 
 from . import __version__, store
 from .client import ApiError, CliError, Client, SignedOut
-from .output import ago, table
+from .output import ago, safe, table
 
 #: (method, path template, response fields this CLI reads). The server test
 #: ``vigil/test_cli_contract.py`` checks each against the OpenAPI schema.
@@ -110,11 +110,14 @@ class Context:
         self.sleep = sleep
         self._client = None
 
+    # Every line this program prints goes through one of these two, and both
+    # make control characters visible (output.safe): much of what is printed
+    # was written by an agent.
     def say(self, text: str = "") -> None:
-        print(text, file=self.out)
+        print(safe(str(text)), file=self.out)
 
     def note(self, text: str) -> None:
-        print(text, file=self.err)
+        print(safe(str(text)), file=self.err)
 
     def emit(self, data) -> None:
         self.say(json.dumps(data, indent=2, sort_keys=True))

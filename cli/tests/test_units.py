@@ -16,7 +16,7 @@ from unittest import mock
 from vigil_cli import main as cli
 from vigil_cli import store
 from vigil_cli.client import ApiError, CliError, Client, SignedOut, normalise_url
-from vigil_cli.output import ago, table
+from vigil_cli.output import ago, safe, table
 
 
 class Recorder(BaseHTTPRequestHandler):
@@ -188,6 +188,49 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(ago("2026-11-16T11:59:00Z", now=now), "1m ago")
         self.assertEqual(ago(None), "never")
         self.assertEqual(ago("garbage"), "garbage")
+
+
+class TerminalSafetyTests(unittest.TestCase):
+    """What an agent wrote cannot drive the operator's terminal."""
+
+    HOSTILE = "web\x1b[2J\x1b]0;owned\x07\x9b31m\u202egnp.exe\r\x08\x7f"
+
+    def test_control_characters_are_made_visible(self):
+        cleaned = safe(self.HOSTILE)
+        for char in cleaned:
+            self.assertTrue(char.isprintable(), repr(char))
+        self.assertIn("\\x1b[2J", cleaned)
+        self.assertIn("\\u202e", cleaned)
+        self.assertEqual(safe("plain\ttext\nwith café"), "plain\ttext\nwith café")
+
+    def test_every_command_prints_through_the_filter(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Recorder)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        host = {"id": "a" * 32, "hostname": self.HOSTILE, "status": "online", "mode": "managed",
+                "os": self.HOSTILE, "tags": [self.HOSTILE]}
+        Recorder.routes = {
+            ("GET", "/api/v1/hosts/"): (200, [host]),
+            ("GET", "/api/v1/alerts/"): (200, [{"id": "b" * 32, "host_hostname": self.HOSTILE,
+                                                "severity": "high", "message": self.HOSTILE}]),
+            ("GET", "/api/v1/bad/"): (400, {"error": self.HOSTILE}),
+            ("GET", "/api/v1/text/"): (200, self.HOSTILE),
+        }
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {
+                "VIGIL_CONFIG": str(Path(tmp) / "s.json"), "VIGIL_URL": url,
+                "VIGIL_API_KEY": "vsk_x"}):
+            for argv in (["hosts"], ["hosts", "a" * 32], ["alerts"],
+                         ["api", "GET", "/api/v1/bad/"], ["api", "GET", "/api/v1/text/"],
+                         ["hosts", "--json"]):
+                out, err = io.StringIO(), io.StringIO()
+                cli.main(argv, out=out, err=err)
+                printed = out.getvalue() + err.getvalue()
+                with self.subTest(argv):
+                    self.assertTrue(printed.strip())
+                    for char in printed:
+                        self.assertTrue(char.isprintable() or char in "\n\t", repr(char))
 
 
 class StoreTests(unittest.TestCase):

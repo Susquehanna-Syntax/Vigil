@@ -2,7 +2,21 @@
 is as readable piped into a file as it is on a terminal."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
+
+#: Everything a terminal acts on rather than shows: the C0 and C1 control
+#: characters (escape among them) other than newline and tab, DEL, and the
+#: bidirectional overrides that reorder what is displayed.
+_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+
+
+def safe(text: str) -> str:
+    """*text* with every control character made visible. Host names, alert
+    messages and task output come from agents: a compromised host must not be
+    able to move the cursor, recolour or rewrite an operator's terminal."""
+    return _CONTROL.sub(lambda m: "\\x%02x" % ord(m.group()) if ord(m.group()) < 0x100
+                        else "\\u%04x" % ord(m.group()), text)
 
 
 def table(headers: list[str], rows: list[list], *, empty: str = "Nothing to show.") -> str:
