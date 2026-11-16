@@ -119,3 +119,39 @@ class CheckOutdatedAgentsTests(TestCase):
         host = self._host("silent", "")
         check_outdated_agents()
         self.assertFalse(self._outdated_alerts(host).exists())
+
+
+class HostileVersionStringTests(TestCase):
+    """agent_version is whatever an agent sent. A Unicode digit ("²" passes
+    str.isdigit() but int() refuses it) must read as unknown, not crash the
+    hourly check or the fleet version report for every host."""
+
+    def test_unicode_digits_are_unknown_not_an_error(self):
+        from apps.alerts.tasks import _is_older, _version_key
+        for hostile in ("2026.²", "²", "2026.١٧.0", "v2026.٣"):
+            with self.subTest(hostile):
+                self.assertIsNone(_version_key(hostile))
+                self.assertFalse(_is_older(hostile, "2026.17.0"))
+        self.assertEqual(_version_key("2026.1.8b"), (2026, 1, 8))
+
+    @override_settings(VIGIL_AGENT_VERSION="2026.17.0")
+    def test_one_hostile_host_does_not_stop_the_check_or_the_report(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+
+        from apps.accounts.models import Role, UserProfile
+        from apps.alerts.tasks import _check_outdated_agents
+        from apps.hosts.models import Host
+
+        Host.objects.create(hostname="odd", agent_token="o" * 32, status=Host.Status.ONLINE,
+                            mode=Host.Mode.MANAGED, agent_version="2026.²")
+        Host.objects.create(hostname="old", agent_token="q" * 32, status=Host.Status.ONLINE,
+                            mode=Host.Mode.MANAGED, agent_version="2026.9.0")
+        self.assertIn("1 fired", _check_outdated_agents())
+        admin = get_user_model().objects.create_user("adm", password="x")
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        client = APIClient()
+        client.force_authenticate(admin)
+        resp = client.get("/api/v1/hosts/agent-versions/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["outdated_hosts"], 1)
