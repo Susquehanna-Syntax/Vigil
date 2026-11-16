@@ -24,7 +24,7 @@ let _allTags = [];
 /* ── The Tags tab ─────────────────────────────────────────────────────── */
 
 function _filterTags() {
-  const q = (/** @type {HTMLInputElement} */ (document.getElementById('tag-search')).value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('tag-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allTags;
   return _allTags.filter(t =>
     (t.name || '').toLowerCase().includes(q) ||

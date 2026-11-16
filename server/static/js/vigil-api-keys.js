@@ -151,10 +151,10 @@ function _akKeyRow(k) {
 }
 
 delegateClick('[data-ak-create]', async () => {
-  const input = /** @type {HTMLInputElement} */ (document.getElementById('api-key-name'));
-  const name = (input.value || '').trim();
+  const input = /** @type {HTMLInputElement|null} */ (document.getElementById('api-key-name'));
+  const name = (input?.value || '').trim();
   if (!name) { showToast('Give the key a name', 'error'); return; }
-  const access = (/** @type {HTMLSelectElement} */ (document.getElementById('api-key-access'))).value || 'read';
+  const access = (/** @type {HTMLSelectElement|null} */ (document.getElementById('api-key-access')))?.value || 'read';
   let created;
   try {
     created = await apiJson(AK_KEYS_API, {
@@ -290,10 +290,10 @@ function _akHookRow(w) {
 }
 
 delegateClick('[data-wh-create]', async () => {
-  const nameInput = /** @type {HTMLInputElement} */ (document.getElementById('wh-name'));
-  const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('wh-url'));
-  const name = (nameInput.value || '').trim();
-  const url = (urlInput.value || '').trim();
+  const nameInput = /** @type {HTMLInputElement|null} */ (document.getElementById('wh-name'));
+  const urlInput = /** @type {HTMLInputElement|null} */ (document.getElementById('wh-url'));
+  const name = (nameInput?.value || '').trim();
+  const url = (urlInput?.value || '').trim();
   if (!name || !url) { showToast('Give the webhook a name and a URL', 'error'); return; }
   const events = [...document.querySelectorAll('input[data-wh-event]:checked')]
     .map((/** @type {HTMLInputElement} */ el) => el.dataset.whEvent);
