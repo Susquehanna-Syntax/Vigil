@@ -102,6 +102,9 @@ class Host(models.Model):
     # Whether the agent's process runs as root, as it last reported it (QA-08):
     # None until an agent new enough to report it checks in.
     agent_runs_as_root = models.BooleanField(null=True, blank=True)
+    # Whether this agent's own agent.yml says ``poller: true`` (S9): written only
+    # from the agent's check-in, never by the dashboard, like agent_allow_remote_shell.
+    agent_poller = models.BooleanField(default=False)
     #: How this agent's last self-update ended, as the agent reported it
     #: (sprint M8): {"state": "confirmed" | "rolled_back" | "not_applied",
     #: "from_version", "to_version", "running", "reason", "at"}. Null until an
@@ -436,6 +439,62 @@ class UnmanagedDevice(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.device_type})"
+
+
+class DeviceCheck(models.Model):
+    """A check an agent-less device is polled with (S9).
+
+    The server hands each enabled check to one poller of the device's site
+    inside that poller's check-in response, signed (device_checks.py). A null
+    ``poller`` means "any poller of the device's site": the server picks the
+    lowest-id online poller, so a poller going offline moves its checks.
+    """
+
+    # Scoped by the device's own site_id column, through the relation: a path
+    # scope would look for a site_assignment, which only host-like rows have.
+    objects = SiteScopedManager(field="device__site_id", app="devices")
+
+    class Kind(models.TextChoices):
+        ICMP = "icmp", "Ping"
+        TCP = "tcp", "TCP port"
+        HTTP = "http", "HTTP(S)"
+        DNS = "dns", "DNS"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey(UnmanagedDevice, on_delete=models.CASCADE,
+                               related_name="checks")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    params = models.JSONField(default=dict, blank=True)
+    interval_seconds = models.PositiveIntegerField(default=60)
+    enabled = models.BooleanField(default=True)
+    poller = models.ForeignKey(Host, on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name="assigned_checks")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.kind} check on {self.device_id}"
+
+
+class CheckResult(models.Model):
+    """One result a poller sent for a DeviceCheck. Pruned by the retention job."""
+
+    objects = SiteScopedManager(field="device_check__device__site_id", app="devices")
+
+    id = models.BigAutoField(primary_key=True)
+    # Not named "check": that would shadow Model.check(), Django's system-check hook.
+    device_check = models.ForeignKey(DeviceCheck, on_delete=models.CASCADE, related_name="results")
+    time = models.DateTimeField(db_index=True)
+    ok = models.BooleanField()
+    latency_ms = models.FloatField(null=True, blank=True)
+    detail = models.CharField(max_length=300, blank=True, default="")
+    extra = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-time"]
+        indexes = [models.Index(fields=["device_check", "-time"], name="checkresult_check_time")]
 
 
 class HostFirewall(models.Model):

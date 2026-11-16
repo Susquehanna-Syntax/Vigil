@@ -299,10 +299,14 @@ def prune_old_metric_points():
     Fallback path only. When the table is a TimescaleDB hypertable the native
     retention policy handles expiry (and frees disk per chunk), so this no-ops.
     """
-    if _metricpoint_is_hypertable():
-        return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     retention_days = getattr(settings, "VIGIL_METRIC_RETENTION_DAYS", 30)
     cutoff = now() - timedelta(days=retention_days)
+    # Device check results (S9) follow the metrics' retention. They are an
+    # ordinary table even on TimescaleDB, so they are pruned here either way.
+    from apps.hosts.models import CheckResult
+    CheckResult.objects.filter(time__lt=cutoff).delete()
+    if _metricpoint_is_hypertable():
+        return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()
     if deleted:
         logger.info("Pruned %d metric points older than %d days", deleted, retention_days)

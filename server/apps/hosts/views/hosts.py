@@ -3,10 +3,11 @@ from datetime import timedelta
 from datetime import timezone as dt_timezone
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from ..api_schema import (
     HostsAdConfigSavedSerializer,
@@ -16,6 +17,9 @@ from ..api_schema import (
     HostsAdSyncQueuedSerializer,
     HostsAgentVersionsSerializer,
     HostsDeletedSerializer,
+    HostsDeviceCheckResultSerializer,
+    HostsDeviceCheckSerializer,
+    HostsDeviceCheckWriteSerializer,
     HostsDeviceSerializer,
     HostsDeviceWriteSerializer,
     HostsErrorSerializer,
@@ -26,6 +30,8 @@ from ..api_schema import (
     HostsValidationErrorSerializer,
 )
 from apps.alerts.tasks import _is_older, _version_key
+from ..device_checks import validate_interval, validate_params
+from ..models import DeviceCheck
 from ._common import *  # noqa: F401,F403
 
 
@@ -227,6 +233,161 @@ def unmanaged_device_detail(request, device_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     serializer.save(**extra)
     return Response(serializer.data)
+
+
+def _check_out(check) -> dict:
+    latest = check.results.order_by("-time").first()
+    return {
+        "id": str(check.id),
+        "kind": check.kind,
+        "params": check.params,
+        "interval_seconds": check.interval_seconds,
+        "enabled": check.enabled,
+        "poller": str(check.poller_id) if check.poller_id else None,
+        "created_at": check.created_at,
+        "latest": ({"ok": latest.ok, "latency_ms": latest.latency_ms,
+                    "detail": latest.detail, "time": latest.time} if latest else None),
+    }
+
+
+def _check_fields(device, data, current=None) -> dict:
+    """Validated check fields from a request body, merged over ``current`` on PATCH.
+
+    Raises ValueError with the one sentence an API answer carries.
+    """
+    fields = {}
+    if current is None or "kind" in data or "params" in data:
+        kind = data.get("kind", current.kind if current else None)
+        params = data.get("params", current.params if current else {})
+        fields["kind"] = kind
+        fields["params"] = validate_params(kind, params)
+    if "interval_seconds" in data or current is None:
+        fields["interval_seconds"] = validate_interval(data.get("interval_seconds", 60))
+    if "enabled" in data or current is None:
+        enabled = data.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be true or false")
+        fields["enabled"] = enabled
+    if "poller" in data or current is None:
+        raw = data.get("poller")
+        if raw in (None, ""):
+            fields["poller"] = None
+        else:
+            try:
+                poller = Host.objects.get(pk=raw)
+            except (Host.DoesNotExist, ValueError, DjangoValidationError):
+                poller = None
+            if poller is None or not poller.agent_poller or (
+                    device.site_id is not None and scoping.site_id_of(poller) != device.site_id):
+                raise ValueError("poller must be a poller host of this device's site")
+            fields["poller"] = poller
+    return fields
+
+
+@extend_schema(methods=["GET"], responses=HostsDeviceCheckSerializer(many=True))
+@extend_schema(methods=["POST"], request=HostsDeviceCheckWriteSerializer,
+               responses={201: HostsDeviceCheckSerializer,
+                          400: HostsValidationErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_checks(request, device_id):
+    """List a device's checks with each one's latest result, or add a check (admin)."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+    except UnmanagedDevice.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        return Response([_check_out(c) for c in device.checks.order_by("created_at", "id")])
+
+    # Same rule as the device writes above (SEC-1): reads open, writes admin-only.
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+    if denied := scoping.write_denied(request.user, device):
+        return denied
+    if not isinstance(request.data, dict):
+        return Response({"error": "The body must be an object."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        fields = _check_fields(device, request.data)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    check = DeviceCheck.objects.create(device=device, **fields)
+    return Response(_check_out(check), status=status.HTTP_201_CREATED)
+
+
+@extend_schema(methods=["PATCH"], request=HostsDeviceCheckWriteSerializer,
+               responses={200: HostsDeviceCheckSerializer,
+                          400: HostsValidationErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@extend_schema(methods=["DELETE"], responses={204: None,
+                                              403: HostsErrorSerializer,
+                                              404: HostsErrorSerializer})
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_detail(request, device_id, check_id):
+    """Change or delete one device check (admin)."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+        check = DeviceCheck.objects.get(pk=check_id, device=device)
+    except (UnmanagedDevice.DoesNotExist, DeviceCheck.DoesNotExist):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+    if denied := scoping.write_denied(request.user, device):
+        return denied
+
+    if request.method == "DELETE":
+        check.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if not isinstance(request.data, dict):
+        return Response({"error": "The body must be an object."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        fields = _check_fields(device, request.data, current=check)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    for key, value in fields.items():
+        setattr(check, key, value)
+    check.save()
+    return Response(_check_out(check))
+
+
+@extend_schema(methods=["GET"],
+               parameters=[OpenApiParameter(
+                   "hours", int, required=False,
+                   description="How far back to read, 1 to 720 hours. Default 24.")],
+               responses={200: HostsDeviceCheckResultSerializer(many=True),
+                          400: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_results(request, device_id, check_id):
+    """The stored results of one device check, newest last, at most 2000 rows."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+        check = DeviceCheck.objects.get(pk=check_id, device=device)
+    except (UnmanagedDevice.DoesNotExist, DeviceCheck.DoesNotExist):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        hours = int(request.query_params.get("hours", 24))
+    except (TypeError, ValueError):
+        hours = 0
+    if not 1 <= hours <= 720:
+        return Response({"error": "hours must be a whole number from 1 to 720"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    rows = list(check.results.filter(time__gte=now() - timedelta(hours=hours))
+                .order_by("-time")[:2000])
+    rows.reverse()
+    return Response([{"time": r.time, "ok": r.ok, "latency_ms": r.latency_ms,
+                      "detail": r.detail} for r in rows])
 
 
 @extend_schema(methods=["GET"], responses=HostsAdConfigSerializer)

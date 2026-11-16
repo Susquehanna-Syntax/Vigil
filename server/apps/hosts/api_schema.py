@@ -688,6 +688,51 @@ class HostsTopologyHostSerializer(serializers.Serializer):
     partial = serializers.BooleanField()
 
 
+class HostsDeviceCheckLatestSerializer(serializers.Serializer):
+    """The newest result of a device check, or null when it has none yet."""
+
+    ok = serializers.BooleanField()
+    latency_ms = serializers.FloatField(allow_null=True)
+    detail = serializers.CharField()
+    time = serializers.DateTimeField()
+
+
+class HostsDeviceCheckSerializer(serializers.Serializer):
+    """One check on a device, as ``device_checks`` renders it."""
+
+    id = serializers.CharField()
+    kind = serializers.CharField(help_text="icmp, tcp, http or dns.")
+    params = serializers.DictField(help_text="Cleaned per kind; unknown keys are dropped.")
+    interval_seconds = serializers.IntegerField(help_text="30 to 86400.")
+    enabled = serializers.BooleanField()
+    poller = serializers.CharField(
+        allow_null=True,
+        help_text="The host pinned to run this check, or null for any poller of the device's site.")
+    created_at = serializers.DateTimeField()
+    latest = HostsDeviceCheckLatestSerializer(allow_null=True)
+
+
+class HostsDeviceCheckWriteSerializer(serializers.Serializer):
+    """The body a device check is created or patched with. Every field is optional on PATCH."""
+
+    kind = serializers.CharField(required=False, help_text="icmp, tcp, http or dns.")
+    params = serializers.DictField(required=False)
+    interval_seconds = serializers.IntegerField(required=False)
+    enabled = serializers.BooleanField(required=False)
+    poller = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="A poller host of the device's site, or null for any.")
+
+
+class HostsDeviceCheckResultSerializer(serializers.Serializer):
+    """One stored result of a device check, newest last."""
+
+    time = serializers.DateTimeField()
+    ok = serializers.BooleanField()
+    latency_ms = serializers.FloatField(allow_null=True)
+    detail = serializers.CharField()
+
+
 class HostsTopologyDeviceSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()

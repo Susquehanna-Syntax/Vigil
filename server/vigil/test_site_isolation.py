@@ -38,7 +38,7 @@ from apps.agentprofiles.models import AgentProfile
 from apps.alerts.models import Alert, AlertRule
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
-from apps.hosts.models import Host, LogTailSession, Tag, UnmanagedDevice
+from apps.hosts.models import DeviceCheck, Host, LogTailSession, Tag, UnmanagedDevice
 from apps.jackil.models import IntegrationKey
 from apps.metrics.models import MetricPoint
 from apps.playbooks.models import Playbook
@@ -91,6 +91,7 @@ FILLERS = {
     "wave_id": lambda o: o["wave"].id,
     "tag_id": lambda o: o["tag"].id,
     "device_id": lambda o: o["device"].id,
+    "check_id": lambda o: o["check"].id,
     "definition_id": lambda o: o["definition"].id,
     "stack_id": lambda o: o["stack"].id,
     "session_id": lambda o: o["session"].id,
@@ -559,6 +560,8 @@ class SiteIsolationTests(TestCase):
             # Per site since 04d-1 (decisions-06 item 5).
             o["profile"] = AgentProfile.objects.create(name=f"{tag}-profile", site_id=site.pk)
             o["device"] = UnmanagedDevice.objects.create(name=f"{tag}-device", site_id=site.pk)
+            o["check"] = DeviceCheck.objects.create(
+                device=o["device"], kind="icmp", params={"host": "10.0.0.1"})
             o["page"] = StatusPage.objects.create(title=f"{tag}-page", site_id=site.pk)
             o["key"] = IntegrationKey.objects.create(
                 name=f"shared-{shared}-key",
