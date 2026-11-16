@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-vulns.js
 // Owns: Vulnerabilities page — fleet face headline, per-host summary table
 //   with score column + inline-expandable findings rows, scan history, and
@@ -140,7 +141,7 @@ async function _renderFleetHeadline() {
 }
 
 async function refreshVulns() {
-  const btn = document.getElementById('vulns-refresh-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('vulns-refresh-btn'));
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
 
   const loadingEl = document.getElementById('vulns-loading');
@@ -589,7 +590,7 @@ function updateHostCardVulnBadges(summaries) {
   const byHost = {};
   summaries.forEach(s => { byHost[s.host] = s; });
 
-  document.querySelectorAll('.host-card').forEach(card => {
+  document.querySelectorAll('.host-card').forEach((/** @type {HTMLElement} */ card) => {
     const hostId = card.dataset.id;
     if (!hostId) return;
     const prev = card.querySelector('.host-vuln-badge');
@@ -639,7 +640,7 @@ function _fixSkeleton() {
 
 async function refreshFixGroups() {
   const seq = ++fixState.seq;
-  const q = (document.getElementById('vuln-fix-q')?.value || '').trim();
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById('vuln-fix-q'))?.value || '').trim();
   if (!fixState.rows.length) {
     const wrap = document.getElementById('vuln-fixes');
     if (wrap) wrap.innerHTML = _fixSkeleton();
@@ -715,7 +716,7 @@ delegateClick('[data-vfix-row]', (el, ev) => {
   if (ev.target.closest('button, a, .vfix-detail')) return;
   const key = el.dataset.vfixRow;
   fixState.open[key] = !fixState.open[key];
-  renderFixGroups((document.getElementById('vuln-fix-q')?.value || '').trim());
+  renderFixGroups((/** @type {HTMLInputElement} */ (document.getElementById('vuln-fix-q'))?.value || '').trim());
 });
 document.addEventListener('DOMContentLoaded', () => {
   const q = document.getElementById('vuln-fix-q');

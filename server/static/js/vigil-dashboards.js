@@ -1,3 +1,4 @@
+// @ts-check
 /* Widget dashboards — the grid on the Dashboard page.
  *
  * The layout lives server-side (/api/v1/dashboards/), Gridstack owns the drag
@@ -157,7 +158,7 @@ function _dashRender() {
 function _dashBindChrome(host) {
   host.classList.toggle('dash-editing', DASH.editing);
 
-  const sw = document.getElementById('dash-switch');
+  const sw = /** @type {HTMLSelectElement} */ (document.getElementById('dash-switch'));
   if (sw) sw.onchange = async () => {
     if (DASH.editing) await _dashSaveLayout();
     DASH.editing = false;
@@ -475,8 +476,8 @@ function openWidgetCatalog() {
   document.body.insertAdjacentHTML('beforeend', _railHtml());
   const el = document.getElementById('dash-rail');
   requestAnimationFrame(() => el.classList.add('open'));
-  el.querySelector('#rail-close').onclick = () => closeWidgetCatalog();
-  el.querySelectorAll('[data-add-kind]').forEach((node) => {
+  /** @type {HTMLElement} */ (el.querySelector('#rail-close')).onclick = () => closeWidgetCatalog();
+  el.querySelectorAll('[data-add-kind]').forEach((/** @type {HTMLElement} */ node) => {
     node.addEventListener('click', (ev) => {
       ev.stopPropagation();
       _addWidgetOfKind(node.dataset.addKind);

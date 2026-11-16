@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-about.js
 // Owns: About page — version surface, scanner configured-status pills.
 // HTML: templates/pages/_about.html
@@ -5,7 +6,7 @@
 // API: GET /api/v1/about/
 
 async function refreshAbout() {
-  const btn = document.getElementById('about-refresh-btn');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('about-refresh-btn'));
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
 
   try {

@@ -10,7 +10,26 @@
   },
   "files": [
     "static/js/types/globals.d.ts",
+    "static/js/types/xterm-globals.d.ts",
     "static/js/vigil-utils.js",
-    "static/js/vigil-modal.js"
+    "static/js/vigil-modal.js",
+    "static/js/vigil-playbook-flow.js",
+    "static/js/vigil-session.js",
+    "static/js/vigil-jackil-shapes.js",
+    "static/js/vigil-agentprofile-form.js",
+    "static/js/vigil-host-reboot.js",
+    "static/js/vigil-about.js",
+    "static/js/vigil-terminal.js",
+    "static/js/vigil-nav.js",
+    "static/js/vigil-settings-access.js",
+    "static/js/vigil-statuspages.js",
+    "static/js/vigil-sitepick.js",
+    "static/js/vigil-charts.js",
+    "static/js/vigil-login-verify.js",
+    "static/js/vigil-firewall.js",
+    "static/js/vigil-vulns.js",
+    "static/js/vigil-dashboards.js",
+    "static/js/vigil-siteswitch.js",
+    "static/js/vigil-contentyaml.js"
   ]
 }

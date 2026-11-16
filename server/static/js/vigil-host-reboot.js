@@ -1,9 +1,10 @@
+// @ts-check
 // ── Reboot-required marker (phase 08b) ──────────────────────────────────────
 // A host whose agent reports reboot_required gets a pending marker on its
 // card. --peach is the fleet's existing "pending" colour; no new colour
 // literal is introduced.
 document.addEventListener('DOMContentLoaded', () => {
-  for (const card of document.querySelectorAll('.host-card')) {
+  for (const card of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.host-card'))) {
     if (card.dataset.rebootRequired !== '1') continue;
     const chip = document.createElement('span');
     chip.textContent = 'Reboot pending';

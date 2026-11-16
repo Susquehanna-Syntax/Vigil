@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-firewall.js
 // Owns: Firewall page — host picker, tri-state enable/disable + default
 //   policies, rule table with protected-port guard, unparsed-rule callout,
@@ -57,13 +58,13 @@ async function loadFirewall() {
     await _fwPopulateHosts();
     firewallHostsLoaded = true;
   }
-  const sel = document.getElementById('firewall-host-select');
+  const sel = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'));
   if (sel && sel.value) await loadFirewallSnapshot(sel.value);
 }
 
 function pickFirewallHost() {
   openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
-    const hidden = document.getElementById('firewall-host-select');
+    const hidden = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'));
     hidden.value = item.key;
     _fwRemember(item.key);
     document.getElementById('firewall-host-label').textContent = item.name;
@@ -72,7 +73,7 @@ function pickFirewallHost() {
 }
 
 async function _fwPopulateHosts() {
-  const sel = document.getElementById('firewall-host-select');
+  const sel = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'));
   const noHosts = document.getElementById('firewall-no-hosts');
   const refreshBtn = document.getElementById('firewall-refresh-btn');
   if (!sel) return;
@@ -532,8 +533,8 @@ async function applyFirewallChange(hostId, action, params, btn) {
 }
 
 document.getElementById('firewall-refresh-btn')?.addEventListener('click', async () => {
-  const btn = document.getElementById('firewall-refresh-btn');
-  const hostId = document.getElementById('firewall-host-select')?.value;
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('firewall-refresh-btn'));
+  const hostId = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'))?.value;
   if (!hostId) return;
   btn.disabled = true; btn.style.opacity = '0.5';
   try {
@@ -549,7 +550,7 @@ document.getElementById('firewall-refresh-btn')?.addEventListener('click', async
 // Auto-load the first time the Firewall tab is opened, following the
 // wrap-navigateTo pattern documented atop vigil-nav.js.
 const _fwNavigateTo = navigateTo;
-navigateTo = function (page) {
+window.navigateTo = function (page) {
   _fwNavigateTo(page);
   if (page === 'firewall') loadFirewall();
 };

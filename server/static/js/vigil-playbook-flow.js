@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-playbook-flow.js
 // Owns: the playbook flow — a tree of task steps and if/then/else branches.
 //   * the canvas: the flow laid out left to right as nodes and edges you can

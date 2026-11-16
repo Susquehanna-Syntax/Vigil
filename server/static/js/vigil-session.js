@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-session.js — sign-in session timeout (QA-14): a heartbeat on real use,
 // a warning two minutes before the server signs this browser out, and the
 // redirect to the login page once it has. The server is the authority; this

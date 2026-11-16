@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-charts.js
 // Owns: the donut used to summarise a run — hosts by end state (status
 // colours, reserved) and by the outcomes an author named (a categorical order,
@@ -176,13 +177,13 @@ function wireRunSummary(scope, summary, run) {
   }
 }
 
-function _hostRunWhen(iso) {
+function _hostRunWhen(/** @type {string|null|undefined} */ iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
-function _hostRunDuration(dispatched, completed) {
+function _hostRunDuration(/** @type {string|null|undefined} */ dispatched, /** @type {string|null|undefined} */ completed) {
   if (!dispatched || !completed) return '—';
-  const secs = Math.max(0, Math.round((new Date(completed) - new Date(dispatched)) / 1000));
+  const secs = Math.max(0, Math.round((new Date(completed).getTime() - new Date(dispatched).getTime()) / 1000));
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
@@ -238,7 +239,7 @@ function openHostRunDetail(run, hostId) {
     <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="hrd-close">Close</button></div>`);
   m.modal.querySelector('#host-run-title').textContent =
     `${hostname} · ${run.name_snapshot || 'Run'}`;
-  m.modal.querySelector('#hrd-x').onclick = () => m.close();
-  m.modal.querySelector('#hrd-close').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#hrd-x')).onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#hrd-close')).onclick = () => m.close();
   requestAnimationFrame(m.open);
 }

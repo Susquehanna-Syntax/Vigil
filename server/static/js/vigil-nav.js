@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-nav.js
 // Owns: page navigation (sidebar icons → page sections) and tab-bar switching.
 // Depends on: vigil-utils.js
@@ -19,12 +20,12 @@ function navigateTo(pageName) {
   document.querySelector('.main').scrollTop = 0;
 }
 
-sidebarIcons.forEach(icon => {
+sidebarIcons.forEach((/** @type {HTMLElement} */ icon) => {
   icon.addEventListener('click', () => navigateTo(icon.dataset.page));
 });
 
 /* ── Tab bars (alerts, tasks history) ────────────────────────────────── */
-document.querySelectorAll('.tab-bar').forEach(bar => {
+document.querySelectorAll('.tab-bar').forEach(/** @param {HTMLElement} bar */ bar => {
   bar.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       bar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -32,7 +33,7 @@ document.querySelectorAll('.tab-bar').forEach(bar => {
       const group = bar.closest('.page');
       if (!group) return;
       group.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      const target = document.getElementById(tab.dataset.tab);
+      const target = document.getElementById(/** @type {HTMLElement} */ (tab).dataset.tab);
       if (target) target.classList.add('active');
     });
   });

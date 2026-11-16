@@ -1,3 +1,4 @@
+// @ts-check
 /* ── Jackil widget shapes (J1 p03d) ────────────────────────────────────────
    Ported from Jackil's jackil-widgets.js, drawn in Vigil's look. Every name
    is _jk-prefixed: Vigil's dashboard code already owns global names like

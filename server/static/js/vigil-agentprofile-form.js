@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-agentprofile-form.js
 // Owns: the agent settings form the Add Host wizard and the Agent profiles tab
 //   share — mode, allowed actions, relays, live sessions, tags, intervals.

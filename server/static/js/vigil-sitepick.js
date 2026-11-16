@@ -1,3 +1,4 @@
+// @ts-check
 /* Site picker for create forms (S1 04e-5).
  *
  * Where a new playbook, policy or credential goes decides who may see and
@@ -7,8 +8,16 @@
  * or an install that has not made any) the field stays hidden and nothing is
  * sent. */
 
+/** One row of /api/v1/scope/writable-sites/'s `sites`. */
+/** @typedef {{id: string, name: string}} WritableSite */
+/** What /api/v1/scope/writable-sites/ returns: whether a choice exists at all,
+ *  whether Global may be created in, and the sites themselves. */
+/** @typedef {{enabled: boolean, global: boolean, sites: WritableSite[]}} WritableSitesInfo */
+
+/** @type {Promise<WritableSitesInfo>|null} */
 let _sitePickInfo = null;
 
+/** @returns {Promise<WritableSitesInfo>} */
 function sitePickLoad() {
   if (!_sitePickInfo) {
     _sitePickInfo = apiJson('/api/v1/scope/writable-sites/')
@@ -21,6 +30,7 @@ function sitePickLoad() {
  * user may create in, *current* selected. When *editing*, the item's own site
  * stays listed even if the user could not create there (Global included), so
  * the form shows the truth; the server still decides the save. */
+/** @param {HTMLSelectElement} select @param {HTMLElement|null} field @param {string|number|null=} current @param {{editing?: boolean, currentName?: string}=} opts @returns {Promise<void>} */
 async function sitePickFill(select, field, current, { editing = false, currentName = '' } = {}) {
   const info = await sitePickLoad();
   const want = current ? String(current) : '';
@@ -51,6 +61,7 @@ function sitePickValue(select, field) {
  * Resolves the site id, null for global, undefined when there is nothing to
  * choose (send no site_id), or false when the user cancels. Asks only when
  * there is a real choice. */
+/** @returns {Promise<string|null|undefined|false>} */
 async function sitePickChoose(title) {
   const info = await sitePickLoad();
   if (!info.enabled) return undefined;
@@ -74,12 +85,12 @@ async function sitePickChoose(title) {
         <button class="btn btn-outline btn-sm" id="sitepick-cancel">Cancel</button>
         <button class="btn btn-mint btn-sm" id="sitepick-ok">Create</button>
       </div>`);
-    m.modal.querySelector('#sitepick-title').textContent = title;
-    const select = m.modal.querySelector('#sitepick-select');
+    /** @type {HTMLElement} */ (m.modal.querySelector('#sitepick-title')).textContent = title;
+    const select = /** @type {HTMLSelectElement} */ (m.modal.querySelector('#sitepick-select'));
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
-    m.modal.querySelector('#sitepick-ok').onclick = () => done(select.value || null);
-    m.modal.querySelector('#sitepick-cancel').onclick = () => done(false);
-    m.modal.querySelector('#sitepick-x').onclick = () => done(false);
+    /** @type {HTMLElement} */ (m.modal.querySelector('#sitepick-ok')).onclick = () => done(select.value || null);
+    /** @type {HTMLElement} */ (m.modal.querySelector('#sitepick-cancel')).onclick = () => done(false);
+    /** @type {HTMLElement} */ (m.modal.querySelector('#sitepick-x')).onclick = () => done(false);
     m.overlay.onclick = () => done(false);
     requestAnimationFrame(() => { m.open(); select.focus(); });
   });

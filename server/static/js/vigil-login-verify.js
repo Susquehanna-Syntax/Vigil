@@ -1,12 +1,13 @@
+// @ts-check
 /* Sign-in second step: tap a passkey or security key (login_mfa.py).
  *
  * Runs on the pre-auth page, so it carries its own base64url helpers rather
  * than loading vigil-utils.js and the dashboard it assumes. */
 (function () {
-  const btn = document.getElementById('login-key-btn');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('login-key-btn'));
   if (!btn) return;
-  const errBox = document.getElementById('login-key-error');
-  const csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
+  const errBox = /** @type {HTMLElement} */ (document.getElementById('login-key-error'));
+  const csrfInput = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name=csrfmiddlewaretoken]'));
   const csrf = csrfInput ? csrfInput.value : '';
 
   function b64urlToBytes(value) {
@@ -46,7 +47,7 @@
     btn.disabled = true;
     try {
       const opts = await post(btn.dataset.options);
-      const cred = await navigator.credentials.get({ publicKey: {
+      const cred = /** @type {PublicKeyCredential} */ (await navigator.credentials.get({ publicKey: {
         challenge: b64urlToBytes(opts.challenge).buffer,
         timeout: opts.timeout || 60000,
         rpId: opts.rpId,
@@ -54,11 +55,11 @@
         allowCredentials: (opts.allowCredentials || []).map((c) => ({
           type: c.type || 'public-key', id: b64urlToBytes(c.id).buffer,
         })),
-      } });
-      const r = cred.response;
+      } }));
+      const r = /** @type {AuthenticatorAssertionResponse} */ (cred.response);
       const result = await post(btn.dataset.verify, { credential: {
-        id: cred.id || bytesToB64url(cred.rawId),
-        rawId: bytesToB64url(cred.rawId),
+        id: cred.id || bytesToB64url(/** @type {ArrayBuffer} */ (cred.rawId)),
+        rawId: bytesToB64url(/** @type {ArrayBuffer} */ (cred.rawId)),
         type: cred.type || 'public-key',
         response: {
           clientDataJSON: bytesToB64url(r.clientDataJSON),

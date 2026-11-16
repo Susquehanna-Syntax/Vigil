@@ -1,3 +1,4 @@
+// @ts-check
 /* Settings for site admins (S1 04h).
  *
  * A site admin sees install-wide settings the way /api/v1/accounts/
@@ -21,7 +22,7 @@ async function applySettingsAccess() {
     const item = nav.querySelector(`.settings-nav-item[data-pane="${page}"]`);
     const pane = document.querySelector(`#page-settings .settings-pane[data-pane="${page}"]`);
     if (how === 'hidden') {
-      if (item) item.hidden = true;
+      if (item) /** @type {HTMLElement} */ (item).hidden = true;
       if (pane) pane.remove();
     } else if (how === 'greyed' && pane) {
       _greySettingsPane(pane);
@@ -29,7 +30,7 @@ async function applySettingsAccess() {
     // A part of another pane that belongs to this page (the License card sits
     // in the Account pane): the same rule, on that part alone.
     document.querySelectorAll(`#page-settings [data-settings-page="${page}"]`).forEach((part) => {
-      if (how === 'hidden') part.hidden = true;
+      if (how === 'hidden') /** @type {HTMLElement} */ (part).hidden = true;
       else if (how === 'greyed') _greySettingsPane(part);
     });
   });

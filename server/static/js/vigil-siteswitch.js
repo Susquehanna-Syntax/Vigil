@@ -1,3 +1,4 @@
+// @ts-check
 /* Header site switcher (S1 04g).
  *
  * Someone in more than one site ticks the sites they want to look at; every
@@ -7,10 +8,17 @@
  * what they may do does not change. Hidden for anyone with one site, and on
  * Community. */
 
+/** One row of /api/v1/scope/selection/'s `sites`. */
+/** @typedef {{id: string, name: string, is_global: boolean}} SiteSwitchSite */
+/** What /api/v1/scope/selection/ returns: whether the switcher applies to
+ *  this account, which sites it may show, and which are ticked. */
+/** @typedef {{enabled: boolean, all: boolean, sites: SiteSwitchSite[], selected: string[]}} SiteSwitchState */
+
+/** @type {SiteSwitchState|null} */
 let _siteSwitch = null;
 
 async function siteSwitchInit() {
-  const btn = document.getElementById('site-switch');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('site-switch'));
   if (!btn) return;
   try {
     _siteSwitch = await apiJson('/api/v1/scope/selection/');
@@ -22,6 +30,7 @@ async function siteSwitchInit() {
   btn.hidden = false;
 }
 
+/** @returns {Set<string>} */
 function _siteSwitchTicked() {
   const sel = _siteSwitch.selected;
   return sel.length ? new Set(sel) : new Set(_siteSwitch.sites.map((s) => s.id));
@@ -32,11 +41,11 @@ function _siteSwitchLabel() {
   const all = ticked.size === _siteSwitch.sites.length;
   const one = ticked.size === 1 ? _siteSwitch.sites.find((s) => ticked.has(s.id)) : null;
   const text = all ? 'All my sites' : one ? one.name : `${ticked.size} sites`;
-  const btn = document.getElementById('site-switch');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('site-switch'));
   btn.dataset.tip = all ? 'Sites: all of yours' : `Sites: ${text}`;
   btn.classList.toggle('site-switch-narrowed', !all);
   document.getElementById('site-switch-label').textContent = text;
-  const count = document.getElementById('site-switch-count');
+  const count = /** @type {HTMLElement} */ (document.getElementById('site-switch-count'));
   count.textContent = all ? '' : String(ticked.size);
   count.hidden = all;
 }
@@ -64,7 +73,7 @@ function openSiteSwitch() {
       <button class="btn btn-mint btn-sm" id="ss-apply">Show these</button>
     </div>`);
 
-  const boxes = () => [...m.modal.querySelectorAll('#ss-list input[type=checkbox]')];
+  const boxes = () => /** @type {HTMLInputElement[]} */ ([...m.modal.querySelectorAll('#ss-list input[type=checkbox]')]);
   // The last ticked box cannot be cleared: an empty view would show nothing.
   const guard = () => {
     const on = boxes().filter((b) => b.checked);
@@ -73,12 +82,12 @@ function openSiteSwitch() {
   boxes().forEach((b) => b.addEventListener('change', guard));
   guard();
 
-  const search = m.modal.querySelector('#ss-search');
+  const search = /** @type {HTMLInputElement|null} */ (m.modal.querySelector('#ss-search'));
   if (search) {
     search.addEventListener('input', () => {
       const q = search.value.trim().toLowerCase();
       m.modal.querySelectorAll('.ss-site').forEach((row) => {
-        row.hidden = q !== '' && !row.dataset.name.includes(q);
+        /** @type {HTMLElement} */ (row).hidden = q !== '' && !/** @type {HTMLElement} */ (row).dataset.name.includes(q);
       });
     });
   }
@@ -94,11 +103,11 @@ function openSiteSwitch() {
     // Every list on the page was drawn for the old selection.
     window.location.reload();
   };
-  m.modal.querySelector('#ss-x').onclick = () => m.close();
-  m.modal.querySelector('#ss-all').onclick = () => save({ all: true });
-  m.modal.querySelector('#ss-apply').onclick = () =>
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ss-x')).onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ss-all')).onclick = () => save({ all: true });
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ss-apply')).onclick = () =>
     save({ selected: boxes().filter((b) => b.checked).map((b) => b.value) });
-  requestAnimationFrame(() => { m.open(); (search || m.modal.querySelector('#ss-apply')).focus(); });
+  requestAnimationFrame(() => { m.open(); /** @type {HTMLElement} */ (search || m.modal.querySelector('#ss-apply')).focus(); });
 }
 
 document.addEventListener('DOMContentLoaded', siteSwitchInit);

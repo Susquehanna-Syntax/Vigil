@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-statuspages.js
 // Owns: the Status Pages section — create/edit public status pages, choose
 // which machines appear, and give each a custom public display name.
@@ -120,5 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 if (typeof navigateTo === 'function') {
   const _origNavSp = navigateTo;
-  navigateTo = function (p) { _origNavSp(p); if (p === 'statuspages') loadStatusPages(); };
+  // A function declaration creates a read-only binding, so the wrap installs
+  // on window — which is the same global the bare reads below resolve to.
+  window.navigateTo = function (p) { _origNavSp(p); if (p === 'statuspages') loadStatusPages(); };
 }

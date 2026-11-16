@@ -1,3 +1,4 @@
+// @ts-check
 /* ── The web terminal (QA-58) ────────────────────────────────────────────────
    A shell on a managed host, in the browser. Not loaded by base.html:
    loadTerminalAssets() in vigil-host-cards.js appends this file (and xterm)
@@ -59,8 +60,8 @@ function _mountTermDialog(started, kind, container) {
   m.modal.querySelector('#term-title').textContent =
     _termTitle(kind, started.host, container);
 
-  const stateEl = m.modal.querySelector('#term-state');
-  const hostEl = m.modal.querySelector('#term-host');
+  const stateEl = /** @type {HTMLElement} */ (m.modal.querySelector('#term-state'));
+  const hostEl = /** @type {HTMLElement} */ (m.modal.querySelector('#term-host'));
   const setState = (text, cls) => {
     stateEl.textContent = text;
     stateEl.className = 'run-state ' + cls;
