@@ -1328,6 +1328,36 @@ cosign verify-blob vigil-agent-linux-amd64 \
 
       <h3>Agent builds</h3>
       <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Apple Silicon only; Intel Macs are not supported from 2026.15) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
+
+      <h3 id="agent-updates">How an agent updates itself safely</h3>
+      <p class="prose">An update replaces the one program that could report that the update went wrong, so the agent checks around the swap, on the host:</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">
+            <strong>The download is verified</strong><br>
+            Its SHA-256 must match the one inside the signed task.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>The new build proves itself before anything is replaced</strong><br>
+            The running agent starts it with its own config. It loads every module, runs a real collection and makes one authenticated round trip to Vigil. A build that cannot start on this machine, or cannot reach Vigil with this config, is never installed: the task ends with the reason and the old agent keeps running.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>The old build is kept until the new one checks in</strong><br>
+            The first check-in that succeeds confirms the update, and the old build is deleted.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>If check-ins keep failing, the agent goes back</strong><br>
+            After 3 failed check-ins in a row, and at least 5 minutes of running, the new agent puts the old build back and restarts into it. The old agent then tells Vigil the update was rolled back and why.
+          </div>
+        </div>
+      </div>
+      <p class="prose">The API shows the outcome on each host as <code>agent_update</code>: <code>confirmed</code>, <code>rolled_back</code> or <code>not_applied</code>, with the two versions and the reason. Putting the old build back is for Linux and macOS. A Windows install is a folder its own running service cannot replace, so there the proof before the swap is the protection, and the outcome is still reported. Agents from before 2026.17 update the old way; this starts with the first update a 2026.17 agent performs.</p>
     </section>
     <div class="divider"></div>
 

@@ -39,6 +39,11 @@ class HostsHostSerializer(serializers.Serializer):
     agent_allow_reprovision = serializers.BooleanField()
     agent_runs_as_root = serializers.BooleanField(
         allow_null=True, help_text="Null until the agent reports it.")
+    agent_update = serializers.DictField(
+        allow_null=True,
+        help_text="How the agent's last self-update ended, as it reported: state "
+                  "(confirmed, rolled_back or not_applied), from_version, to_version, "
+                  "running, reason and at. Null when it has reported none.")
     reboot_required = serializers.BooleanField()
     last_checkin = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
@@ -252,6 +257,11 @@ class HostsCheckinBodySerializer(serializers.Serializer):
     runs_as_root = serializers.BooleanField(required=False)
     features = serializers.ListField(child=serializers.CharField(), required=False)
     reboot_required = serializers.BooleanField(required=False)
+    agent_update = serializers.DictField(
+        required=False,
+        help_text="How a self-update ended, sent until one check-in carrying it "
+                  "succeeds: state (confirmed, rolled_back or not_applied), "
+                  "from_version, to_version, running and reason.")
     tags = serializers.ListField(child=serializers.CharField(), required=False,
                                  help_text="Namespaced under agent:* on the way in.")
     inventory = serializers.DictField(required=False)

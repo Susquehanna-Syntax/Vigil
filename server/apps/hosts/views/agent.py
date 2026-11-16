@@ -9,6 +9,27 @@ from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
 from ._common import *  # noqa: F401,F403
 
 
+#: The outcomes an agent may report for a self-update (agent update_guard).
+AGENT_UPDATE_STATES = ("confirmed", "rolled_back", "not_applied")
+
+
+def _agent_update_outcome(raw) -> dict | None:
+    """The ``agent_update`` a check-in carried, cleaned, or None when it
+    carried none or one that is not an outcome. Every value is the agent's
+    own claim about itself: it is stored for display and never trusted to
+    decide what the host may do."""
+    if not isinstance(raw, dict) or raw.get("state") not in AGENT_UPDATE_STATES:
+        return None
+
+    def text(key, limit):
+        value = raw.get(key)
+        return " ".join(value.split())[:limit] if isinstance(value, str) else ""
+
+    return {"state": raw["state"], "from_version": text("from_version", 50),
+            "to_version": text("to_version", 50), "running": text("running", 50),
+            "reason": text("reason", 300), "at": now().isoformat()}
+
+
 @scoping.system_view(reason="agent enrolment: a new host registers with no user")
 @extend_schema(request=HostsRegisterSerializer, responses={
     201: HostsRegisterResponseSerializer, 200: HostsRegisterResponseSerializer,
@@ -187,6 +208,13 @@ def checkin(request):
     # Absent means an agent too old to report it (or Windows) — keep what we knew.
     if isinstance(data.get("runs_as_root"), bool):
         host.agent_runs_as_root = data["runs_as_root"]
+
+    if (outcome := _agent_update_outcome(data.get("agent_update"))) is not None:
+        host.agent_update = outcome
+        if outcome["state"] != "confirmed":
+            logger.warning("host %s: agent update %s -> %s %s: %s", host.hostname,
+                           outcome["from_version"], outcome["to_version"],
+                           outcome["state"], outcome["reason"])
 
     if data.get("features") is not None:
         # A list of short strings the agent understands (task-language

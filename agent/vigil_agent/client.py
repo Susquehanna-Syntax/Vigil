@@ -62,6 +62,7 @@ def checkin(
     windows_update_list: list[dict] | None = None,
     container_engines: list[dict] | None = None,
     network: dict | None = None,
+    agent_update: dict | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -131,6 +132,10 @@ def checkin(
     # the network snapshot it already has (14.4 — the topology view).
     if network is not None:
         payload["network"] = network
+    # How a self-update ended, once known (update_guard): confirmed, rolled
+    # back, or not applied. Absent on every ordinary check-in.
+    if agent_update is not None:
+        payload["agent_update"] = agent_update
     url = f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()

@@ -45,3 +45,19 @@ Two things, both fixed in the same change that added the command:
    host has less than 1 GB of memory available (the scan then says so, and the installed list is still reported).
    Hosts without flatpak are unaffected: on those the scan's peak is the package manager's own (about 70 MB for
    `apt list --upgradable`).
+
+## Nuitka instead of PyInstaller: tried, not adopted
+
+The sprint plan asked for a trial of Nuitka (which compiles the agent to C) as a replacement for PyInstaller, to be
+kept only if these numbers improved. Built on the same machine from the same source (Nuitka 2.x, `--onefile`, with
+zstandard compression), measured with the same command:
+
+| Linux x86_64 | Installed | Unpacked | Memory at rest | Check-in CPU | Start to finished report |
+|---|---|---|---|---|---|
+| PyInstaller 6.22 | 14.8 MB | 27.9 MB | 42.9 MB | 30-40 ms | 7.0 s |
+| Nuitka | 14.3 MB | 50 MB | 57.2 MB | 30 ms | 7.0 s |
+
+Nuitka's file is 0.5 MB smaller and nothing else is better: it holds 14 MB more memory at rest, which is the number a
+host pays all day, and unpacks to nearly twice the size. The agent's time goes to psutil, the container engine and
+the package managers, none of which compiling Python changes. PyInstaller stays. If antivirus false positives on the
+Windows build become the problem signing does not solve, that is the reason to try Nuitka again, on Windows only.
