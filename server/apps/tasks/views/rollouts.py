@@ -220,8 +220,11 @@ def rollout_resume(request, rollout_id):
     return Response(_rollout_response(rollout, request.user))
 
 
-@extend_schema(methods=["GET"], responses={200: TasksWaveSerializer(many=True),
-                                           400: TasksWaveOrderConflictSerializer})
+@extend_schema(methods=["GET"], parameters=[
+    OpenApiParameter("group", str,
+                     description="Host group tag key; list only the waves that target that group."),
+], responses={200: TasksWaveSerializer(many=True),
+              400: TasksWaveOrderConflictSerializer})
 @extend_schema(methods=["POST"], request=TasksWaveWriteSerializer,
                responses={201: TasksWaveSerializer,
                           400: TasksWaveOrderConflictSerializer,

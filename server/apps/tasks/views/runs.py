@@ -1,6 +1,6 @@
 """apps.tasks.views: runs views (split from the old single module, unchanged)."""
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
@@ -17,7 +17,10 @@ from ..api_schema import (
 )
 
 
-@extend_schema(responses=TasksTaskHistorySerializer)
+@extend_schema(parameters=[
+    OpenApiParameter("page", int,
+                     description="Which page of 50 tasks to return, newest first. Default 1."),
+], responses=TasksTaskHistorySerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("tasks")
@@ -57,7 +60,13 @@ def task_history(request):
     )
 
 
-@extend_schema(responses={200: TasksRunHistorySerializer, 400: TasksDetailSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("source", str, enum=TaskRun.Source.values,
+                     description="Run kind to list. Repeat it, or pass a comma-separated list; "
+                                 "the default is every run."),
+    OpenApiParameter("page", int,
+                     description="Which page of 25 runs to return, newest first. Default 1."),
+], responses={200: TasksRunHistorySerializer, 400: TasksDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("tasks")
@@ -129,8 +138,16 @@ def run_detail(request, run_id):
     return Response(data)
 
 
-@extend_schema(
-    responses={
+@extend_schema(parameters=[
+    OpenApiParameter("host", OpenApiTypes.UUID,
+                     description="Only matches from this host id. Default: every host of the run."),
+    OpenApiParameter("step", str,
+                     description="Only matches from this hunt step id. Default: every step of the run."),
+    OpenApiParameter("limit", int,
+                     description="How many matches to return, ordered by host then step. Default 1000, "
+                                 "at most 5000."),
+    OpenApiParameter("offset", int, description="How many of the ordered matches to skip. Default 0."),
+], responses={
         200: TasksHuntResultsSerializer,
         400: TasksRunBadParamSerializer,
         404: TasksNotFoundSerializer,

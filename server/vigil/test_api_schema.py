@@ -195,23 +195,7 @@ _QUERY_READ = re.compile(
 
 #: Views with undocumented query parameters, each one to fix: document the
 #: parameters with OpenApiParameter, then delete its line here.
-QUERY_PARAMS_PENDING: dict[str, set[str]] = {
-    "/api/v1/software/apps/": {"limit", "offset", "outdated", "q", "source", "unmanaged"},
-    "/api/v1/software/updates/": {"decision", "kind", "q", "severity"},
-    "/api/v1/software/updates/hosts/": {"key", "kind"},
-    "/api/v1/status-pages/uptime/{host_id}/": {"days"},
-    "/api/v1/tasks/community/{kind}/": {"refresh"},
-    "/api/v1/tasks/history/": {"page"},
-    "/api/v1/tasks/runs/": {"page", "source"},
-    "/api/v1/tasks/runs/{run_id}/hunt/": {"host", "limit", "offset", "step"},
-    "/api/v1/vulns/": {"host"},
-    "/api/v1/vulns/findings/": {"due_within", "host", "overdue", "scanner", "severity",
-                                "sort", "state"},
-    "/api/v1/vulns/fix-groups/": {"q"},
-    "/api/v1/vulns/history/{host_id}/": {"days"},
-    "/api/v1/vulns/scans/": {"host"},
-    "/api/v1/waves/": {"group"},
-}
+QUERY_PARAMS_PENDING: dict[str, set[str]] = {}
 
 
 def undocumented_query_params() -> dict[str, set[str]]:
