@@ -801,6 +801,25 @@ jobs:
             pip install --no-cache-dir -r requirements.txt pyinstaller
             pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
           "
+      # What the binary just built costs a machine (sprint M8): installed
+      # size, start-up, memory at rest, a check-in's CPU, the software scan.
+      # A notice, so the row is readable from the run page and the checks API
+      # without the job log, and docs/agent-footprint.md can be kept current.
+      # Never fails the build: a measurement is not a gate.
+      - name: Measure the binary
+        continue-on-error: true
+        shell: bash
+        run: |
+          bin="dist/${{ matrix.out }}"
+          [ -f "dist/${{ matrix.out }}/${{ matrix.out }}.exe" ] && bin="dist/${{ matrix.out }}/${{ matrix.out }}.exe"
+          row="$("$bin" measure --row)"
+          echo "::notice title=Agent footprint ${{ matrix.platform }}::$row"
+          {
+            echo "### Agent footprint: ${{ matrix.platform }}"
+            echo '```'
+            "$bin" measure --no-software
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       # Windows ships the zip only. Uploading the unpacked onedir tree as well
       # would roughly double the artifact and land both in server/agent_dist,
       # where the zip is what the server serves anyway.

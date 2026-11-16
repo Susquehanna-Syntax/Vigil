@@ -669,6 +669,13 @@ def main() -> None:
 
         sys.exit(_allowscript_main(sys.argv[2:], _cli_config_path))
 
+    # `measure` reports what the agent costs this machine. It reads no config
+    # and sends nothing, so it is dispatched before either is looked at.
+    if len(sys.argv) > 1 and sys.argv[1] == "measure":
+        from .measure import main as _measure_main
+
+        sys.exit(_measure_main(sys.argv[2:]))
+
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
     parser.add_argument(
