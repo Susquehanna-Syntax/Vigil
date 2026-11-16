@@ -56,9 +56,20 @@ declare function addDetailTag(name: string): Promise<void>;
  *  is the only place left to say what vigil-store.js's read means. The list is
  *  apps/tasks/spec.py _APP_SOURCE_CHOICES, as test_policy_from_app.py pins. */
 
-/** Defined in server/static/js/vigil-pickers.js. */
-declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine', title: string,
-  onSelect: (item: {key: string, [k: string]: any}) => void, allowAdd?: boolean}): Promise<void>;
+/** Defined in server/static/js/vigil-host-cards.js (the host detail drawer).
+ *  Callers pass a rendered `.host-card`, or a detached element carrying the
+ *  same dataset; only `dataset` is read. */
+declare function openHostDetail(card: HTMLElement): void;
+
+/** Defined in server/static/js/vigil-users.js. */
+declare const ROLE_LABELS: Record<string, string>;
+
+/** Defined in server/static/js/vigil-pickers.js. `type: 'tag'` is a caller-side
+ *  type: openPicker only fetches when there is no `items` array, so a caller may
+ *  name any type as long as it supplies its own items. */
+declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine' | 'tag', title: string,
+  onSelect: (item: {key: string, [k: string]: any}) => void, allowAdd?: boolean,
+  items?: object[], ineligible?: (item: {key: string, [k: string]: any}) => string|null|undefined}): Promise<void>;
 
 /** Defined in server/static/js/vigil-tasks.js (the empty-state block a list
  *  page shows when it has nothing: a title, a sentence, and an optional action). */

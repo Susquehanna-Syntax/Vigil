@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-api-keys.js
 // Owns: Settings → API & Webhooks — minting and revoking scoped API keys,
 //   and adding, testing, pausing and deleting webhooks.
@@ -150,10 +151,10 @@ function _akKeyRow(k) {
 }
 
 delegateClick('[data-ak-create]', async () => {
-  const input = document.getElementById('api-key-name');
-  const name = (input?.value || '').trim();
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('api-key-name'));
+  const name = (input.value || '').trim();
   if (!name) { showToast('Give the key a name', 'error'); return; }
-  const access = document.getElementById('api-key-access')?.value || 'read';
+  const access = (/** @type {HTMLSelectElement} */ (document.getElementById('api-key-access'))).value || 'read';
   let created;
   try {
     created = await apiJson(AK_KEYS_API, {
@@ -180,8 +181,8 @@ function _akShowPlainKey(raw) {
       + `<button type="button" class="btn btn-mint btn-sm" data-ak-copy>Copy</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-ak-done>Done</button>`
     + `</div>`);
-  m.modal.querySelector('[data-ak-copy]').onclick = async () => {
-    const field = document.getElementById('api-key-plain');
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-ak-copy]')).onclick = async () => {
+    const field = /** @type {HTMLInputElement} */ (document.getElementById('api-key-plain'));
     try {
       await navigator.clipboard.writeText(field ? field.value : '');
       showToast('Key copied', 'success');
@@ -189,7 +190,7 @@ function _akShowPlainKey(raw) {
       showToast('Copy failed — select it and copy manually', 'error');
     }
   };
-  m.modal.querySelector('[data-ak-done]').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-ak-done]')).onclick = () => m.close();
   // However it closes — Done, the scrim, Esc — the key leaves the page with
   // the modal rather than sitting hidden in the DOM, and the list reloads.
   const forget = new MutationObserver(() => {
@@ -289,13 +290,13 @@ function _akHookRow(w) {
 }
 
 delegateClick('[data-wh-create]', async () => {
-  const nameInput = document.getElementById('wh-name');
-  const urlInput = document.getElementById('wh-url');
-  const name = (nameInput?.value || '').trim();
-  const url = (urlInput?.value || '').trim();
+  const nameInput = /** @type {HTMLInputElement} */ (document.getElementById('wh-name'));
+  const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('wh-url'));
+  const name = (nameInput.value || '').trim();
+  const url = (urlInput.value || '').trim();
   if (!name || !url) { showToast('Give the webhook a name and a URL', 'error'); return; }
   const events = [...document.querySelectorAll('input[data-wh-event]:checked')]
-    .map((el) => el.dataset.whEvent);
+    .map((/** @type {HTMLInputElement} */ el) => el.dataset.whEvent);
   if (!events.length) { showToast('Pick at least one event', 'error'); return; }
   let created;
   try {
@@ -344,7 +345,7 @@ delegateClick('[data-wh-log]', async (el) => {
       + `</button></div>`
     + (rows.length ? `<div class="dash-cards">${rows.map(_akDeliveryRow).join('')}</div>`
                    : '<p class="muted">Nothing has been sent yet.</p>'));
-  m.modal.querySelector('[data-wh-log-close]').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-wh-log-close]')).onclick = () => m.close();
   m.open();
 });
 
@@ -416,8 +417,8 @@ function _akShowSecret(secret, title) {
       + `<button type="button" class="btn btn-mint btn-sm" data-wh-copy>Copy</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-wh-done>Done</button>`
     + `</div>`);
-  m.modal.querySelector('[data-wh-copy]').onclick = async () => {
-    const field = document.getElementById('webhook-secret-plain');
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-wh-copy]')).onclick = async () => {
+    const field = /** @type {HTMLInputElement} */ (document.getElementById('webhook-secret-plain'));
     try {
       await navigator.clipboard.writeText(field ? field.value : '');
       showToast('Secret copied', 'success');
@@ -425,7 +426,7 @@ function _akShowSecret(secret, title) {
       showToast('Copy failed — select it and copy manually', 'error');
     }
   };
-  m.modal.querySelector('[data-wh-done]').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-wh-done]')).onclick = () => m.close();
   const forget = new MutationObserver(() => {
     if (m.modal.classList.contains('open')) return;
     forget.disconnect();

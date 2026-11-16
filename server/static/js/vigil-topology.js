@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-topology.js
 // Owns: the Topology page (QA-32) — one SVG map of the fleet: site boxes, optional tag boxes,
 //   host cards (addresses, ports, firewall, stacks), device cards, the links between machines and
@@ -12,7 +13,10 @@
 // in, plain numbers out, no DOM beyond the canvas width it will wrap into.
 // Everything that draws reads its result.
 
-const topoState = { data: null, site: '', tags: new Set(), links: true, containers: false, external: false, q: '', selected: null, view: { x: 0, y: 0, k: 1 }, layout: null, loadedOnce: false, timer: null };
+/** A card's text line, or its port strip (at most four ports, then "+N"). */
+/** @typedef {{cls?: string, text?: string, ports?: {port: number, public: boolean}[], more?: number}} TopoCardRow */
+
+const topoState = /** @type {{data: any, site: string, tags: Set<string>, links: boolean, containers: boolean, external: boolean, q: string, selected: string|null, view: {x: number, y: number, k: number}, layout: any, loadedOnce: boolean, timer: ReturnType<typeof setTimeout>|null}} */ ({ data: null, site: '', tags: new Set(), links: true, containers: false, external: false, q: '', selected: null, view: { x: 0, y: 0, k: 1 }, layout: null, loadedOnce: false, timer: null });
 
 const TOPO_TAG_KEY = 'vigil-topo-tags';
 const TOPO_COLORS = ['lavender', 'mint', 'sky', 'peach', 'rose', 'lemon'];
@@ -21,6 +25,7 @@ const TOPO_STACK_ROW_H = 22, TOPO_GAP = 28, TOPO_PAD = 36, TOPO_TITLE_H = 52;
 const TOPO_SITE_GAP = 48, TOPO_INTERNET_H = 58;
 const TOPO_FADE_MS = 180, TOPO_PAN_MS = 320;
 
+/** @param {string} id @returns {HTMLElement|null} */
 function _topoEl(id) { return document.getElementById(id); }
 
 function _topoHost(id) {
@@ -150,11 +155,14 @@ function _topoPlace(groups, wrap, gap) {
   return { width: rowRight, height: y + rowH };
 }
 
+/** @param {any} host @returns {TopoCardRow[]} */
 function _topoHostRows(host) {
+  /** @type {TopoCardRow[]} */
   const rows = [{ cls: 'topo-card-sub', text: host.primary_ip || 'no address' }];
   const listening = (host.listening || []).slice()
     .sort((a, b) => (b.public - a.public) || a.port - b.port);
   if (listening.length) {
+    // The ports row carries no cls/text — just the strip of up to four ports.
     rows.push({
       ports: listening.slice(0, 4).map(l => ({ port: l.port, public: !!l.public })),
       more: listening.length - Math.min(4, listening.length),
@@ -377,7 +385,7 @@ function _topoCurve(edge) {
 //: matched in a browser, so the map could not pan, zoom or fit).
 function _topoSvg() {
   const canvas = _topoEl('topo-canvas');
-  return canvas && canvas.querySelector ? canvas.querySelector('#topo-svg') : null;
+  return canvas && canvas.querySelector ? /** @type {SVGSVGElement|null} */ (canvas.querySelector('#topo-svg')) : null;
 }
 
 function _topoSvgEl(name, attrs) {
@@ -733,7 +741,7 @@ function _topoWirePanZoom(svg) {
 function _topoDimLinks(refId) {
   const svg = _topoSvg();
   if (!svg) return;
-  svg.querySelectorAll('#topo-links .topo-link').forEach(path => {
+  svg.querySelectorAll('#topo-links .topo-link').forEach((/** @type {SVGPathElement} */ path) => {
     const touch = !!refId && (path.dataset.topoLinkFrom === refId || path.dataset.topoLinkTo === refId);
     const dim = !!refId && !touch;
     path.classList.toggle('topo-link-hi', touch);
@@ -885,7 +893,7 @@ function openTopoDevice(id) {
 function _topoMarkSelected() {
   const svg = _topoSvg();
   if (!svg) return;
-  svg.querySelectorAll('.topo-card').forEach(g => {
+  svg.querySelectorAll('.topo-card').forEach((/** @type {SVGGElement} */ g) => {
     g.classList.toggle('topo-sel', g.dataset.topoCard === topoState.selected);
   });
 }
@@ -957,8 +965,8 @@ function _renderTopoToolbar() {
   if (site) {
     site.innerHTML = '<option value="">All sites</option>'
       + (data.sites || []).map(s => `<option value="${escAttr(s.id)}">${escHtml(s.name)}</option>`).join('');
-    site.value = topoState.site;
-    site.disabled = !(data.sites || []).length;
+    /** @type {HTMLSelectElement} */ (site).value = topoState.site;
+    /** @type {HTMLSelectElement} */ (site).disabled = !(data.sites || []).length;
   }
   const tags = _topoEl('topo-tags');
   if (tags) {
@@ -977,7 +985,7 @@ function _renderTopoToolbar() {
       + ` · ${n((data.links || []).length, 'connection')}`
       + `${(data.devices || []).length ? ` · ${n(data.devices.length, 'device')}` : ''}`;
   }
-  document.querySelectorAll('[data-topo-toggle]').forEach(btn => {
+  document.querySelectorAll('[data-topo-toggle]').forEach((/** @type {HTMLElement} */ btn) => {
     btn.setAttribute('aria-pressed', String(!!topoState[btn.dataset.topoToggle]));
   });
 }
@@ -1029,7 +1037,7 @@ delegateClick('[data-topo-goto]', (el) => {
 
 delegateClick('[data-topo-open]', (el) => {
   const id = el.dataset.topoOpen;
-  const real = document.querySelector(`.host-card[data-id="${CSS.escape(id)}"]`);
+  const real = /** @type {HTMLElement|null} */ (document.querySelector(`.host-card[data-id="${CSS.escape(id)}"]`));
   if (real && typeof openHostDetail === 'function') { openHostDetail(real); return; }
   showToast('That host has no card on the dashboard right now', 'error');
 });
@@ -1048,17 +1056,17 @@ delegateClick('[data-topo-zoom]', (el) => {
 delegateClick('#topo-refresh', () => loadTopology());
 
 document.addEventListener('change', (ev) => {
-  if (ev.target.id !== 'topo-site') return;
-  topoState.site = ev.target.value;
+  if (/** @type {HTMLElement} */ (ev.target).id !== 'topo-site') return;
+  topoState.site = /** @type {HTMLSelectElement} */ (ev.target).value;
   topoState.view = { x: 0, y: 0, k: 1 };
   renderTopology();
   fitTopology();
 });
 
 document.addEventListener('input', (ev) => {
-  if (ev.target.id !== 'topo-q') return;
+  if (/** @type {HTMLElement} */ (ev.target).id !== 'topo-q') return;
   clearTimeout(topoState.timer);
-  const q = ev.target.value.trim().toLowerCase();
+  const q = /** @type {HTMLInputElement} */ (ev.target).value.trim().toLowerCase();
   topoState.timer = setTimeout(() => {
     topoState.q = q;
     _topoHighlightMatch();

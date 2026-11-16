@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-usersites.js
 // Owns: Settings → Users & Roles → "Sites" — per-site role grants and, for
 // operators, the per-app capability matrix.
@@ -32,7 +33,7 @@ async function openUserSites(user) {
       <div class="sk-line sk-w80"></div>
       <div class="sk-line"></div><div class="sk-line sk-w60"></div>
     </div>`);
-  m.modal.querySelector('#us-boot-x').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#us-boot-x')).onclick = () => m.close();
   requestAnimationFrame(m.open);
 
   let sites = [];
@@ -194,12 +195,12 @@ async function openUserSites(user) {
   }
 
   function wire() {
-    m.modal.querySelector('#us-x').onclick = () => m.close();
-    m.modal.querySelector('#us-close').onclick = () => m.close();
-    m.modal.querySelectorAll('[data-cw-app]').forEach((box) =>
+    /** @type {HTMLElement} */ (m.modal.querySelector('#us-x')).onclick = () => m.close();
+    /** @type {HTMLElement} */ (m.modal.querySelector('#us-close')).onclick = () => m.close();
+    m.modal.querySelectorAll('[data-cw-app]').forEach((/** @type {HTMLInputElement} */ box) =>
       box.addEventListener('change', () => toggleCompanyWide(box)));
 
-    m.modal.querySelectorAll('.us-role').forEach((sel) => {
+    m.modal.querySelectorAll('.us-role').forEach((/** @type {HTMLSelectElement} */ sel) => {
       sel.addEventListener('change', async () => {
         const g = grants.find((x) => String(x.id) === sel.dataset.gid);
         if (!g) return;
@@ -210,18 +211,18 @@ async function openUserSites(user) {
       });
     });
 
-    m.modal.querySelectorAll('.us-matrix input[type=checkbox]').forEach((cb) => {
+    m.modal.querySelectorAll('.us-matrix input[type=checkbox]').forEach((/** @type {HTMLInputElement} */ cb) => {
       cb.addEventListener('change', async () => {
         const g = grants.find((x) => String(x.id) === cb.dataset.gid);
         if (!g) return;
         const boxes = m.modal.querySelectorAll(
           `.us-matrix input[data-gid="${g.id}"]:checked`);
-        const caps = Array.from(boxes).map((b) => [b.dataset.app, b.dataset.verb]);
+        const caps = Array.from(boxes).map((/** @type {HTMLInputElement} */ b) => [b.dataset.app, b.dataset.verb]);
         if (!await save(g, g.role, caps)) cb.checked = !cb.checked;
       });
     });
 
-    m.modal.querySelectorAll('.us-revoke').forEach((btn) => {
+    m.modal.querySelectorAll('.us-revoke').forEach((/** @type {HTMLElement} */ btn) => {
       btn.addEventListener('click', async () => {
         try {
           await apiJson(`/api/v1/sites/roles/${btn.dataset.gid}/`, { method: 'DELETE' });
@@ -234,8 +235,8 @@ async function openUserSites(user) {
     const add = m.modal.querySelector('#us-add');
     if (add) {
       add.addEventListener('click', async () => {
-        const site = m.modal.querySelector('#us-new-site').value;
-        const role = m.modal.querySelector('#us-new-role').value;
+        const site = /** @type {HTMLSelectElement} */ (m.modal.querySelector('#us-new-site')).value;
+        const role = /** @type {HTMLSelectElement} */ (m.modal.querySelector('#us-new-role')).value;
         try {
           const saved = await apiJson('/api/v1/sites/roles/', {
             method: 'POST',

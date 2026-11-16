@@ -1,3 +1,4 @@
+// @ts-check
 /* Tags — the fleet-wide list, and the picker every tag field uses.
  *
  * A tag is a row now, not a string typed in four different places. That makes
@@ -10,12 +11,20 @@
  * operator editing one would just be overwritten by the next check-in.
  */
 
+/** A row of /api/v1/tags/ — apps/hosts/views/_common.py _tag_payload. */
+/** @typedef {{id: number, name: string, key?: string, kind?: string, description?: string, host_count: number, editable: boolean, can_change?: boolean, site_id: string|null}} TagRow */
+/** One openPicker row — what vigil-pickers.js renders and hands back to
+ *  `onSelect`. A picked tag's ✓ goes in `name`, not `key`: the picker matches
+ *  on `key`, and "west  ✓" would match no tag. */
+/** @typedef {{key: string, name: string, meta?: string, editable?: boolean, risk?: string, raw?: any}} PickerItem */
+
+/** @type {TagRow[]} */
 let _allTags = [];
 
 /* ── The Tags tab ─────────────────────────────────────────────────────── */
 
 function _filterTags() {
-  const q = (document.getElementById('tag-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById('tag-search')).value || '').trim().toLowerCase();
   if (!q) return _allTags;
   return _allTags.filter(t =>
     (t.name || '').toLowerCase().includes(q) ||
@@ -175,8 +184,9 @@ async function ensureTagsLoaded() {
  * exist yet has to be typeable somewhere — but the list is now one click away,
  * so a misspelling is a choice rather than an accident.
  */
+/** @param {string} inputId @param {{title?: string, includeReserved?: boolean}=} opts @returns {void} */
 function attachTagPicker(inputId, opts = {}) {
-  const input = document.getElementById(inputId);
+  const input = /** @type {HTMLInputElement} */ (document.getElementById(inputId));
   if (!input || input.dataset.tagPicker) return;
   input.dataset.tagPicker = '1';
 
@@ -219,8 +229,12 @@ const _RESERVED_TAG = /^(os|os_family|pkg|arch|agent):/i;
  *   opts.current()  → the tags already on the thing, left out of the list
  *   opts.onAdd(name) → add it (may be async)
  */
+/** @typedef {{name: string, meta: string, disabled?: boolean, create?: boolean}} ComboOption */
+/** @typedef {{current: () => string[], onAdd: (name: string) => any}} ComboOpts */
+
+/** @param {string} inputId @param {ComboOpts} opts @returns {void} */
 function attachTagCombobox(inputId, opts) {
-  const input = document.getElementById(inputId);
+  const input = /** @type {HTMLInputElement} */ (document.getElementById(inputId));
   if (!input || input.dataset.tagCombo) return;
   input.dataset.tagCombo = '1';
   input.setAttribute('role', 'combobox');
@@ -240,6 +254,7 @@ function attachTagCombobox(inputId, opts) {
   wrap.appendChild(input);
   wrap.appendChild(list);
 
+  /** @type {ComboOption[]} */
   let options = [];   // [{name, meta, create}]
   let active = -1;
 
@@ -251,7 +266,8 @@ function attachTagCombobox(inputId, opts) {
     const matches = _allTags
       .filter(t => t.editable && !have.has(t.name.toLowerCase())
         && (!q || t.name.toLowerCase().includes(q)))
-      .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q))
+      // Boolean ranks must be numbers before they are subtracted (TS2362/TS2363).
+      .sort((/** @type {TagRow} */ a, /** @type {TagRow} */ b) => (Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)))
         || (b.host_count - a.host_count) || a.name.localeCompare(b.name))
       .slice(0, 8)
       .map(t => ({ name: t.name,
@@ -265,7 +281,7 @@ function attachTagCombobox(inputId, opts) {
     if (!options.length) {
       list.innerHTML = `<div class="tag-combo-empty">${q ? 'Already on this machine.' : 'No other tags yet — type one to create it.'}</div>`;
     } else {
-      list.innerHTML = options.map((o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
+      list.innerHTML = options.map((/** @type {ComboOption} */ o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
           role="option" id="${escAttr(list.id)}-${i}" data-combo-idx="${i}" aria-selected="${i === active}"${o.disabled ? ' aria-disabled="true"' : ''}>
           <span class="tag-combo-name">${o.create ? 'Create tag ' : ''}<b>${escHtml(o.name)}</b></span>
           <span class="tag-combo-meta">${escHtml(o.meta)}</span></div>`).join('');
@@ -311,7 +327,7 @@ function attachTagCombobox(inputId, opts) {
   });
   // mousedown, not click: a click lands after the input's blur closed the list.
   list.addEventListener('mousedown', (e) => {
-    const row = e.target.closest('[data-combo-idx]');
+    const row = /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (e.target).closest('[data-combo-idx]'));
     if (!row) return;
     e.preventDefault();
     choose(Number(row.dataset.comboIdx));
@@ -323,7 +339,7 @@ function attachTagCombobox(inputId, opts) {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tag-search')?.addEventListener('input', _renderTags);
   document.getElementById('tag-new-btn')?.addEventListener('click', createTag);
-  document.querySelectorAll('.tab[data-tab]').forEach(tab => {
+  document.querySelectorAll('.tab[data-tab]').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.tab === 'tasks-tags') loadTags();
     });
