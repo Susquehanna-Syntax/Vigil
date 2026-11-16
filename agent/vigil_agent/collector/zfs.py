@@ -49,10 +49,39 @@ def collect_zfs(now: datetime | None = None) -> list[dict]:
         status = _run_zpool(["status", "-p"])
         if status is not None:
             points.extend(_status_points(status, now or datetime.now()))
+        points.extend(_summary_points(points))
         return points
     except Exception as exc:
         _warn_once("zfs collector", exc)
         return []
+
+
+def _summary_points(points: list[dict]) -> list[dict]:
+    """Unlabelled host-level figures over every pool, for the alert rules.
+
+    The alert evaluator ignores labels: a rule on ``pool_healthy`` would read
+    whichever pool reported last, so a degraded pool could hide behind a
+    healthy one. These points let a rule say "any pool". Derived from the
+    per-pool points above, and empty when zpool list parsed no pools.
+    """
+    def values(metric: str) -> list[float]:
+        return [p["value"] for p in points if p["metric"] == metric]
+
+    if not values("pool_capacity_percent"):
+        return []
+    summary = [
+        _point("zfs", "pools_unhealthy", values("pool_healthy").count(0)),
+        _point("zfs", "max_capacity_percent", max(values("pool_capacity_percent"))),
+    ]
+    errors = values("pool_errors")
+    if errors:
+        summary.append(_point("zfs", "total_errors", sum(errors)))
+    ages = values("scrub_age_days")
+    if ages:
+        # -1 is "never scrubbed": a sentinel so a never-scrubbed pool alerts.
+        max_age = 9999 if min(ages) < 0 else max(ages)
+        summary.append(_point("zfs", "max_scrub_age_days", max_age))
+    return summary
 
 
 def _run_zpool(args: list[str]) -> str | None:

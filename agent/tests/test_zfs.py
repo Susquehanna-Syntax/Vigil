@@ -139,6 +139,11 @@ class ZfsTests(unittest.TestCase):
             ("pool_healthy", 0, tuple(sorted(tank.items()))),
             ("pool_state", 1, tuple(sorted({"pool": "tank", "state": "DEGRADED"}.items()))),
             ("pool_errors", 23, tuple(sorted(tank.items()))),
+            # Unlabelled host-level summary over both pools.
+            ("pools_unhealthy", 1, ()),
+            ("max_capacity_percent", 47, ()),
+            ("total_errors", 23, ()),
+            ("max_scrub_age_days", 7.5, ()),
         ]
         self.assertEqual(_summary(points), sorted(expected))
         for point in points:
@@ -190,6 +195,34 @@ class ZfsTests(unittest.TestCase):
         scrub = [(p["metric"], p["value"]) for p in points if p["metric"].startswith("scrub")]
         self.assertEqual(scrub, [("scrub_age_days", -1)])
 
+    def test_never_scrubbed_pool_gives_the_sentinel_summary(self):
+        # zroot was scrubbed 7.5 days ago; tank has never been scrubbed. The
+        # sentinel must win over the finite age so a never-scrubbed pool alerts.
+        never = STATUS_HEALTHY.replace(
+            "scan: resilvered 1.2G in 00:10:00 with 0 errors on Mon Nov 10 03:00:00 2026",
+            "scan: none requested")
+        with patch.object(collector.shutil, "which", return_value="/usr/sbin/zpool"), \
+             patch.object(collector.subprocess, "run",
+                          side_effect=_zpool(_proc(LIST_HEALTHY), _proc(never))):
+            points = collector.collect_zfs(now=NOW)
+        summary = {p["metric"]: p["value"] for p in points if p["labels"] == {}}
+        self.assertEqual(summary["max_scrub_age_days"], 9999)
+
+    def test_status_failure_keeps_capacity_summary_without_errors_or_scrub(self):
+        with patch.object(collector.shutil, "which", return_value="/usr/sbin/zpool"), \
+             patch.object(collector.subprocess, "run",
+                          side_effect=_zpool(_proc(LIST_ONE), _proc("", 1, "boom"))):
+            points = collector.collect_zfs(now=NOW)
+        unlabelled = sorted(p["metric"] for p in points if p["labels"] == {})
+        self.assertEqual(unlabelled, ["max_capacity_percent", "pools_unhealthy"])
+
+    def test_no_summary_when_zpool_list_is_empty(self):
+        with patch.object(collector.shutil, "which", return_value="/usr/sbin/zpool"), \
+             patch.object(collector.subprocess, "run",
+                          side_effect=_zpool(_proc(""), _proc(STATUS_HEALTHY))):
+            points = collector.collect_zfs(now=NOW)
+        self.assertEqual([p for p in points if not p["labels"]], [])
+
     def test_list_timeout_returns_empty_without_raising(self):
         timeout = _subprocess.TimeoutExpired(cmd="zpool", timeout=10)
         with patch.object(collector.shutil, "which", return_value="/usr/sbin/zpool"), \
@@ -221,7 +254,7 @@ class ZfsTests(unittest.TestCase):
              patch.object(collector.subprocess, "run",
                           side_effect=_zpool(_proc(listing), _proc(""))):
             points = collector.collect_zfs(now=NOW)
-        self.assertEqual({p["labels"]["pool"] for p in points}, {"tank"})
+        self.assertEqual({p["labels"]["pool"] for p in points if p["labels"]}, {"tank"})
 
     def test_runs_zpool_with_timeout_and_clean_env(self):
         with patch.object(collector.shutil, "which", return_value="/usr/sbin/zpool"), \
