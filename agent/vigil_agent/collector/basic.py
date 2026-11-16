@@ -5,16 +5,52 @@ locked-down host is guarded individually (``_warn_once``) so one broken counter
 does not drop the whole category's points.
 """
 
+import threading
+import time
+
 from ._common import _point, _warn_once, psutil
 from .disks import _is_real_disk
 
 
+#: The thread whose psutil CPU baseline is set, and when it was last read.
+#: psutil keeps one baseline per thread, so a baseline taken on another thread
+#: (the import, under the Windows service host) is no baseline here.
+_cpu_baseline: tuple[int, float] | None = None
+#: Below this, the time since the last reading is too short to average over.
+_MIN_CPU_WINDOW = 1.0
+
+
+def _cpu_usage() -> tuple[list[float], float]:
+    """(per core, total) CPU use, as the average since the previous call.
+
+    A check-in used to sleep a second to sample the cores, and then reported a
+    total measured over a different window (the whole interval). Both are now
+    the average over the interval between check-ins: a burst between two
+    samples is in the number instead of missed, the two agree, and the
+    check-in no longer waits. Only a first reading, with nothing to compare
+    against, still takes the one-second sample.
+    """
+    global _cpu_baseline
+    thread, now = threading.get_ident(), time.monotonic()
+    fresh = (_cpu_baseline is None or _cpu_baseline[0] != thread
+             or now - _cpu_baseline[1] < _MIN_CPU_WINDOW)
+    if fresh:
+        per_cpu = psutil.cpu_percent(interval=1, percpu=True)
+        psutil.cpu_percent()  # set the total's baseline for the next call
+        total = round(sum(per_cpu) / len(per_cpu), 1) if per_cpu else 0.0
+    else:
+        per_cpu = psutil.cpu_percent(interval=None, percpu=True)
+        total = psutil.cpu_percent(interval=None)
+    _cpu_baseline = (thread, time.monotonic())
+    return per_cpu, total
+
+
 def collect_cpu() -> list[dict]:
     points = []
-    per_cpu = psutil.cpu_percent(interval=1, percpu=True)
+    per_cpu, total = _cpu_usage()
     for i, pct in enumerate(per_cpu):
         points.append(_point("cpu", "usage_percent", pct, {"core": str(i)}))
-    points.append(_point("cpu", "usage_percent", psutil.cpu_percent(), {"core": "total"}))
+    points.append(_point("cpu", "usage_percent", total, {"core": "total"}))
 
     try:
         load_1, load_5, load_15 = psutil.getloadavg()
