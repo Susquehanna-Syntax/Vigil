@@ -285,7 +285,11 @@ def checkin(request):
             logger.warning("host %s: agent update %s -> %s %s: %s", host.hostname,
                            outcome["from_version"], outcome["to_version"],
                            outcome["state"], outcome["reason"])
-        _record_agent_update_outcome(host, outcome)
+        # Failing a task and raising an alert act on the install, so they wait
+        # for approval like every other effect of a check-in. Storing the
+        # outcome for display above does not.
+        if host.status not in (Host.Status.PENDING, Host.Status.REJECTED):
+            _record_agent_update_outcome(host, outcome)
 
     if data.get("features") is not None:
         # A list of short strings the agent understands (task-language

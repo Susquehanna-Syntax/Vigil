@@ -180,6 +180,24 @@ class AgentUpdateReportTests(TestCase):
         self.assertEqual(row["agent_update"]["state"], "rolled_back")
 
 
+class AgentUpdateApprovalTests(TestCase):
+    """A host waiting for approval can say how its update went, but its token
+    cannot fail a task or raise an alert until an admin approves it."""
+
+    def test_a_pending_host_records_the_outcome_and_nothing_else(self):
+        from apps.alerts.models import Alert
+        host = Host.objects.create(hostname="new-01", agent_token="p" * 32,
+                                   status=Host.Status.PENDING, mode=Host.Mode.MANAGED)
+        agent = APIClient()
+        agent.credentials(HTTP_AUTHORIZATION=f"Bearer {'p' * 32}")
+        agent.post("/api/v1/checkin", {"metrics": [], "agent_update": {
+            "state": "rolled_back", "from_version": "a", "to_version": "b",
+            "running": "a", "reason": "x"}}, format="json")
+        host.refresh_from_db()
+        self.assertEqual(host.agent_update["state"], "rolled_back")
+        self.assertFalse(Alert.objects.filter(host=host).exists())
+
+
 class AgentUpdateRolloutGateTests(TestCase):
     """A bad agent release rolled out in waves halts at the failure gate."""
 
