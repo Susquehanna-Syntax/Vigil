@@ -1353,7 +1353,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
         <div class="step">
           <div class="step-content">
             <strong>If check-ins keep failing, the agent goes back</strong><br>
-            After 3 failed check-ins in a row, and at least 5 minutes of running, the new agent puts the old build back and restarts into it. The old agent then tells Vigil the update was rolled back and why.
+            After 3 failed check-ins in a row, and at least 5 minutes of running, the new agent puts the old build back and restarts into it. The old agent then tells Vigil the update was rolled back and why. Vigil marks that host's update task failed, so a staged rollout of a bad agent release halts at its failure threshold, and raises an alert that the next confirmed update resolves.
           </div>
         </div>
       </div>

@@ -1,4 +1,6 @@
 """apps.hosts.views: agent views (split from the old single module, unchanged)."""
+from datetime import timedelta
+
 from drf_spectacular.utils import extend_schema
 
 from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
@@ -28,6 +30,74 @@ def _agent_update_outcome(raw) -> dict | None:
     return {"state": raw["state"], "from_version": text("from_version", 50),
             "to_version": text("to_version", 50), "running": text("running", 50),
             "reason": text("reason", 300), "at": now().isoformat()}
+
+
+#: How far back a rolled-back or not-applied report reaches for the
+#: update_agent task it is about.
+AGENT_UPDATE_REPORT_WINDOW = timedelta(hours=24)
+
+#: The prefix of the alert a rolled-back update raises; also how the alert is found again.
+AGENT_UPDATE_ROLLBACK_ALERT = "Agent update rolled back:"
+
+
+def _record_agent_update_outcome(host, outcome: dict) -> None:
+    """Carry an agent's update outcome into run history and the rollout gate.
+
+    The update_agent task completed when the new binary was handed off, so a
+    rollback that comes later would look like a success everywhere. A
+    rolled_back or not_applied report therefore fails that task (once), and
+    its run is recomputed; a rolled_back report also raises an alert, which
+    a later confirmed report resolves. confirmed changes no task.
+    """
+    from apps.alerts.models import Alert as _Alert
+    from apps.tasks.models import Task
+    from apps.tasks.summary import run_outcome
+
+    state = outcome["state"]
+    reason = outcome["reason"]
+
+    if state in ("rolled_back", "not_applied"):
+        task = (Task.objects.filter(
+                    host=host, action="update_agent", state=Task.State.COMPLETED,
+                    completed_at__gte=now() - AGENT_UPDATE_REPORT_WINDOW)
+                .order_by("-completed_at").first())
+        if task is not None:
+            line = (f"Rolled back on the host: {reason}" if state == "rolled_back"
+                    else f"The update did not take effect: {reason}")
+            task.state = Task.State.FAILED
+            task.result_output = (f"{task.result_output}\n{line}" if task.result_output else line)
+            task.save(update_fields=["state", "result_output"])
+            if task.run_id is not None:
+                run = task.run
+                rows = run.tasks.values_list("state", "on_failure")
+                recomputed = run_outcome(rows)
+                if run.state != recomputed:
+                    run.state = recomputed
+                    run.save(update_fields=["state"])
+
+    if state == "rolled_back":
+        open_alert = _Alert.objects.filter(
+            host=host, rule=None,
+            state__in=[_Alert.State.FIRING, _Alert.State.ACKNOWLEDGED],
+            message__startswith=AGENT_UPDATE_ROLLBACK_ALERT,
+        ).exists()
+        if not open_alert:
+            _Alert.objects.create(
+                host=host,
+                rule=None,
+                state=_Alert.State.FIRING,
+                severity="warning",
+                message=(f"{AGENT_UPDATE_ROLLBACK_ALERT} {host.hostname} returned to "
+                         f"v{outcome['from_version']} from v{outcome['to_version']}: {reason}"),
+                metric_value=None,
+                fix_context={"host_id": str(host.id), "hostname": host.hostname},
+            )
+    elif state == "confirmed":
+        _Alert.objects.filter(
+            host=host, rule=None,
+            state__in=[_Alert.State.FIRING, _Alert.State.ACKNOWLEDGED],
+            message__startswith=AGENT_UPDATE_ROLLBACK_ALERT,
+        ).update(state=_Alert.State.RESOLVED, resolved_at=now())
 
 
 @scoping.system_view(reason="agent enrolment: a new host registers with no user")
@@ -215,6 +285,7 @@ def checkin(request):
             logger.warning("host %s: agent update %s -> %s %s: %s", host.hostname,
                            outcome["from_version"], outcome["to_version"],
                            outcome["state"], outcome["reason"])
+        _record_agent_update_outcome(host, outcome)
 
     if data.get("features") is not None:
         # A list of short strings the agent understands (task-language
