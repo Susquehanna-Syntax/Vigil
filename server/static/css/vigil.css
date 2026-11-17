@@ -1,191 +1,5 @@
-/* vigil.css — all design tokens, layout, and component styles for Vigil */
-/* Loaded by: templates/base.html */
-
-/* ═══════════════════════════════════════════
-   TOKENS
-   ═══════════════════════════════════════════ */
-:root {
-  --bg: #1c1c21;
-  /* Chart slots, validated for colour-vision deficiency on this surface
-     (dataviz validator, 2026-09-28). Status slots are reserved for run
-     states; outcome slots go in this fixed order and fold into "Other". */
-  --st-ok: #2aa198;
-  --st-failed: #e0633a;
-  --st-pending: #9a7be8;
-  --st-na: #8a8793;
-  --st-skipped: #77747f;
-  --oc-1: #3598db;
-  --oc-2: #c96f2c;
-  --oc-3: #8f73e0;
-  --oc-4: #a38c1c;
-  --s1: #232329;
-  --s2: #2a2a31;
-  --s3: #32323a;
-  --s4: #3a3a43;
-  --border: #3a3a43;
-  --text-1: #eae8e4;
-  --text-2: #a09ca6;
-  --text-3: #6e6b76;
-
-  --rose: #f2a0b8;
-  --lavender: #baa8e8;
-  --mint: #7eddb5;
-  --peach: #f0b888;
-  --sky: #82c4ee;
-  --lemon: #e2d478;
-  --coral: #f09080;
-
-  /* Accent channels, so a surface can be tinted in an accent rather than
-     wearing a stripe of it. Connor asked for whole pastel cards, not cards
-     with a line of colour down one edge. */
-  --rgb-rose: 242,160,184;
-  --rgb-lavender: 186,168,232;
-  --rgb-mint: 126,221,181;
-  --rgb-peach: 240,184,136;
-  --rgb-sky: 130,196,238;
-  --rgb-lemon: 226,212,120;
-  --rgb-coral: 240,144,128;
-  --rgb-grey: 110,107,118;
-
-  /* Pastel over a dark ground needs less alpha than over a light one. */
-  --tint-a: 0.15;
-  --tint-a-line: 0.34;
-  --tint-a-hover: 0.24;
-
-  /* An accent used as text or a thin line. On a dark ground the pastel itself
-     is legible, so these alias it; Paper swaps in deeper inks. */
-  --rose-ink: var(--rose);
-  --lavender-ink: var(--lavender);
-  --mint-ink: var(--mint);
-  --peach-ink: var(--peach);
-  --sky-ink: var(--sky);
-  --lemon-ink: var(--lemon);
-  --coral-ink: var(--coral);
-
-  /* Theme-dependent chrome that used to be hard-coded for the dark ground. */
-  --on-accent: #1c1c21;
-  --glass: rgba(28, 28, 33, 0.78);
-  --glass-edge: rgba(255, 255, 255, 0.04);
-  --wash: rgba(255, 255, 255, 0.06);
-  --grid-line: rgba(255, 255, 255, 0.05);
-
-  /* Business branding overrides this at runtime; unset branding is a no-op. */
-  --brand: var(--sky);
-
-  /* The metric/terminal face from the SQSY design language. Five rules
-     already asked for --font-mono and nothing defined it, so every number
-     meant to be monospaced — dashboard stat tiles, gauges, process values —
-     silently rendered in the UI face instead. */
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 20px;
-  --r-xl: 24px;
-
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
-
-  /* Modal motion (SQSY design language): every dialog and drawer reads these. */
-  --m-dur: 300ms;
-  --m-ease: var(--ease-out-expo);
-  --m-blur: 4px;
-  --scrim: rgba(0, 0, 0, 0.6);
-}
-
-/* ── Themes (SQSY design language). Every component reads the tokens, so the
-   whole UI follows; colours that mean something — mint healthy, rose
-   critical, lemon warning — keep their meaning in all four. ── */
-
-/* Paper (stored as "light"). A warm #ede8bb ground instead of white: cards
-   lift to a paler cream, recesses sink to a deeper straw. Pastels stay pastel
-   as fills; text and lines switch to their -ink partners. */
-:root[data-theme="light"] {
-  --bg: #ede8bb;
-  --s1: #f7f3d6;
-  --s2: #e4dfae;
-  --s3: #d9d3a0;
-  --s4: #ccc592;
-  --border: #d3cd99;
-  --text-1: #23211a;
-  --text-2: #575340;
-  --text-3: #7c775a;
-
-  --rose-ink: #c0587a;
-  --lavender-ink: #7a62c4;
-  --mint-ink: #23845f;
-  --peach-ink: #b8733a;
-  --sky-ink: #3a86bd;
-  --lemon-ink: #8f7d14;
-  --coral-ink: #c2564a;
-
-  --rgb-grey: 124,119,90;
-  --tint-a: 0.30;
-  --tint-a-line: 0.60;
-  --tint-a-hover: 0.42;
-
-  --st-ok: #008f80;
-  --st-failed: #c4461f;
-  --st-pending: #7a5fd0;
-  --st-na: #8a8793;
-  --st-skipped: #a8a387;
-  --oc-1: #2a7fc0;
-  --oc-2: #b8621f;
-  --oc-3: #7a5fd0;
-  --oc-4: #8a7512;
-
-  --glass: rgba(237, 232, 187, 0.8);
-  --glass-edge: rgba(60, 52, 20, 0.08);
-  --wash: rgba(60, 52, 20, 0.07);
-  --scrim: rgba(58, 50, 18, 0.32);
-  --grid-line: rgba(60, 52, 20, 0.09);
-  color-scheme: light;
-}
-
-/* Ink (experimental). #100F0F, a warm near-black for OLED and dark rooms.
-   Surfaces step in smaller increments, so borders carry more of the
-   structure than they do in Dark. */
-:root[data-theme="ink"] {
-  --bg: #100f0f;
-  --s1: #191817;
-  --s2: #211f1e;
-  --s3: #2a2827;
-  --s4: #353231;
-  --border: #2e2c2a;
-  --text-1: #ece8e2;
-  --text-2: #a29d97;
-  --text-3: #6f6a65;
-  --rgb-grey: 111,106,101;
-  --tint-a: 0.13;
-  --tint-a-line: 0.30;
-  --tint-a-hover: 0.21;
-  --glass: rgba(16, 15, 15, 0.8);
-  --glass-edge: rgba(255, 255, 255, 0.05);
-  --wash: rgba(255, 255, 255, 0.05);
-  --scrim: rgba(0, 0, 0, 0.74);
-  --grid-line: rgba(255, 255, 255, 0.045);
-}
-
-/* River. A deep Susquehanna navy: the Dark recipe with the neutrals pulled
-   toward blue, so the pastels still pop. Chart slots reuse Dark's. */
-:root[data-theme="river"] {
-  --bg: #141c2b;
-  --s1: #1b2537;
-  --s2: #222d41;
-  --s3: #2b374d;
-  --s4: #354259;
-  --border: #2f3b52;
-  --text-1: #e8ecf3;
-  --text-2: #9ba6b9;
-  --text-3: #6c788d;
-  --rgb-grey: 108,120,141;
-  --glass: rgba(20, 28, 43, 0.8);
-  --glass-edge: rgba(255, 255, 255, 0.05);
-  --wash: rgba(255, 255, 255, 0.06);
-  --scrim: rgba(5, 10, 20, 0.66);
-  --grid-line: rgba(255, 255, 255, 0.05);
-}
+/* vigil.css — layout and component styles for Vigil. The design tokens live in tokens.css, */
+/* which every page loads before this file (see templates/base.html). */
 
 /* Reduce motion, chosen in Settings: the same collapse as the OS setting. */
 html.rm-sim *, html.rm-sim *::before, html.rm-sim *::after {
@@ -733,7 +547,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .btn-rose-ghost {
   color: var(--rose-ink); border-color: transparent; background: transparent;
 }
-.btn-rose-ghost:hover { background: rgba(242,139,130,.12); border-color: var(--rose); }
+.btn-rose-ghost:hover { background: var(--btn-rose-ghost-hover-bg); border-color: var(--rose); }
 .host-checkin {
   font-size: 11px; color: var(--text-3);
   font-family: 'IBM Plex Mono', monospace;
@@ -875,8 +689,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .state-completed { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
 .state-failed { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
 .state-rejected { background: rgba(var(--rgb-coral), var(--tint-a)); color: var(--coral-ink); }
-.state-expired { background: rgba(110,107,118,0.15); color: var(--text-3); }
-.state-blocked { background: rgba(110,107,118,0.15); color: var(--text-3); }
+.state-expired { background: var(--state-muted-bg); color: var(--text-3); }
+.state-blocked { background: var(--state-muted-bg); color: var(--text-3); }
 .state-skipped { background: rgba(var(--rgb-lavender), var(--tint-a)); color: var(--lavender-ink); }
 .status-dot.skipped { background: var(--lavender); }
 
@@ -1879,7 +1693,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   padding: 3px 6px; outline: none; box-sizing: border-box;
 }
 .inv-col-filter:focus { border-color: var(--sky); }
-.inv-col-filter.active { border-color: var(--sky); background: rgba(99,179,237,.06); }
+.inv-col-filter.active { border-color: var(--sky); background: var(--inv-filter-active-bg); }
 /* ── Table body ── */
 .inv-table tbody td {
   padding: 11px 14px; font-size: 12px;
@@ -1899,13 +1713,13 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .inv-sort-arrow { color: var(--sky-ink); margin-left: 4px; font-style: normal; }
 /* Drag states */
 .inv-th-dragging { opacity: 0.35; }
-.inv-th-drag-over { box-shadow: inset 2px 0 0 var(--sky); }
+.inv-th-drag-over { background: rgba(var(--rgb-sky), var(--tint-a)); }
 /* Column editor dropdown */
 .inv-col-editor {
   position: absolute; top: 100%; right: 0; z-index: 200;
   background: var(--s2); border: 1px solid var(--s3); border-radius: var(--r-md);
   padding: 14px 16px; min-width: 200px; max-height: 420px; overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  box-shadow: 0 8px 32px var(--shadow-dialog);
 }
 .inv-col-editor-row {
   display: flex; align-items: center; gap: 8px; padding: 5px 0;
@@ -1961,7 +1775,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .auth-step-pill.active { background: var(--mint); }
 .auth-qr-wrap {
   display: flex; justify-content: center;
-  background: #f5f5f0; border-radius: var(--r-md);
+  background: var(--qr-light-bg); border-radius: var(--r-md);
   padding: 14px; margin: 20px 0 16px;
 }
 .auth-secret-label {
@@ -2100,7 +1914,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   font-weight: 600;
   font-family: 'IBM Plex Mono', monospace;
   text-transform: capitalize;
-  background: rgba(110,107,118,0.18);
+  background: var(--ctr-state-stopped-bg);
   color: var(--text-3);
 }
 .ctr-state.running { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
@@ -2110,7 +1924,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .ctr-state.restarting,
 .ctr-state.partial { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
 /* A clean stop (exit 0) is not a crash: neutral, where a crash is rose. */
-.ctr-state.stopped { background: rgba(110,107,118,0.18); color: var(--text-2); text-transform: none; }
+.ctr-state.stopped { background: var(--ctr-state-stopped-bg); color: var(--text-2); text-transform: none; }
 .ctr-state.exited,
 .ctr-state.partial { text-transform: none; }
 .ctr-state.stopped,
@@ -2172,7 +1986,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
   padding: 3px 10px; border-radius: 20px; background: rgba(var(--rgb-sky), var(--tint-a)); color: var(--sky-ink); }
 .chip-muted { background: var(--s3); color: var(--text-2); }
-.chip-rose { background: rgba(243,139,168,0.14); color: var(--rose-ink); }
+.chip-rose { background: var(--chip-rose-bg); color: var(--rose-ink); }
 
 /* A widget that could not load, as opposed to one with nothing in it. The two
    used to render identically, so a broken metrics endpoint said "No GPU
@@ -2186,7 +2000,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .dash-failed-mark {
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
-  background: rgba(243,139,168,0.14); color: var(--rose-ink);
+  background: var(--chip-rose-bg); color: var(--rose-ink);
   font-weight: 700; font-size: 12px; line-height: 1;
 }
 .pill-on  { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
@@ -2542,7 +2356,7 @@ select.form-control:hover { border-color: var(--s4); }
   background: var(--text-1); position: absolute; top: 3px; left: 3px;
   transition: transform 0.4s var(--ease-out-back), background 0.3s;
 }
-.toggle[aria-checked="true"]::after { transform: translateX(20px); background: #fff; }
+.toggle[aria-checked="true"]::after { transform: translateX(20px); background: var(--toggle-thumb); }
 
 :root[data-density="compact"] .main { --main-pad-top: 20px; padding: var(--main-pad-top) 26px 40px; }
 :root[data-density="compact"] .page-header { margin-bottom: 18px; }
@@ -2603,7 +2417,7 @@ select.form-control:hover { border-color: var(--s4); }
   transition: color 0.2s, border-color 0.2s, background 0.2s;
 }
 .sa-chip:hover { color: var(--text-2); }
-.sa-chip.on { color: var(--sky-ink); border-color: var(--sky); background: rgba(137,180,250,0.12); }
+.sa-chip.on { color: var(--sky-ink); border-color: var(--sky); background: var(--sa-chip-on-bg); }
 .assign-row { display: grid; grid-template-columns: auto 1fr auto auto; }
 .sa-name { font-weight: 500; }
 .sa-status { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
@@ -3090,7 +2904,7 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 .repro-cat-btn { margin-top: 4px; min-width: 92px; }
 .repro-cat-btn:disabled { cursor: default; opacity: 0.75; }
-.repro-cat-retry { color: var(--peach-ink); border-color: rgba(247, 191, 148, 0.4); }
+.repro-cat-retry { color: var(--peach-ink); border-color: var(--repro-retry-border); }
 
 @media (max-width: 600px) {
   .repro-catalog-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -3236,7 +3050,7 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .tag-combo > .form-control { width: 100%; }
 .tag-combo-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
   background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); padding: 4px; max-height: 280px; overflow-y: auto; }
+  box-shadow: 0 8px 24px var(--shadow-pop); padding: 4px; max-height: 280px; overflow-y: auto; }
 .tag-combo-opt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
   padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-1); }
 .tag-combo-opt:hover, .tag-combo-opt.is-active { background: var(--s3); }
@@ -3658,10 +3472,10 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 .fcn-step.fc-none { background: var(--s2); border-color: var(--border); }
 /* On a light canvas the pastels need more of themselves to read as colour. */
-:root[data-theme="light"] .fcn-step { background: color-mix(in srgb, var(--fc) 34%, var(--s1)); border-color: color-mix(in srgb, var(--fc) 90%, #000 10%); }
+:root[data-theme="light"] .fcn-step { background: color-mix(in srgb, var(--fc) 34%, var(--s1)); border-color: color-mix(in srgb, var(--fc) 90%, var(--mix-ink) 10%); }
 :root[data-theme="light"] .fcn-step.fc-none { background: var(--s1); border-color: var(--border); }
-:root[data-theme="light"] .fce.t-then { stroke: color-mix(in srgb, var(--mint) 70%, #000 30%); }
-:root[data-theme="light"] .fce.t-else { stroke: color-mix(in srgb, var(--lavender) 75%, #000 25%); }
+:root[data-theme="light"] .fce.t-then { stroke: color-mix(in srgb, var(--mint) 70%, var(--mix-ink) 30%); }
+:root[data-theme="light"] .fce.t-else { stroke: color-mix(in srgb, var(--lavender) 75%, var(--mix-ink) 25%); }
 .fcn-step.fcn-bad { border-color: var(--rose); border-style: dashed; }
 .fcn-unreached, .fcn-dim { opacity: .38; }
 .fcn-row { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
@@ -3711,7 +3525,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .fce-add:hover, .fce-add:focus-visible { opacity: 1; background: var(--s3); outline: none; transform: scale(1.15); }
 .fce-menu {
   position: absolute; z-index: 5; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px;
-  border-radius: 10px; background: var(--s1); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  border-radius: 10px; background: var(--s1); border: 1px solid var(--border); box-shadow: 0 8px 24px var(--shadow-pop-tight);
 }
 .fce-menu .btn { white-space: nowrap; }
 
@@ -4605,7 +4419,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 /* QA-45: or-if exits */
 .fce.t-elif { stroke: var(--sky-ink); }
-:root[data-theme="light"] .fce.t-elif { stroke: color-mix(in srgb, var(--sky) 70%, #000 30%); }
+:root[data-theme="light"] .fce.t-elif { stroke: color-mix(in srgb, var(--sky) 70%, var(--mix-ink) 30%); }
 .fce-add.t-elif { border-color: var(--sky); }
 .fcn-port.p-elif { background: var(--sky); }
 .fi-elif { padding: 0 7px; border-radius: 999px; color: var(--on-accent); font-weight: 600; font-size: 12px; background: var(--sky); }
@@ -4656,11 +4470,11 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .ctr-logs-bar [aria-pressed="true"] { border-color: var(--sky-ink); color: var(--sky-ink); }
 /* A terminal is dark whatever the page theme, like the window it stands for. */
 .term {
-  --term-bg: #15161b; --term-fg: #d7d9e0; --term-dim: #8a8f9c;
-  --term-k: #4b4f5c; --term-r: #ef6b73; --term-g: #7fcf8a; --term-y: #e6c36a;
-  --term-b: #6aa7ef; --term-m: #c792ea; --term-c: #5ccfd6; --term-w: #d7d9e0;
-  --term-bk: #6b7080; --term-br: #ff8f96; --term-bg-g: #a3e6ac; --term-by: #f5d98c;
-  --term-bb: #92c0ff; --term-bm: #ddb3f7; --term-bc: #86e3e8; --term-bw: #ffffff;
+  --term-bg: var(--term-bg-color); --term-fg: var(--term-fg-color); --term-dim: var(--term-dim-color);
+  --term-k: var(--term-k-color); --term-r: var(--term-r-color); --term-g: var(--term-g-color); --term-y: var(--term-y-color);
+  --term-b: var(--term-b-color); --term-m: var(--term-m-color); --term-c: var(--term-c-color); --term-w: var(--term-w-color);
+  --term-bk: var(--term-bk-color); --term-br: var(--term-br-color); --term-bg-g: var(--term-bg-g-color); --term-by: var(--term-by-color);
+  --term-bb: var(--term-bb-color); --term-bm: var(--term-bm-color); --term-bc: var(--term-bc-color); --term-bw: var(--term-bw-color);
   background: var(--term-bg); color: var(--term-fg);
   font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; tab-size: 8;
   white-space: pre; overflow-wrap: normal; word-break: normal;
@@ -4751,7 +4565,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
    operator came here to read. */
 .connect-menu { position: fixed; z-index: 500; min-width: 240px; max-width: 300px;
   background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); padding: 4px; opacity: 0; pointer-events: none;
+  box-shadow: 0 8px 24px var(--shadow-pop); padding: 4px; opacity: 0; pointer-events: none;
   visibility: hidden; transition: opacity calc(var(--m-dur) * 0.6) var(--ease-out-expo); }
 .connect-menu.open { opacity: 1; pointer-events: auto; visibility: visible; }
 .connect-item { display: block; width: 100%; text-align: left; background: none;
@@ -4846,7 +4660,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
    frames it: flex 1 to take the dialog's height and never scroll, black because a
    desktop mid-draw shows whatever it has drawn so far. */
 .rdp-display { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
-  background: #000; border: 1px solid var(--border); border-radius: var(--r-md); }
+  background: var(--rdp-display-bg); border: 1px solid var(--border); border-radius: var(--r-md); }
 
 /* Security keys (QA-65): the "Use security key" button is the primary answer
    to a confirmation prompt, so it sits above the code field at full width and

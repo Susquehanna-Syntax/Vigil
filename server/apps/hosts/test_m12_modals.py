@@ -12,7 +12,9 @@ from django.test import SimpleTestCase
 
 SERVER = Path(__file__).resolve().parents[2]
 JS = SERVER / "static" / "js"
-CSS = (SERVER / "static" / "css" / "vigil.css").read_text()
+CSS = "\n".join(
+    (SERVER / "static" / "css" / name).read_text() for name in ("tokens.css", "vigil.css")
+)
 
 
 def _src(name):

@@ -147,6 +147,10 @@ jobs:
       - name: Type-check the dashboard scripts
         working-directory: server
         run: npx --yes -p typescript@5.6.3 tsc -p tsconfig.json
+      # Colours from tokens only, and no side stripes (sprint M6): server/.stylelintrc.json.
+      - name: Lint the stylesheets
+        working-directory: server
+        run: npx --yes -p stylelint@16.10.0 stylelint "static/css/**/*.css" --formatter compact
 
   # ── Known-vulnerable dependencies ──────────────────────────────────────────
   # Every pinned Python dependency the images and the agent binaries ship, checked against

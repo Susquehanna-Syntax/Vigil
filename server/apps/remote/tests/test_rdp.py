@@ -798,6 +798,7 @@ class DesktopRefusalTests(_DesktopCase):
 ROOT = Path(__file__).resolve().parents[3]
 JS = ROOT / "static" / "js"
 CSS = ROOT / "static" / "css" / "vigil.css"
+TOKENS = ROOT / "static" / "css" / "tokens.css"
 COMPOSE = ROOT.parent / "docker-compose.yml"
 
 
@@ -913,7 +914,7 @@ class RdpBrowserTests(TransactionTestCase):
         self.assertIn('data-rdp="{% static \'js/vigil-rdp.js\' %}"', html)
 
     def test_the_dialog_and_the_display_are_styled(self):
-        css = _read(CSS)
+        css = _read(CSS) + "\n" + _read(TOKENS)
         self.assertIn(".rdp-modal", css)
         block = css[css.index(".modal.rdp-modal"):]
         self.assertIn("resize: both", block[:400])
@@ -921,7 +922,9 @@ class RdpBrowserTests(TransactionTestCase):
         display = block[block.index(".rdp-display"):]
         self.assertIn("flex: 1", display)
         self.assertIn("overflow: hidden", display)
-        self.assertIn("background: #000", display)
+        # The literal moved to tokens.css with the Stylelint colour rule.
+        self.assertIn("--rdp-display-bg: #000;", _read(TOKENS))
+        self.assertIn("background: var(--rdp-display-bg)", display)
 
 
 def _strip_comments(src: str) -> str:

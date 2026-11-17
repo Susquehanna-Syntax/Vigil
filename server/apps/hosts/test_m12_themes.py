@@ -9,7 +9,9 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 SERVER = Path(__file__).resolve().parents[2]
-CSS = (SERVER / "static" / "css" / "vigil.css").read_text()
+CSS = "\n".join(
+    (SERVER / "static" / "css" / name).read_text() for name in ("tokens.css", "vigil.css")
+)
 JS = SERVER / "static" / "js"
 TEMPLATES = SERVER / "templates"
 PASTELS = ("rose", "lavender", "mint", "peach", "sky", "lemon", "coral")

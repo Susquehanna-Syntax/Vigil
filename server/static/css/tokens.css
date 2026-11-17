@@ -1,0 +1,225 @@
+/* tokens.css — Vigil's design tokens: colours, radii, motion, and the four themes. */
+/* Loaded before vigil.css by every page that loads vigil.css. Stylelint lets literal colours live only here. */
+
+/* ═══════════════════════════════════════════
+   TOKENS
+   ═══════════════════════════════════════════ */
+:root {
+  --bg: #1c1c21;
+  /* Chart slots, validated for colour-vision deficiency on this surface
+     (dataviz validator, 2026-09-28). Status slots are reserved for run
+     states; outcome slots go in this fixed order and fold into "Other". */
+  --st-ok: #2aa198;
+  --st-failed: #e0633a;
+  --st-pending: #9a7be8;
+  --st-na: #8a8793;
+  --st-skipped: #77747f;
+  --oc-1: #3598db;
+  --oc-2: #c96f2c;
+  --oc-3: #8f73e0;
+  --oc-4: #a38c1c;
+  --s1: #232329;
+  --s2: #2a2a31;
+  --s3: #32323a;
+  --s4: #3a3a43;
+  --border: #3a3a43;
+  --text-1: #eae8e4;
+  --text-2: #a09ca6;
+  --text-3: #6e6b76;
+
+  --rose: #f2a0b8;
+  --lavender: #baa8e8;
+  --mint: #7eddb5;
+  --peach: #f0b888;
+  --sky: #82c4ee;
+  --lemon: #e2d478;
+  --coral: #f09080;
+
+  /* Accent channels, so a surface can be tinted in an accent rather than
+     wearing a stripe of it. Connor asked for whole pastel cards, not cards
+     with a line of colour down one edge. */
+  --rgb-rose: 242,160,184;
+  --rgb-lavender: 186,168,232;
+  --rgb-mint: 126,221,181;
+  --rgb-peach: 240,184,136;
+  --rgb-sky: 130,196,238;
+  --rgb-lemon: 226,212,120;
+  --rgb-coral: 240,144,128;
+  --rgb-grey: 110,107,118;
+
+  /* Pastel over a dark ground needs less alpha than over a light one. */
+  --tint-a: 0.15;
+  --tint-a-line: 0.34;
+  --tint-a-hover: 0.24;
+
+  /* An accent used as text or a thin line. On a dark ground the pastel itself
+     is legible, so these alias it; Paper swaps in deeper inks. */
+  --rose-ink: var(--rose);
+  --lavender-ink: var(--lavender);
+  --mint-ink: var(--mint);
+  --peach-ink: var(--peach);
+  --sky-ink: var(--sky);
+  --lemon-ink: var(--lemon);
+  --coral-ink: var(--coral);
+
+  /* Theme-dependent chrome that used to be hard-coded for the dark ground. */
+  --on-accent: #1c1c21;
+  --glass: rgba(28, 28, 33, 0.78);
+  --glass-edge: rgba(255, 255, 255, 0.04);
+  --wash: rgba(255, 255, 255, 0.06);
+  --grid-line: rgba(255, 255, 255, 0.05);
+
+  /* Business branding overrides this at runtime; unset branding is a no-op. */
+  --brand: var(--sky);
+
+  /* The metric/terminal face from the SQSY design language. Five rules
+     already asked for --font-mono and nothing defined it, so every number
+     meant to be monospaced — dashboard stat tiles, gauges, process values —
+     silently rendered in the UI face instead. */
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 24px;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Modal motion (SQSY design language): every dialog and drawer reads these. */
+  --m-dur: 300ms;
+  --m-ease: var(--ease-out-expo);
+  --m-blur: 4px;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  /* Fixed colours: the same in every theme (moved out of vigil.css by the Stylelint rule). */
+  --btn-rose-ghost-hover-bg: rgba(242,139,130,.12);
+  --state-muted-bg: rgba(110,107,118,0.15);
+  --chip-rose-bg: rgba(243,139,168,0.14);
+  --ctr-state-stopped-bg: rgba(110,107,118,0.18);
+  --inv-filter-active-bg: rgba(99,179,237,.06);
+  --sa-chip-on-bg: rgba(137,180,250,0.12);
+  --repro-retry-border: rgba(247, 191, 148, 0.4);
+  --shadow-pop: rgba(0, 0, 0, 0.25);
+  --shadow-pop-tight: rgba(0,0,0,.25);
+  --shadow-dialog: rgba(0,0,0,.4);
+  --toggle-thumb: #fff;
+  --qr-light-bg: #f5f5f0;
+  --rdp-display-bg: #000;
+  --mix-ink: #000;
+
+  /* Terminal palette (xterm.js theme): the same in every theme (moved out of vigil.css by the Stylelint rule). */
+  --term-bg-color: #15161b;
+  --term-fg-color: #d7d9e0;
+  --term-dim-color: #8a8f9c;
+  --term-k-color: #4b4f5c;
+  --term-r-color: #ef6b73;
+  --term-g-color: #7fcf8a;
+  --term-y-color: #e6c36a;
+  --term-b-color: #6aa7ef;
+  --term-m-color: #c792ea;
+  --term-c-color: #5ccfd6;
+  --term-w-color: #d7d9e0;
+  --term-bk-color: #6b7080;
+  --term-br-color: #ff8f96;
+  --term-bg-g-color: #a3e6ac;
+  --term-by-color: #f5d98c;
+  --term-bb-color: #92c0ff;
+  --term-bm-color: #ddb3f7;
+  --term-bc-color: #86e3e8;
+  --term-bw-color: #ffffff;
+}
+
+/* ── Themes (SQSY design language). Every component reads the tokens, so the
+   whole UI follows; colours that mean something — mint healthy, rose
+   critical, lemon warning — keep their meaning in all four. ── */
+
+/* Paper (stored as "light"). A warm #ede8bb ground instead of white: cards
+   lift to a paler cream, recesses sink to a deeper straw. Pastels stay pastel
+   as fills; text and lines switch to their -ink partners. */
+:root[data-theme="light"] {
+  --bg: #ede8bb;
+  --s1: #f7f3d6;
+  --s2: #e4dfae;
+  --s3: #d9d3a0;
+  --s4: #ccc592;
+  --border: #d3cd99;
+  --text-1: #23211a;
+  --text-2: #575340;
+  --text-3: #7c775a;
+
+  --rose-ink: #c0587a;
+  --lavender-ink: #7a62c4;
+  --mint-ink: #23845f;
+  --peach-ink: #b8733a;
+  --sky-ink: #3a86bd;
+  --lemon-ink: #8f7d14;
+  --coral-ink: #c2564a;
+
+  --rgb-grey: 124,119,90;
+  --tint-a: 0.30;
+  --tint-a-line: 0.60;
+  --tint-a-hover: 0.42;
+
+  --st-ok: #008f80;
+  --st-failed: #c4461f;
+  --st-pending: #7a5fd0;
+  --st-na: #8a8793;
+  --st-skipped: #a8a387;
+  --oc-1: #2a7fc0;
+  --oc-2: #b8621f;
+  --oc-3: #7a5fd0;
+  --oc-4: #8a7512;
+
+  --glass: rgba(237, 232, 187, 0.8);
+  --glass-edge: rgba(60, 52, 20, 0.08);
+  --wash: rgba(60, 52, 20, 0.07);
+  --scrim: rgba(58, 50, 18, 0.32);
+  --grid-line: rgba(60, 52, 20, 0.09);
+  color-scheme: light;
+}
+
+/* Ink (experimental). #100F0F, a warm near-black for OLED and dark rooms.
+   Surfaces step in smaller increments, so borders carry more of the
+   structure than they do in Dark. */
+:root[data-theme="ink"] {
+  --bg: #100f0f;
+  --s1: #191817;
+  --s2: #211f1e;
+  --s3: #2a2827;
+  --s4: #353231;
+  --border: #2e2c2a;
+  --text-1: #ece8e2;
+  --text-2: #a29d97;
+  --text-3: #6f6a65;
+  --rgb-grey: 111,106,101;
+  --tint-a: 0.13;
+  --tint-a-line: 0.30;
+  --tint-a-hover: 0.21;
+  --glass: rgba(16, 15, 15, 0.8);
+  --glass-edge: rgba(255, 255, 255, 0.05);
+  --wash: rgba(255, 255, 255, 0.05);
+  --scrim: rgba(0, 0, 0, 0.74);
+  --grid-line: rgba(255, 255, 255, 0.045);
+}
+
+/* River. A deep Susquehanna navy: the Dark recipe with the neutrals pulled
+   toward blue, so the pastels still pop. Chart slots reuse Dark's. */
+:root[data-theme="river"] {
+  --bg: #141c2b;
+  --s1: #1b2537;
+  --s2: #222d41;
+  --s3: #2b374d;
+  --s4: #354259;
+  --border: #2f3b52;
+  --text-1: #e8ecf3;
+  --text-2: #9ba6b9;
+  --text-3: #6c788d;
+  --rgb-grey: 108,120,141;
+  --glass: rgba(20, 28, 43, 0.8);
+  --glass-edge: rgba(255, 255, 255, 0.05);
+  --wash: rgba(255, 255, 255, 0.06);
+  --scrim: rgba(5, 10, 20, 0.66);
+  --grid-line: rgba(255, 255, 255, 0.05);
+}
