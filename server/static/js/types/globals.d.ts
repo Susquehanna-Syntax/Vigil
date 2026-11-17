@@ -25,8 +25,23 @@ declare function _injectCommunityMetadata(yaml: string): string;
 /** Defined in server/static/js/vigil-widgets.js. */
 declare function openWidgetSettings(widgetId: string): Promise<void>;
 
-/** Defined in server/static/js/vigil-widgets.js (widget kind -> renderer). */
-declare const WIDGET_RENDERERS: Record<string, (body: Element, settings: object, widget?: object) => unknown>;
+/** Defined in server/static/js/vigil-deploy.js (jumps to Tasks with the host
+ *  preselected). */
+declare function openDeployForHost(hostId: string|number): void;
+
+/** Defined in server/static/js/vigil-host-cards.js (two-step delete from a host
+ *  card's action button, which is always a <button>). */
+declare function deleteHost(hostId: string, hostname: string, btn: HTMLButtonElement): Promise<void>;
+
+/** Defined in server/static/js/vigil-host-cards.js. It reads `dataset`,
+ *  `classList` and `style` off the `.host-card` elements under `root`, so it is
+ *  typed at that element; callers pass a widget body, and with no argument it
+ *  falls back to the whole document itself. */
+declare function refreshHostCards(root?: HTMLElement|null): Promise<void>;
+
+/** Defined in server/static/js/vigil-host-cards.js (fill the OS chip of every
+ *  `.host-os-logo[data-os]` under `root`; same reasoning as refreshHostCards). */
+declare function _injectOsLogos(root?: HTMLElement|null): void;
 
 /** Defined in server/static/js/vigil-host-cards.js (the tag combobox of the open
  *  host drawer keeps its own copy of the host's tags; vigil-tags.js writes an

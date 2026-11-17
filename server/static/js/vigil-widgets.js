@@ -1,3 +1,4 @@
+// @ts-check
 /* Widget renderers — one function per widget kind.
  *
  * Each takes (bodyElement, settings, widget) and fills the body. They are
@@ -110,15 +111,15 @@ function _dashCards(items) {
 
 //: Take the operator to the thing the card names. A host card opens the host
 //: detail instead of navigating, because hosts have no page of their own.
-function _dashNavFromCard(card) {
+function _dashNavFromCard(/** @type {HTMLElement} */ card) {
   const d = card.dataset;
   if (d.navHost) {
-    const real = document.querySelector(`.host-card[data-id="${CSS.escape(d.navHost)}"]`);
+    const real = /** @type {HTMLElement|null} */ (document.querySelector(`.host-card[data-id="${CSS.escape(d.navHost)}"]`));
     if (real && typeof openHostDetail === 'function') { openHostDetail(real); return; }
   }
   if (!d.nav) return;
   navigateTo(d.nav);
-  if (d.navTab) document.querySelector(`.tab[data-tab="${CSS.escape(d.navTab)}"]`)?.click();
+  if (d.navTab) /** @type {HTMLElement} */ (document.querySelector(`.tab[data-tab="${CSS.escape(d.navTab)}"]`))?.click();
   if (d.navAnchor) {
     const target = document.getElementById(d.navAnchor);
     if (target) {
@@ -133,7 +134,7 @@ function _dashNavFromCard(card) {
 //: Bound once on the document — widget bodies are replaced on every refresh
 //: poll, so a listener attached to a card would not survive the next paint.
 document.addEventListener('click', (ev) => {
-  const card = ev.target.closest && ev.target.closest('.dash-card[data-nav], .dash-card[data-nav-host]');
+  const card = /** @type {HTMLElement|null} */ ((/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.dash-card[data-nav], .dash-card[data-nav-host]')));
   if (card) _dashNavFromCard(card);
 });
 
@@ -230,17 +231,17 @@ function _dashHostCard(h) {
    exist now and it owns their behaviour. The values are hostnames reported by
    agents, so they stay in data-* and every handler is delegated. */
 document.addEventListener('click', (ev) => {
-  const card = ev.target.closest && ev.target.closest('.dash-host-cards .host-card');
-  if (card && !ev.target.closest('[data-host-act]') && typeof openHostDetail === 'function') {
+  const card = /** @type {HTMLElement|null} */ ((/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.dash-host-cards .host-card')));
+  if (card && !/** @type {HTMLElement} */ (ev.target).closest('[data-host-act]') && typeof openHostDetail === 'function') {
     openHostDetail(card);
   }
 });
 
 document.addEventListener('click', (ev) => {
-  const btn = ev.target.closest && ev.target.closest('.dash-host-cards [data-host-act]');
+  const btn = /** @type {HTMLButtonElement} */ ((/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.dash-host-cards [data-host-act]')));
   if (!btn) return;
   ev.stopPropagation();                      // never also open the detail modal
-  const card = btn.closest('.host-card');
+  const card = /** @type {HTMLElement} */ (btn.closest('.host-card'));
   const { id, hostname } = card.dataset;
   const act = btn.dataset.hostAct;
   if (act === 'connect' && typeof openConnectMenu === 'function') openConnectMenu(id, hostname, btn);
@@ -527,7 +528,7 @@ function _seriesByProcess(points) {
     series.get(name).push(pt);
   }
   for (const rows of series.values()) {
-    rows.sort((a, b) => new Date(a.time) - new Date(b.time));
+    rows.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   }
   return series;
 }
@@ -1272,9 +1273,9 @@ async function _hostPickerItems() {
 
 //: Delegated because the settings form is rebuilt every time the modal opens.
 document.addEventListener('click', async (ev) => {
-  const open = ev.target.closest && ev.target.closest('[data-open-picker]');
+  const open = /** @type {HTMLElement} */ ((/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-open-picker]')));
   if (open) {
-    const input = document.getElementById(open.dataset.for);
+    const input = /** @type {HTMLInputElement|null} */ (document.getElementById(open.dataset.for));
     const type = _PICKER_TYPE[open.dataset.openPicker];
     if (!input || !type || typeof openPicker !== 'function') return;
     const hostItems = type === 'machine' ? await _hostPickerItems() : null;
@@ -1303,9 +1304,9 @@ document.addEventListener('click', async (ev) => {
     });
     return;
   }
-  const clear = ev.target.closest && ev.target.closest('[data-clear-picker]');
+  const clear = /** @type {HTMLElement} */ ((/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-clear-picker]')));
   if (clear) {
-    const input = document.getElementById(clear.dataset.for);
+    const input = /** @type {HTMLInputElement|null} */ (document.getElementById(clear.dataset.for));
     if (!input) return;
     input.value = '';
     const row = input.closest('.setting-picker');
@@ -1387,7 +1388,7 @@ async function openWidgetSettings(widgetId) {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
     <div id="ws-body"><span class="muted-note">Loading…</span></div>`);
-  m.modal.querySelector('#ws-x').onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ws-x')).onclick = m.close;
   m.open();
 
   if (!Object.keys(schema).length) {
@@ -1431,9 +1432,9 @@ async function openWidgetSettings(widgetId) {
   document.getElementById('ws-save').onclick = () => {
     const next = {};
     for (const [name, field] of Object.entries(schema)) {
-      const el = document.querySelector(`[data-setting="${CSS.escape(name)}"]`);
+      const el = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (document.querySelector(`[data-setting="${CSS.escape(name)}"]`));
       if (!el) continue;
-      if (field.type === 'bool') next[name] = el.checked;
+      if (field.type === 'bool') next[name] = /** @type {HTMLInputElement} */ (el).checked;
       else if (field.type === 'int') next[name] = parseInt(el.value, 10);
       else if (field.type === 'metric') {
         const [category, metric] = String(el.value).split('/');

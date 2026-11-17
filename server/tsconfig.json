@@ -62,6 +62,8 @@
     "static/js/vigil-reports.js",
     "static/js/vigil-sites.js",
     "static/js/vigil-pickers.js",
-    "static/js/vigil-monitor.js"
+    "static/js/vigil-monitor.js",
+    "static/js/vigil-playbooks.js",
+    "static/js/vigil-widgets.js"
   ]
 }

@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-playbooks.js
 // Owns: the Playbooks page — a sequence editor for playbooks (ordered task
 // definitions that auto-dispatch on host enrollment and are callable from any
@@ -6,10 +7,31 @@
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml),
 //             vigil-playbook-flow.js (the flow tree: editor, read-only view, analysis).
 
-let _playbookDefs = [];   // all task definitions, for the picker (id -> def)
-let _editingTree = [];    // the playbook being edited: a flow tree (see vigil-playbook-flow.js)
+/** One task definition from /api/v1/tasks/definitions/. The playbook editor only
+ *  reads `name`, the risk field and `parsed_spec`; the index signature keeps the
+ *  rest of the row it re-renders untouched. */
+/** @typedef {{id: string|number, name: string, risk_level?: string, risk?: string,
+ *  parsed_spec?: {actions?: any[], inputs?: any}, [k: string]: any}} TaskDef */
+/** The inspector's flow fields and the guided builder's controls inside it: the
+ *  `[data-flow-*]` and `[data-fb-*]` elements the delegated handlers read a
+ *  dataset key and the field's text off. `dataset` stays the plain DOMStringMap —
+ *  its keys are already `string | undefined`, so listing only some of them would
+ *  turn an unlisted one into an error instead of undefined. `value` is what the
+ *  element itself always carries (these are inputs, selects and textareas);
+ *  HTMLElement does not name it on HTMLElement, so this shape adds it back. */
+/** @typedef {HTMLElement & {dataset: DOMStringMap & {value?: string}, value: string}} FlowFieldEl */
+/** The box the guided condition builder writes its rows into. `data-flow-builder`
+ *  is a div, so unlike FlowFieldEl this one has no `value`. */
+/** @typedef {HTMLElement & {dataset: DOMStringMap}} BuilderBox */
+
+/* ── Playbooks page (Playbooks tab) ──────────────────────────────────── */
+
+let _playbookDefs = /** @type {TaskDef[]} */ ([]);   // all task definitions, for the picker (id -> def)
+let _editingTree = /** @type {any} */ ([]);    // the playbook being edited: a flow tree (see vigil-playbook-flow.js)
+/** @type {any[]} */
 let _allPlaybooks = [];   // cached, for client-side search
 
+/** @returns {Promise<void>} */
 async function loadPlaybooks() {
   const list = document.getElementById('playbooks-list');
   if (!list) return;
@@ -34,8 +56,9 @@ async function loadPlaybooks() {
   }
 }
 
+/** @returns {any[]} */
 function _filterPlaybooks() {
-  const q = (document.getElementById('bl-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('bl-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allPlaybooks;
   return _allPlaybooks.filter(b =>
     b.name.toLowerCase().includes(q) ||
@@ -52,6 +75,7 @@ let _blHighRiskWasOn = false;
 // The TOTP prompt appears only while the box is being ticked for the first
 // time. Re-rendering the steps too: a high-risk step is ineligible or not
 // depending on this box, and the list has to say so as soon as it changes.
+/** @returns {void} */
 function _blSyncHighRiskWarning() {
   const warn = document.getElementById('bl-highrisk-warn');
   if (warn) {
@@ -63,11 +87,13 @@ function _blSyncHighRiskWarning() {
 // Whether the playbook being edited has opted in to high-risk steps. Read
 // from the checkbox rather than passed around, so the picker and the save
 // path cannot disagree about it.
+/** @returns {boolean} */
 function _blAllowsHighRisk() {
-  const box = document.getElementById('bl-allow-high-risk');
+  const box = /** @type {HTMLInputElement|null} */ (document.getElementById('bl-allow-high-risk'));
   return !!(box && box.checked);
 }
 
+/** @param {TaskDef|null|undefined} def @returns {string|null} */
 function _blIneligible(def) {
   // Mirrors apps/playbooks/models.py eligible(): playbooks auto-run without
   // per-dispatch 2FA, so update_agent always stays out, and high-risk stays
@@ -82,20 +108,24 @@ function _blIneligible(def) {
   return null;
 }
 
+/** @param {string|number} id @returns {string} */
 function _defName(id) {
   const d = _playbookDefs.find(x => String(x.id) === String(id));
-  return d ? d.name : id;
+  return /** @type {string} */ (d ? d.name : id);
 }
+/** @param {string|number} id @returns {string} */
 function _defRisk(id) {
   const d = _playbookDefs.find(x => String(x.id) === String(id));
   return d ? (d.risk_level || d.risk || 'standard') : 'standard';
 }
+/** @param {string|number} id @returns {number|null} */
 function _defActionCount(id) {
   const d = _playbookDefs.find(x => String(x.id) === String(id));
   const acts = d && d.parsed_spec && d.parsed_spec.actions;
   return Array.isArray(acts) ? acts.length : null;
 }
 
+/** @param {any[]} playbooks @returns {void} */
 function _renderPlaybookList(playbooks) {
   const list = document.getElementById('playbooks-list');
   if (!playbooks.length) {
@@ -143,12 +173,12 @@ function _renderPlaybookList(playbooks) {
 
 function _wireCards(playbooks) {
   const list = document.getElementById('playbooks-list');
-  list.querySelectorAll('[data-bl-del]').forEach(btn => btn.addEventListener('click', async () => {
+  list.querySelectorAll('[data-bl-del]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
     if (!(await confirmModal('Delete this playbook? Tasks that call it by name will start failing.', { danger: true, confirmText: 'Delete' }))) return;
     await fetch(`/api/v1/playbooks/${btn.dataset.blDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
     loadPlaybooks();
   }));
-  list.querySelectorAll('[data-bl-toggle]').forEach(btn => btn.addEventListener('click', async () => {
+  list.querySelectorAll('[data-bl-toggle]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
     const turningOn = btn.dataset.enabled !== 'true';
     if (turningOn && !(await _confirmAutoEnroll(btn.dataset))) return;
     try {
@@ -160,7 +190,7 @@ function _wireCards(playbooks) {
     }
     loadPlaybooks();
   }));
-  list.querySelectorAll('[data-bl-archive]').forEach(btn => btn.addEventListener('click', async () => {
+  list.querySelectorAll('[data-bl-archive]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
     if (!(await confirmModal(
       'Archive this playbook? It stops auto-enrolling and leaves the list. ' +
       'Anything already referencing it keeps working, and its run history stays.',
@@ -169,10 +199,10 @@ function _wireCards(playbooks) {
       method: 'POST', body: JSON.stringify({}) });
     loadPlaybooks();
   }));
-  list.querySelectorAll('[data-bl-failures]').forEach(btn => btn.addEventListener(
+  list.querySelectorAll('[data-bl-failures]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener(
     'click', () => _openFailures(btn.dataset.blFailures, btn.dataset.name)));
-  list.querySelectorAll('[data-bl-edit]').forEach(btn => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
-  list.querySelectorAll('[data-bl-dup]').forEach(btn => btn.addEventListener('click', () => {
+  list.querySelectorAll('[data-bl-edit]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
+  list.querySelectorAll('[data-bl-dup]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', () => {
     const b = playbooks.find(x => x.id === btn.dataset.blDup);
     _openEditor({ name: b.name + ' (copy)', description: b.description,
       target_tags: b.target_tags, completion_tag: b.completion_tag,
@@ -236,12 +266,13 @@ async function _openFailures(playbookId, name) {
     loadPlaybooks();
   };
   m.modal.querySelectorAll('[data-blf-close]').forEach(b => b.addEventListener('click', m.close));
-  m.modal.querySelectorAll('[data-blf-retry]').forEach(b => b.addEventListener(
+  m.modal.querySelectorAll('[data-blf-retry]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener(
     'click', () => retry({ host: b.dataset.blfRetry })));
   m.modal.querySelector('[data-blf-retry-all]')?.addEventListener('click', () => retry({}));
 }
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
+/** @returns {void} */
 function _renderDefPicker() {
   const sel = document.getElementById('bl-def-picker');
   if (!sel) return;
@@ -295,7 +326,7 @@ function _refreshAnalysis() {
 
 function _blSelect(at) {
   _blSel = at;
-  document.querySelectorAll('#bl-editor-steps [data-flow-sel]').forEach(n =>
+  document.querySelectorAll('#bl-editor-steps [data-flow-sel]').forEach((/** @type {HTMLElement} */ n) =>
     n.classList.toggle('is-sel', n.dataset.flowSel === at));
   _renderInspector();
 }
@@ -376,7 +407,7 @@ function _blInsertMenu(btn) {
 }
 
 function _wireFlowCanvas(wrap) {
-  wrap.querySelectorAll('[data-flow-sel]').forEach(el => {
+  wrap.querySelectorAll('[data-flow-sel]').forEach((/** @type {HTMLElement} */ el) => {
     el.addEventListener('click', () => _blSelect(el.dataset.flowSel));
     el.addEventListener('keydown', (e) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -401,7 +432,7 @@ function _renderInspector() {
   const box = document.getElementById('bl-inspector');
   if (!box) return;
   box.innerHTML = flowInspectorHtml(_editingTree, _blSel, _blFlowCtx);
-  const on = (sel, ev, fn) => box.querySelectorAll(sel).forEach(el => el.addEventListener(ev, () => fn(el)));
+  const on = (/** @type {string} */ sel, /** @type {string} */ ev, /** @type {(el: FlowFieldEl) => void} */ fn) => box.querySelectorAll(sel).forEach((/** @type {FlowFieldEl} */ el) => el.addEventListener(ev, () => fn(el)));
   on('[data-flow-rm]', 'click', el => _blRemove(el.dataset.flowRm));
   on('[data-flow-elif-add]', 'click', el => _blElifAdd(el.dataset.flowElifAdd));
   on('[data-flow-elif-rm]', 'click', el => _blElifRemove(el.dataset.flowElifRm));
@@ -453,10 +484,10 @@ function _renderInspector() {
   on('[data-flow-inp-ins]', 'change', el => {
     const field = box.querySelector(`[data-flow-inp="${CSS.escape(el.dataset.flowInpIns)}"][data-inp-id="${CSS.escape(el.dataset.inpId)}"]`);
     if (!field || !el.value) return;
-    field.value += `\${{ inputs.${el.value} }}`;
+    /** @type {FlowFieldEl} */ (field).value += `\${{ inputs.${el.value} }}`;
     field.dispatchEvent(new Event('input', { bubbles: true }));
     el.value = '';
-    field.focus();
+    /** @type {FlowFieldEl} */ (field).focus();
   });
   on('[data-flow-inputs]', 'click', el => {
     const { node } = _blAt(el.dataset.flowInputs);
@@ -472,7 +503,7 @@ function _renderInspector() {
       _renderEditorSteps();
     } });
   });
-  box.querySelectorAll('[data-flow-builder]').forEach(b => {
+  box.querySelectorAll('[data-flow-builder]').forEach((/** @type {BuilderBox} */ b) => {
     if (b.querySelector('[data-fb-rows]')) _blSetupBuilder(b, b.dataset.flowBuilder);
   });
 }
@@ -632,9 +663,9 @@ function _renderBlInputs() {
       <button type="button" class="btn btn-rose btn-xs" data-bl-input-rm="${i}">Remove</button>
     </div>`;
   }).join('');
-  box.querySelectorAll('[data-bl-input-edit]').forEach(b => b.addEventListener(
+  box.querySelectorAll('[data-bl-input-edit]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener(
     'click', () => _editBlInput(+b.dataset.blInputEdit)));
-  box.querySelectorAll('[data-bl-input-rm]').forEach(b => b.addEventListener('click', () => {
+  box.querySelectorAll('[data-bl-input-rm]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener('click', () => {
     _blInputs.splice(+b.dataset.blInputRm, 1);
     _renderBlInputs();
   }));
@@ -782,17 +813,17 @@ function _editBlInput(index) {
 function _openEditor(data, editingId) {
   const modal = document.getElementById('bl-editor-modal');
   modal.dataset.editing = editingId || '';
-  document.getElementById('bl-editor-title').textContent = editingId ? 'Edit playbook' : (data && data.name ? 'Duplicate playbook' : 'New playbook');
-  document.getElementById('bl-name').value = data ? (data.name || '') : '';
-  document.getElementById('bl-desc').value = data ? (data.description || '') : '';
-  document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
-  document.getElementById('bl-completion-tag').value = data ? (data.completion_tag || '') : '';
+  /** @type {HTMLElement} */ (document.getElementById('bl-editor-title')).textContent = editingId ? 'Edit playbook' : (data && data.name ? 'Duplicate playbook' : 'New playbook');
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-name')).value = data ? (data.name || '') : '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('bl-desc')).value = data ? (data.description || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-tags')).value = data ? (data.target_tags || []).join(', ') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-completion-tag')).value = data ? (data.completion_tag || '') : '';
   // Where it lives (S1 04e-5): editing shows its site; a new or duplicated
   // playbook picks one the user may create in.
-  sitePickFill(document.getElementById('bl-site'), document.getElementById('bl-site-field'),
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('bl-site')), document.getElementById('bl-site-field'),
     editingId && data ? data.site_id : null, { editing: !!editingId });
   // Pinned task versions (S1 decisions-06 item 16).
-  document.getElementById('bl-auto-sync').checked = !!(editingId && data && data.tasks_auto_sync);
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-auto-sync')).checked = !!(editingId && data && data.tasks_auto_sync);
   const stale = (editingId && data && data.stale_steps) || [];
   document.getElementById('bl-stale-note').hidden = !stale.length;
   document.getElementById('bl-stale-text').textContent = stale.length
@@ -802,7 +833,7 @@ function _openEditor(data, editingId) {
   // null there, so the flag starts off and has to be re-confirmed. The
   // original's TOTP authorized that playbook, not a copy of it.
   _blHighRiskWasOn = !!(editingId && data && data.allow_high_risk);
-  const allowBox = document.getElementById('bl-allow-high-risk');
+  const allowBox = /** @type {HTMLInputElement|null} */ (document.getElementById('bl-allow-high-risk'));
   if (allowBox) allowBox.checked = _blHighRiskWasOn;
   _blSyncHighRiskWarning();
   _blInputs = JSON.parse(JSON.stringify((data && data.inputs) || []));
@@ -827,14 +858,14 @@ function _startEdit(id) {
 async function _savePlaybook() {
   const allowHighRisk = _blAllowsHighRisk();
   const body = {
-    name: document.getElementById('bl-name').value.trim(),
-    description: document.getElementById('bl-desc').value.trim(),
-    target_tags: document.getElementById('bl-tags').value.split(',').map(t => t.trim()).filter(Boolean),
-    completion_tag: document.getElementById('bl-completion-tag').value.trim(),
+    name: /** @type {HTMLInputElement} */ (document.getElementById('bl-name')).value.trim(),
+    description: /** @type {HTMLTextAreaElement} */ (document.getElementById('bl-desc')).value.trim(),
+    target_tags: /** @type {HTMLInputElement} */ (document.getElementById('bl-tags')).value.split(',').map(t => t.trim()).filter(Boolean),
+    completion_tag: /** @type {HTMLInputElement} */ (document.getElementById('bl-completion-tag')).value.trim(),
     allow_high_risk: allowHighRisk,
     inputs: _blInputs,
     flow_steps: flowSerialize(_editingTree),
-    tasks_auto_sync: document.getElementById('bl-auto-sync').checked,
+    tasks_auto_sync: /** @type {HTMLInputElement} */ (document.getElementById('bl-auto-sync')).checked,
   };
   const siteId = sitePickValue(document.getElementById('bl-site'), document.getElementById('bl-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
@@ -930,12 +961,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (search) search.addEventListener('input', () => _renderPlaybookList(_filterPlaybooks()));
 
   // Sub-tab switching (Playbooks / Automation)
-  document.querySelectorAll('#page-playbooks .sub-tab').forEach(tab => {
+  document.querySelectorAll('#page-playbooks .sub-tab').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#page-playbooks .sub-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('#page-playbooks .sub-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById(tab.dataset.subtab).classList.add('active');
+      /** @type {HTMLElement} */ (document.getElementById(tab.dataset.subtab)).classList.add('active');
       if (tab.dataset.subtab === 'auto-panel' && typeof loadAutomations === 'function') loadAutomations();
     });
   });
@@ -943,7 +974,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 if (typeof navigateTo === 'function') {
   const _origNavPlaybooks = navigateTo;
-  navigateTo = function (p) { _origNavPlaybooks(p); if (p === 'playbooks') loadPlaybooks(); };
+  window.navigateTo = function (p) { _origNavPlaybooks(p); if (p === 'playbooks') loadPlaybooks(); };
 }
 
 
@@ -988,7 +1019,7 @@ async function _confirmAutoEnroll(data) {
 /* Sync latest (S1 decisions-06 item 16): every step takes its task's
  * current version, after the same checks a save runs. */
 document.addEventListener('click', async (e) => {
-  if (!e.target.closest('#bl-sync-latest')) return;
+  if (!/** @type {HTMLElement} */ (e.target).closest('#bl-sync-latest')) return;
   const id = document.getElementById('bl-editor-modal').dataset.editing;
   if (!id) return;
   try {
