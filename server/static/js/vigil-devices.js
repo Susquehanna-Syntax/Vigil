@@ -154,7 +154,12 @@ function _checkLabel(check) {
   // is the exception worth naming.
   else if (check.kind === 'snmp') target = [p.host, p.port].filter(x => x !== undefined && x !== null && x !== '').join(':');
   else target = p.host || '';
-  return `${DEVICE_CHECK_KINDS[check.kind] || check.kind}${target ? ` ${target}` : ''}`;
+  // A v3 check says so, and whether it is encrypted: that is what an operator
+  // checks first when a device refuses it.
+  const kind = check.kind === 'snmp' && p.version === '3'
+    ? `SNMPv3${p.priv === false ? ' (not encrypted)' : ''}`
+    : (DEVICE_CHECK_KINDS[check.kind] || check.kind);
+  return `${kind}${target ? ` ${target}` : ''}`;
 }
 
 function _ms(value) {
@@ -575,12 +580,25 @@ function setDeviceCheckKind(select) {
     port.hidden = kind !== 'tcp' && kind !== 'snmp';
     port.placeholder = kind === 'snmp' ? 'Port (161)' : 'Port';
   }
-  const community = _deviceEl('device-check-community');
-  if (community) community.hidden = kind !== 'snmp';
+  const version = _deviceEl('device-check-snmp-version');
+  if (version) version.hidden = kind !== 'snmp';
+  _showSnmpSecretFields(kind === 'snmp' ? (version ? version.value : '2c') : null);
   const oids = _deviceEl('device-check-oids');
   if (oids) oids.hidden = kind !== 'snmp';
   const walk = _deviceEl('device-check-walk');
   if (walk) walk.hidden = kind !== 'snmp';
+}
+
+/** The community box for v2c, the user/protocol/password row for v3, neither otherwise. */
+function _showSnmpSecretFields(version) {
+  const community = _deviceEl('device-check-community');
+  if (community) community.hidden = version !== '2c';
+  const v3 = _deviceEl('device-check-v3');
+  if (v3) v3.hidden = version !== '3';
+}
+
+function setDeviceCheckSnmpVersion(select) {
+  _showSnmpSecretFields(select && select.value === '3' ? '3' : '2c');
 }
 
 async function addDeviceCheck() {
@@ -607,8 +625,20 @@ async function addDeviceCheck() {
     if (parsed.error) { showToast(parsed.error, 'error'); return; }
     if (parsed.oids.length) params.oids = parsed.oids;
     if (walkBox && walkBox.checked) params.interfaces = true;
-    // Untrimmed: a community's spaces are the operator's, not ours to drop.
-    if (communityBox.value) body.community = communityBox.value;
+    const version = _deviceEl('device-check-snmp-version');
+    if (version && version.value === '3') {
+      // Passwords untrimmed, like the community: their spaces are the operator's.
+      const privPassword = _deviceEl('device-check-v3-priv-password').value;
+      params.version = '3';
+      params.user = _deviceEl('device-check-v3-user').value.trim();
+      params.auth = _deviceEl('device-check-v3-auth').value;
+      params.priv = privPassword !== '';
+      body.auth_password = _deviceEl('device-check-v3-auth-password').value;
+      if (privPassword) body.priv_password = privPassword;
+    } else if (communityBox.value) {
+      // Untrimmed: a community's spaces are the operator's, not ours to drop.
+      body.community = communityBox.value;
+    }
   }
 
   try {
@@ -620,6 +650,10 @@ async function addDeviceCheck() {
     _deviceEl('device-check-target').value = '';
     _deviceEl('device-check-port').value = '';
     communityBox.value = '';
+    for (const id of ['device-check-v3-user', 'device-check-v3-auth-password', 'device-check-v3-priv-password']) {
+      const box = _deviceEl(id);
+      if (box) box.value = '';
+    }
     oidsBox.value = '';
     if (walkBox) walkBox.checked = false;
     loadDeviceChecks(_checkDeviceId);

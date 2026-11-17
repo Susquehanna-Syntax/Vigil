@@ -77,6 +77,22 @@ class DeviceChecksMarkupTests(SimpleTestCase):
         self.assertIn('type="password"', tag)
         self.assertIn('autocomplete="off"', tag)
 
+    def test_the_v3_passwords_are_neither_shown_nor_autofilled(self):
+        for box in ("device-check-v3-auth-password", "device-check-v3-priv-password"):
+            with self.subTest(box=box):
+                tag = _tag(self.modal, f'id="{box}"')
+                self.assertIn('type="password"', tag)
+                self.assertIn('autocomplete="off"', tag)
+
+    def test_the_v3_row_and_the_version_pick_start_hidden(self):
+        self.assertIn('hidden', _tag(self.modal, 'id="device-check-v3"'))
+        version = _tag(self.modal, 'id="device-check-snmp-version"')
+        self.assertIn('hidden', version)
+        self.assertIn('data-change="setDeviceCheckSnmpVersion"', version)
+        # SHA-256 first: the stronger protocol is the one a new check gets.
+        auth = self.modal[self.modal.index('id="device-check-v3-auth"'):]
+        self.assertLess(auth.index('value="sha256"'), auth.index('value="sha"'))
+
     def test_the_oids_box_is_a_plain_textarea_the_operator_can_read_back(self):
         # The OIDs list is configuration, not a secret: a text control.
         self.assertIn('<textarea', _tag(self.modal, 'id="device-check-oids"'))

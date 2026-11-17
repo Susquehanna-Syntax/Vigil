@@ -701,7 +701,18 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       </select>
       <input class="form-control" id="device-check-target" placeholder="Address, URL or name" aria-label="Check target">
       <input class="form-control" id="device-check-port" type="number" min="1" max="65535" placeholder="Port" hidden aria-label="Port">
+      <select class="form-control" id="device-check-snmp-version" data-change="setDeviceCheckSnmpVersion" data-a1="$el" aria-label="SNMP version" hidden>
+        <option value="2c">v2c</option><option value="3">v3</option>
+      </select>
       <input class="form-control" id="device-check-community" type="password" autocomplete="off" placeholder="Community" aria-label="SNMP community" hidden>
+      <div class="device-check-v3" id="device-check-v3" hidden>
+        <input class="form-control" id="device-check-v3-user" autocomplete="off" placeholder="User" aria-label="SNMPv3 user">
+        <select class="form-control" id="device-check-v3-auth" aria-label="SNMPv3 authentication">
+          <option value="sha256">SHA-256</option><option value="sha">SHA-1</option>
+        </select>
+        <input class="form-control" id="device-check-v3-auth-password" type="password" autocomplete="off" placeholder="Auth password" aria-label="SNMPv3 auth password">
+        <input class="form-control" id="device-check-v3-priv-password" type="password" autocomplete="off" placeholder="Privacy password (optional)" title="Leave blank to authenticate without encrypting" aria-label="SNMPv3 privacy password, optional: blank means not encrypted">
+      </div>
       <textarea class="form-control device-check-oids" id="device-check-oids" rows="3" placeholder="Optional, one per line: label = OID, for example if_in = 1.3.6.1.2.1.2.2.1.10.1" aria-label="SNMP values to read" hidden></textarea>
       <label class="device-check-walk" id="device-check-walk" hidden><input type="checkbox" id="device-check-interfaces"> Read the interface table</label>
       <select class="form-control" id="device-check-interval" aria-label="How often">

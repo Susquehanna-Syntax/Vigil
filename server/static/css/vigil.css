@@ -2268,6 +2268,12 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .device-check-add #device-check-target { flex: 1 1 180px; min-width: 140px; }
 .device-check-add #device-check-port { flex: 0 0 116px; }
 .device-check-add #device-check-community { flex: 1 1 160px; }
+.device-check-add #device-check-snmp-version { flex: 0 0 76px; }
+/* The v3 fields take a row of their own: user, protocol and two passwords. */
+.device-check-v3 { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
+.device-check-v3 #device-check-v3-user { flex: 1 1 140px; }
+.device-check-v3 #device-check-v3-auth { flex: 0 0 110px; }
+.device-check-v3 input[type="password"] { flex: 1 1 100%; }
 .device-check-add #device-check-interval { flex: 1 1 160px; }
 /* The add row is one flex line, so the OIDs textarea takes a line to itself. */
 .device-check-add .device-check-oids { flex-basis: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-height: 64px; }
