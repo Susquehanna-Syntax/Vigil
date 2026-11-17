@@ -321,7 +321,8 @@ def _check_fields(device, data, current=None) -> dict:
     if kind == DeviceCheck.Kind.SNMP:
         if "community" in data:
             fields["secret"] = _community_value(data["community"])
-        elif current is None:
+        elif current is None or not current.secret:
+            # Created, or changed to SNMP from a kind that had none.
             raise ValueError("an SNMP check needs a community")
     elif kind is not None:
         fields["secret"] = encrypt_secret("")

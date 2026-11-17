@@ -168,6 +168,18 @@ class SnmpCommunityApiTests(TestCase):
         self.assertEqual(check.secret, b"")
         self.assertFalse(patched.data["has_community"])
 
+    def test_a_patch_to_snmp_needs_a_community(self):
+        created = self.client.post(self.url, {"kind": "icmp", "params": {"host": "10.0.0.5"}},
+                                   format="json")
+        detail = f"{self.url}{created.data['id']}/"
+        refused = self.client.patch(detail, {"kind": "snmp", "params": _snmp_params()}, format="json")
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(refused.data["error"], "an SNMP check needs a community")
+        moved = self.client.patch(detail, {"kind": "snmp", "params": _snmp_params(),
+                                           "community": COMMUNITY}, format="json")
+        self.assertEqual(moved.status_code, 200, moved.data)
+        self.assertTrue(moved.data["has_community"])
+
     def test_a_non_snmp_check_ignores_a_community(self):
         created = self.client.post(self.url, {"kind": "icmp", "params": {"host": "10.0.0.5"},
                                               "community": COMMUNITY}, format="json")
