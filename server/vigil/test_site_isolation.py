@@ -38,7 +38,8 @@ from apps.agentprofiles.models import AgentProfile
 from apps.alerts.models import Alert, AlertRule, DeviceAlert
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
-from apps.hosts.models import DeviceCheck, Host, LogTailSession, Tag, UnmanagedDevice
+from apps.hosts.models import (DeviceCheck, DiscoveredHost, DiscoveryScan, Host,
+                               LogTailSession, Tag, UnmanagedDevice)
 from apps.jackil.models import IntegrationKey
 from apps.metrics.models import MetricPoint
 from apps.playbooks.models import Playbook
@@ -208,6 +209,18 @@ ALLOWLIST = {
     "api/v1/reprovision/preflight/": "reads a host by an agent token, not by a session",
     "api/v1/branding/": "instance-wide; one branding for the whole install",
     "api/v1/api-keys/": "instance-wide; a key is issued to a user, not a site",
+    "api/v1/hosts/discovery/pollers/": "the picker of machines that would run a scan; "
+                                       "``site_id`` says whose poller each is and "
+                                       "``site_for_write`` refuses another site's",
+    # A scan answer repeats the cidr, ports, error text and the names its hosts
+    # reported — an inventory list of another site's network, with no device ids to
+    # link it to. A scan of a site this user cannot see is 404; creating one on that
+    # site's poller is refused by site_for_write.
+    "api/v1/hosts/discovery/scans/": "the newest scans, which are site-scoped rows",
+    # An id that names no scan of a site this user cannot see answers 404 here too:
+    # GET and DELETE reach _scan_or_404, adopt reaches the same guard.
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/": "see the collection above",
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/adopt/": "see the collection above",
     # The scope itself: these rows are what every site filter resolves against.
     "api/v1/sites/": "the scope itself; site rows are the boundary, not behind it",
     "api/v1/sites/<uuid:site_id>/": "the scope itself; site rows are the boundary, not behind it",
@@ -241,6 +254,8 @@ ROUTE_FILLERS = {
     # would fill it with site B's host alert and ask a different question.
     "api/v1/alerts/devices/<uuid:alert_id>/acknowledge/": {
         "alert_id": lambda o: o["device_alert"].id},
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/": {"scan_id": lambda o: o["scan"].id},
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/adopt/": {"scan_id": lambda o: o["scan"].id},
     "api/v1/agent-profiles/<uuid:profile_id>/": {"profile_id": lambda o: o["profile"].id},
     "api/v1/reprovision/profiles/<uuid:profile_id>/preview/": {
         "profile_id": lambda o: o["install_profile"].id},
@@ -572,6 +587,12 @@ class SiteIsolationTests(TestCase):
                 device=o["device"], kind="icmp", params={"host": "10.0.0.1"})
             o["device_alert"] = DeviceAlert.objects.create(
                 device=o["device"], device_check=o["check"], message=f"{tag}-device is down")
+            # A finished scan of this site's poller and one host it found: the id
+            # the discovery routes' FILLERS entry probes.
+            o["scan"] = DiscoveryScan.objects.create(
+                poller=o["host"], site_id=site.pk, cidr="192.0.2.0/24", ports=[22],
+                state=DiscoveryScan.State.DONE)
+            DiscoveredHost.objects.create(scan=o["scan"], ip="192.0.2.5", alive_by="ping")
             o["page"] = StatusPage.objects.create(title=f"{tag}-page", site_id=site.pk)
             o["key"] = IntegrationKey.objects.create(
                 name=f"shared-{shared}-key",

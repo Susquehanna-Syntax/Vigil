@@ -38,6 +38,8 @@ CROSSINGS: dict[str, list[str]] = {
                                  're-enrolment: the same machine is matched across every site'],
     'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/hosts/tasks.py': ['background job: directory import is install-wide'],
+    'apps/hosts/views/discovery.py': ["discovery cap: a poller's waiting scans, whoever "
+                                      'queued them'],
     'apps/hosts/views/_common.py': ['tag delete guard: a tag is install-wide',
                                     'tag rename: tags are install-wide',
                                     'tag rename: tags are install-wide',

@@ -8,3 +8,4 @@ from .hosts import host_list, agent_versions, host_detail, host_approve, host_re
 from .inventory import tag_index, inventory_list, inventory_detail, host_stacks, host_containers, docker_overview  # noqa: F401
 from .firewall import host_firewall, host_firewall_refresh, host_firewall_apply  # noqa: F401
 from .tags import tag_collection, tag_detail  # noqa: F401
+from .discovery import discovery_pollers, discovery_scans, discovery_scan, discovery_adopt  # noqa: F401

@@ -19,6 +19,11 @@ urlpatterns = [
          name="device-check-interfaces"),
     path("devices/<uuid:device_id>/checks/<uuid:check_id>/interfaces/<int:if_index>/",
          views.device_check_interface, name="device-check-interface"),
+    # Discovery (S9 06d): queue a scan on a poller, read what it found, adopt hosts.
+    path("discovery/pollers/", views.discovery_pollers, name="discovery-pollers"),
+    path("discovery/scans/", views.discovery_scans, name="discovery-scans"),
+    path("discovery/scans/<uuid:scan_id>/", views.discovery_scan, name="discovery-scan"),
+    path("discovery/scans/<uuid:scan_id>/adopt/", views.discovery_adopt, name="discovery-adopt"),
     path("transport-ack/", views.transport_ack, name="transport-ack"),
     path("ad/", views.ad_config, name="ad-config"),
     path("ad/sync/", views.ad_sync_now, name="ad-sync"),

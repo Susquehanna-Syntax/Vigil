@@ -26,6 +26,13 @@ from .models import DiscoveredHost, DiscoveryScan, Host
 
 #: How long a poller may hold a scan without answering before it fails.
 SCAN_ANSWER_TIMEOUT = timedelta(minutes=30)
+#: Addresses one scan covers: the agent sweeps them in a bounded time.
+MAX_ADDRESSES = 1024
+#: Ports to try when the request names none — the common remote-admin set.
+DEFAULT_PORTS = [22, 23, 80, 443, 445, 3389, 8080, 8443]
+MAX_PORTS = 16
+#: Queued or sent scans one poller may be holding at a time.
+MAX_OPEN_SCANS_PER_POLLER = 3
 #: Found hosts stored per scan; the agent sends at most this many anyway.
 MAX_FOUND = 1024
 MAX_NAME = 100
@@ -39,6 +46,59 @@ def _fail(scan: DiscoveryScan, error: str) -> None:
     scan.error = error[:200]
     scan.finished_at = now()
     scan.save(update_fields=["state", "error", "finished_at"])
+
+
+def _not_a_network(raw):
+    """True when *raw* is text that names no network at all.
+
+    Checking rather than raising on the type keeps the refusal one sentence for
+    every kind of bad cidr, as the API answers it; ValueError with a TypeError
+    would split garbage text from a body whose cidr is a number.
+    """
+    return not isinstance(raw, str)
+
+
+def validate_cidr(raw):
+    """The normalised network text of a scannable ``cidr``, or ValueError.
+
+    Pointed at the poller's own networks, never at someone else's, and it has
+    to finish inside the deadline the agent works to.
+
+    :raises ValueError: with the one sentence an API answer carries.
+    """
+    if _not_a_network(raw):
+        raise ValueError("cidr must be a network such as 10.0.0.0/24")
+    try:
+        net = ipaddress.ip_network(raw.strip(), strict=False)
+    except ValueError:
+        raise ValueError("cidr must be a network such as 10.0.0.0/24") from None
+    if net.version != 4:
+        raise ValueError("only IPv4 networks can be scanned")
+    if not net.is_private or net.is_loopback or net.is_multicast or net.is_unspecified:
+        raise ValueError("only private networks can be scanned")
+    if net.num_addresses > MAX_ADDRESSES:
+        raise ValueError(f"at most {MAX_ADDRESSES} addresses (a /22) per scan")
+    return str(net)
+
+
+def validate_ports(raw) -> list[int]:
+    """The port list to scan: ``DEFAULT_PORTS`` when none was given.
+
+    1..MAX_PORTS port numbers, de-duplicated in the order given; a bool is not
+    a port number here even though Python says it is an int.
+    """
+    if raw is None:
+        return list(DEFAULT_PORTS)
+    if not isinstance(raw, list) or not (1 <= len(raw) <= MAX_PORTS):
+        raise ValueError("ports must be a list of 1 to 16 port numbers")
+    ports: list[int] = []
+    for raw_port in raw:
+        if isinstance(raw_port, bool) or not isinstance(raw_port, int) \
+                or not (1 <= raw_port <= 65535):
+            raise ValueError("ports must be a list of 1 to 16 port numbers")
+        if raw_port not in ports:
+            ports.append(raw_port)
+    return ports
 
 
 def signed_scan(host: Host) -> dict:
