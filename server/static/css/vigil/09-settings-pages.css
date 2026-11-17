@@ -237,9 +237,9 @@
   font-size: 13px;
 }
 .auto-when-below { margin-top: 10px; }
-/* `.cron-field` ties .auto-when .form-control on specificity and wins on order:
-   the cron boxes are 64px wide, not the row's 150px minimum. */
-.cron-field { min-width: 0; width: 64px; }
+/* The row's `.auto-when .form-control` min-width (150px) still wins over this
+   width, as it did over the inline style this replaces. */
+.auto-when .cron-field { width: 64px; }
 .auto-cond-wrap { margin-top: 12px; }
 /* Ties .auto-when .form-control on specificity and wins on order: the match-all
    select sits inside that row and stays as wide as its text. */

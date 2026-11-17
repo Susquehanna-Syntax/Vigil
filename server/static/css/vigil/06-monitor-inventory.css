@@ -63,7 +63,7 @@
 .host-dropdown-item .hdi-pin.pinned { color: var(--lemon-ink); }
 .host-dropdown-item .hdi-pin svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
 /* Inline-style ratchet (S6 08c): the + icon, the small status dot and the meta row. */
-.host-selector-btn-icon { width: 14px; height: 14px; }
+.btn .host-selector-btn-icon { width: 14px; height: 14px; }
 .host-dropdown-item .status-dot-xs { width: 8px; height: 8px; }
 .host-dropdown-item .hdi-meta-row { display: flex; align-items: center; gap: 4px; }
 /* The dropdown's "no hosts yet" line. */
@@ -231,9 +231,6 @@
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12px; color: var(--text-3);
 }
-/* Beats `.host-os-logo` (0,1,0) the same way a later inline style used to: the
-   monitor bar's OS mark sits at full strength. */
-#monitor-content #mon-os-logo { opacity: 1; }
 .disk-bars-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 20px; }
 .net-legend { display: flex; gap: 12px; font-size: 11px; }
 .net-legend-recv { color: var(--sky-ink); }
