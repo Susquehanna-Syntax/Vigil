@@ -30,7 +30,7 @@ from ..api_schema import (
     HostsValidationErrorSerializer,
 )
 from apps.alerts.tasks import _is_older, _version_key
-from ..device_checks import validate_interval, validate_params
+from ..device_checks import device_states, validate_interval, validate_params
 from ..models import DeviceCheck
 from ._common import *  # noqa: F401,F403
 
@@ -173,7 +173,7 @@ def unmanaged_devices(request):
     if request.method == "GET":
         devices = list(UnmanagedDevice.objects.all())
         data = UnmanagedDeviceSerializer(devices, many=True).data
-        states = _device_states(devices)
+        states = device_states(devices)
         is_admin = IsAdmin().has_permission(request, None)
         can_edit = {d.id: _device_can_edit(request, d, is_admin) for d in devices}
         for row, device in zip(data, devices):
@@ -268,43 +268,6 @@ def _device_can_edit(request, device, is_admin) -> bool:
     in this user's site does.
     """
     return bool(is_admin and not scoping.write_denied(request.user, device))
-
-
-def _device_states(devices) -> dict:
-    """``check_state`` for a page of devices: up, down, or null.
-
-    ``"down"`` when any enabled check's latest result failed, ``"up"`` when
-    every enabled check that has reported succeeded, ``null`` when the device
-    has no enabled checks or none of them has ever reported. Disabled checks
-    say nothing: a check nobody runs is not evidence either way.
-
-    One query for the whole list: the enabled checks of these devices, each
-    carrying its newest result's ``ok`` as a Subquery. A device with no checks
-    is absent from the answer; callers read an absent device as None.
-    """
-    ids = [d.id for d in devices]
-    if not ids:
-        return {}
-
-    from django.db.models import BooleanField, OuterRef, Subquery
-
-    from ..models import CheckResult
-
-    latest_ok = (CheckResult.objects.filter(device_check=OuterRef("pk"))
-                 .order_by("-time", "-id").values("ok")[:1])
-    rows = (DeviceCheck.objects.filter(enabled=True, device_id__in=ids)
-            .annotate(latest_ok=Subquery(latest_ok, output_field=BooleanField()))
-            .values_list("device_id", "latest_ok"))
-
-    out: dict = {}
-    for device_id, ok in rows:
-        if ok is None:          # never reported
-            out.setdefault(device_id, None)
-        elif not ok:
-            out[device_id] = "down"
-        elif out.get(device_id) != "down":
-            out[device_id] = "up"
-    return out
 
 
 def _check_fields(device, data, current=None) -> dict:
