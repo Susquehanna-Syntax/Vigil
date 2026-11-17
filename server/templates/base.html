@@ -694,7 +694,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <label class="form-label">Checks</label>
     <div id="device-checks-list" class="device-checks-list"></div>
     <div class="device-check-add" id="device-check-add" hidden>
-      <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind">
+      <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind" data-a1="$el">
         <option value="icmp">Ping</option><option value="tcp">TCP port</option>
         <option value="http">HTTP(S)</option><option value="dns">DNS</option>
       </select>

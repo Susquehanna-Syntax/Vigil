@@ -90,11 +90,6 @@ function openDeviceModal(id) {
   openDeviceChecks(d);
 }
 
-//: The handler the Add check button names in its data-act attribute. The
-//: dispatcher resolves handlers by name at click time, so markup and script are
-//: pinned to one string and no inline script is needed under this page's CSP.
-const DEVICE_CHECK_ADD_ACT = 'addDeviceCheck';
-
 function closeDeviceModal() {
   collapseDeviceCheckChart();
   document.getElementById('device-overlay').classList.remove('open');
@@ -131,10 +126,6 @@ function openDeviceChecks(device) {
   section.hidden = !device;
   const add = _deviceEl('device-check-add');
   if (add) add.hidden = !(device && _canEditChecks(device.id));
-  // The dispatcher resolves a data-act handler by name at click time, so naming
-  // it here keeps the markup and this file pinned to one string.
-  const addButton = _deviceEl('device-check-add-btn');
-  if (addButton) addButton.setAttribute('data-act', DEVICE_CHECK_ADD_ACT);
   if (device) {
     setDeviceCheckKind(_deviceEl('device-check-kind'));
     loadDeviceChecks(device.id);
@@ -314,8 +305,7 @@ async function toggleDeviceCheckChart(row) {
       datasets: [{
         label: 'Latency',
         data: results.map(r => ({ x: new Date(r.time).getTime(), y: r.ok ? r.latency_ms : null })),
-        borderColor: tok('--mint'), backgroundColor: 'rgba(var(--rgb-mint), var(--tint-a))',
-        borderWidth: 1.5, pointRadius: 2, fill: true, spanGaps: false,
+        borderColor: tok('--mint'), borderWidth: 1.5, pointRadius: 2, fill: false, spanGaps: false,
       }],
     },
     options: {
@@ -379,7 +369,7 @@ async function toggleDeviceCheck(checkId, enabled) {
 }
 
 async function deleteDeviceCheck(checkId) {
-  if (!await confirmModal('Delete this check? Its results stay until they age out.',
+  if (!await confirmModal('Delete this check and its results?',
     { title: 'Delete check', confirmText: 'Delete', danger: true })) return;
   try {
     await apiJson(_checkPath(checkId), { method: 'DELETE' });
@@ -468,13 +458,14 @@ navigateTo = function(pageName) {
   if (pageName === 'inventory') loadDevices();
 };
 
-/* Two handlers left their markup as inline onclick attributes: the device id
-   interpolated into a JS string literal. delegateClick plus the data-act
-   dispatcher is how every other button here is wired, and the CSP on this page
-   carries no 'unsafe-inline' to make the old form legal anyway. */
+/* This one applied escHtml inside an onclick attribute — escaping for the
+   wrong context, harmless only because the value is a server UUID. */
 delegateClick('[data-device-edit]', (el) => openDeviceModal(el.dataset.deviceEdit));
 
-// A row click opens or closes its latency chart. Its action buttons are not
-// rows — the dispatcher handles them first and stops the click there — so
-// Disable and Delete never toggle the chart of the check they belong to.
-delegateClick('.device-check-row', (el) => toggleDeviceCheckChart(el));
+// A row click opens or closes its latency chart. The data-act dispatcher and
+// this listener both sit on the document, so a click on the row's own toggle or
+// Delete button must be skipped here or it would open the chart too.
+delegateClick('.device-check-row', (el, ev) => {
+  if (ev.target.closest('[data-act]')) return;
+  toggleDeviceCheckChart(el);
+});

@@ -374,14 +374,14 @@ class DeviceListCheckStateTests(_AdminMixin, TestCase):
         # enabled checks with each one's newest result (a Subquery inside the
         # SELECT, not a round trip per check), which of those succeeded, and two
         # reads of the caller's own site grants.
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(4):
             states, _ = self._states()
         self.assertEqual(states["q-a"], "up")
 
         for name in ("q-d", "q-e"):
             device = make_device(name)
             self._result(make_check(device), True)
-        with self.assertNumQueries(5):
+        with self.assertNumQueries(4):
             states, _ = self._states()
         self.assertEqual(states["q-e"], "up")
 

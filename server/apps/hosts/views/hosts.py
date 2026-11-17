@@ -172,12 +172,9 @@ def unmanaged_devices(request):
     """List every unmanaged device, or add one (manual network inventory)."""
     if request.method == "GET":
         devices = list(UnmanagedDevice.objects.all())
-        # The views in this module import IsAdmin locally (the star import from
-        # _common is a different namespace at call time), so use the same form.
-        from apps.accounts.permissions import IsAdmin as _IsAdmin
         data = UnmanagedDeviceSerializer(devices, many=True).data
         states = _device_states(devices)
-        is_admin = _IsAdmin().has_permission(request, None)
+        is_admin = IsAdmin().has_permission(request, None)
         can_edit = {d.id: _device_can_edit(request, d, is_admin) for d in devices}
         for row, device in zip(data, devices):
             # check_state is the dot on the row; can_edit_checks says whether
@@ -188,7 +185,6 @@ def unmanaged_devices(request):
 
     # Editing and deleting a device are admin-only; adding one is the same kind
     # of inventory write (SEC-1).
-    from apps.accounts.permissions import IsAdmin
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
     site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
@@ -274,65 +270,40 @@ def _device_can_edit(request, device, is_admin) -> bool:
     return bool(is_admin and not scoping.write_denied(request.user, device))
 
 
-#: The latest result per check, read with one query for a whole device list. Its
-#: primary key doubles as the verdict: it is looked up in the set of ids that
-#: succeeded, so one number carries both "which result" and "was it ok".
-_LATEST_RESULT_OK = "latest_ok"
-#: Whether an enabled check has ever reported. A check nobody has run yet is not
-#: evidence of anything, so it cannot make a device up or down.
-_LATEST_RESULT_EXISTS = "latest_exists"
-
-
 def _device_states(devices) -> dict:
     """``check_state`` for a page of devices: up, down, or null.
 
     ``"down"`` when any enabled check's latest result failed, ``"up"`` when
-    every enabled check with a result succeeded, ``null`` when the device has
-    no checks at all or none of them has ever reported — there is nothing to
-    say about a device nobody has polled. Disabled checks say nothing either:
-    a check nobody runs cannot be evidence that a device is down.
+    every enabled check that has reported succeeded, ``null`` when the device
+    has no enabled checks or none of them has ever reported. Disabled checks
+    say nothing: a check nobody runs is not evidence either way.
 
-    Two queries for the whole list, whatever its length: one for the enabled
-    checks, carrying each one's newest result as a Subquery inside that single
-    SELECT rather than a round trip per device, and one for the ids among those
-    results that succeeded. A device with no checks is absent from the answer;
-    callers read an absent device as None.
+    One query for the whole list: the enabled checks of these devices, each
+    carrying its newest result's ``ok`` as a Subquery. A device with no checks
+    is absent from the answer; callers read an absent device as None.
     """
     ids = [d.id for d in devices]
     if not ids:
         return {}
 
-    from django.db.models import BigAutoField, Exists, OuterRef, Subquery
+    from django.db.models import BooleanField, OuterRef, Subquery
 
     from ..models import CheckResult
 
-    latest = (CheckResult.objects.filter(device_check=OuterRef("pk"))
-              .order_by("-time", "-id").values("pk")[:1])
-    rows = list(DeviceCheck.objects.filter(enabled=True, device_id__in=ids)
-                .annotate(**{_LATEST_RESULT_OK: Subquery(latest, output_field=BigAutoField()),
-                             _LATEST_RESULT_EXISTS: Exists(CheckResult.objects
-                                                           .filter(device_check=OuterRef("pk")))})
-                .values("device_id", _LATEST_RESULT_OK, _LATEST_RESULT_EXISTS))
-    ok_ids = set(CheckResult.objects.filter(pk__in=[row[_LATEST_RESULT_OK] for row in rows
-                                                    if row[_LATEST_RESULT_OK] is not None],
-                                            ok=True).values_list("pk", flat=True))
+    latest_ok = (CheckResult.objects.filter(device_check=OuterRef("pk"))
+                 .order_by("-time", "-id").values("ok")[:1])
+    rows = (DeviceCheck.objects.filter(enabled=True, device_id__in=ids)
+            .annotate(latest_ok=Subquery(latest_ok, output_field=BooleanField()))
+            .values_list("device_id", "latest_ok"))
 
-    by_device: dict = {}
-    for row in rows:
-        entry = by_device.setdefault(row["device_id"], {"reported": 0, "failed": 0})
-        if row[_LATEST_RESULT_EXISTS]:
-            entry["reported"] += 1
-            # A result can only be named by the Subquery if it exists, so a
-            # missing id here is one that succeeded: no match means not ok.
-            if row[_LATEST_RESULT_OK] not in ok_ids:
-                entry["failed"] += 1
-
-    out = {}
-    for device_id, entry in by_device.items():
-        if entry["reported"] == 0:
-            out[device_id] = None
-        else:
-            out[device_id] = "down" if entry["failed"] else "up"
+    out: dict = {}
+    for device_id, ok in rows:
+        if ok is None:          # never reported
+            out.setdefault(device_id, None)
+        elif not ok:
+            out[device_id] = "down"
+        elif out.get(device_id) != "down":
+            out[device_id] = "up"
     return out
 
 

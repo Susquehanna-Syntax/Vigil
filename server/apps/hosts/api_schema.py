@@ -115,7 +115,7 @@ class HostsDeviceSerializer(serializers.Serializer):
         help_text="What the device's checks last said: 'up' when every enabled "
                   "check's latest result was ok, 'down' when any was not, and "
                   "null when the device has no checks or none has ever reported. "
-                  "Read-only; one query per list, never one per device.")
+                  "Read-only.")
     can_edit_checks = serializers.BooleanField(
         required=False,
         help_text="Whether this user may add, change or delete the device's "
