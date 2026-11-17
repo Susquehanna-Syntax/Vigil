@@ -14,6 +14,10 @@ declare function _sessionLeave(reason: 'idle' | 'max'): void;
  *  list; vigil-contentyaml.js calls it behind a typeof guard). */
 declare function loadPlaybooks(): unknown;
 
+/** Defined in server/static/js/vigil-reprovision.js (the Rebuild modal for a
+ *  host, opened from its drawer's action menu; hostname is used for the title). */
+declare function openRebuildModal(hostId: string|number, hostname?: string): void;
+
 /** Defined in server/static/js/vigil-automations.js (refreshes the automation
  *  list; vigil-contentyaml.js calls it behind a typeof guard). */
 declare function loadAutomations(): unknown;
@@ -43,10 +47,8 @@ declare function refreshHostCards(root?: HTMLElement|null): Promise<void>;
  *  `.host-os-logo[data-os]` under `root`; same reasoning as refreshHostCards). */
 declare function _injectOsLogos(root?: HTMLElement|null): void;
 
-/** Defined in server/static/js/vigil-host-cards.js (the tag combobox of the open
- *  host drawer keeps its own copy of the host's tags; vigil-tags.js writes an
- *  entry into it from that page's datalist). */
-declare const _detailTagState: { hostId: string|null, tags: string[] };
+// _detailTagState is defined in server/static/js/vigil-host-cards.js, now in
+// tsconfig's files list — no declaration needed.
 
 /** Defined in server/static/js/vigil-host-cards.js (adds one tag to the open
  *  host and saves). */

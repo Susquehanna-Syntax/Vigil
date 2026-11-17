@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-host-cards.js
 // Owns: Dashboard host cards, host detail drawer, host CRUD actions,
 //   pin bar (Monitor page), and the host dropdown selector.
@@ -9,14 +10,21 @@
 // API: GET/PATCH /api/v1/hosts/{id}/, GET /api/v1/metrics/{id}/...,
 //   POST /api/v1/hosts/{id}/{approve,reject}/, DELETE /api/v1/hosts/{id}/
 
+/** @typedef {{id: string, hostname: string, os: string, ip: string, kernel: string, status: string,
+ *  mode: string, modeDisplay: string, lastCheckin: string, agentVersion: string, tags: string,
+ *  siteName: string, siteId: string}} HostCardDataset */
+
 /* ── Host detail panel ───────────────────────────────────────────────── */
+/** @type {HTMLElement} */
 const overlay = document.getElementById('detail-overlay');
+/** @type {HTMLElement} */
 const panel = document.getElementById('detail-panel');
 
+/** @param {HTMLElement & {dataset: HostCardDataset}} card @returns {void} */
 function openHostDetail(card) {
   const d = card.dataset;
-  document.getElementById('detail-hostname').textContent = d.hostname;
-  document.getElementById('detail-meta').textContent =
+  /** @type {HTMLElement} */ (document.getElementById('detail-hostname')).textContent = d.hostname;
+  /** @type {HTMLElement} */ (document.getElementById('detail-meta')).textContent =
     d.os + ' · ' + d.ip + (d.kernel ? ' · ' + d.kernel : '');
 
   const logoEl = document.getElementById('detail-os-logo');
@@ -25,17 +33,17 @@ function openHostDetail(card) {
     logoEl.appendChild(osLogoNode(d.os));
   }
 
-  const dot = document.getElementById('detail-status-dot');
+  const dot = /** @type {HTMLElement} */ (document.getElementById('detail-status-dot'));
   dot.className = 'status-dot ' + d.status;
 
   const statusNames = {online: 'Online', offline: 'Offline', pending: 'Pending Enrollment'};
-  document.getElementById('detail-status-text').textContent = statusNames[d.status] || d.status;
+  /** @type {HTMLElement} */ (document.getElementById('detail-status-text')).textContent = statusNames[d.status] || d.status;
 
-  const badge = document.getElementById('detail-mode-badge');
+  const badge = /** @type {HTMLElement} */ (document.getElementById('detail-mode-badge'));
   badge.textContent = d.modeDisplay;
   badge.className = 'mode-badge mode-' + d.mode;
 
-  document.getElementById('detail-last-checkin').textContent =
+  /** @type {HTMLElement} */ (document.getElementById('detail-last-checkin')).textContent =
     d.lastCheckin ? 'Recent' : 'Never';
 
   // Agent version — colour mint when it matches the server's expected
@@ -48,11 +56,11 @@ function openHostDetail(card) {
 
   // Force-update control: only meaningful when the host actually runs
   // tasks (monitor-mode agents never will).
-  const updateBtn = document.getElementById('detail-update-agent-btn');
+  const updateBtn = /** @type {HTMLElement} */ (document.getElementById('detail-update-agent-btn'));
   if (updateBtn) updateBtn.style.display = (d.mode === 'monitor') ? 'none' : '';
 
   // Quick actions based on mode
-  const actions = document.getElementById('detail-actions');
+  const actions = /** @type {HTMLElement} */ (document.getElementById('detail-actions'));
   if (d.mode === 'monitor') {
     actions.innerHTML = '<div style="color: var(--text-3); font-size: 13px;">This host is in monitor mode — no task execution.</div>';
   } else {
@@ -381,11 +389,11 @@ async function loadDetailMetrics(hostId) {
         return true;
       });
     }
-    const card = metricCards[i];
-    const valueEl = card.querySelector('.metric-card-value');
-    const fillEl = card.querySelector('.metric-card-fill');
+    const card = /** @type {HTMLElement} */ (metricCards[i]);
+    const valueEl = /** @type {HTMLElement} */ (card.querySelector('.metric-card-value'));
+    const fillEl = /** @type {HTMLElement} */ (card.querySelector('.metric-card-fill'));
     if (pts.length) {
-      const latest = pts.sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+      const latest = pts.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0];
       const pct = Math.round(latest.value);
       valueEl.textContent = pct + '%';
       fillEl.style.width = pct + '%';
@@ -396,7 +404,7 @@ async function loadDetailMetrics(hostId) {
   });
 
   // CPU History chart
-  const cpuCanvas = document.getElementById('detail-chart-cpu');
+  const cpuCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById('detail-chart-cpu'));
   if (detailChartCpu) detailChartCpu.destroy();
   const cpuFiltered = cpuData
     .filter(p => (p.labels || {}).core === 'total')
@@ -425,10 +433,10 @@ async function loadDetailMetrics(hostId) {
   });
 
   // Network I/O chart
-  const netCanvas = document.getElementById('detail-chart-net');
+  const netCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById('detail-chart-net'));
   if (detailChartNet) detailChartNet.destroy();
-  const recvSorted = netRecv.sort((a, b) => new Date(a.time) - new Date(b.time));
-  const sentSorted = netSent.sort((a, b) => new Date(a.time) - new Date(b.time));
+  const recvSorted = netRecv.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  const sentSorted = netSent.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   const recvByIface = groupByLabel(recvSorted, 'interface');
   const sentByIface = groupByLabel(sentSorted, 'interface');
   const iface = Object.keys(recvByIface)[0] || Object.keys(sentByIface)[0];
@@ -571,11 +579,11 @@ function togglePin(hostId, hostname, status, btnEl) {
    rather than preventing it. The button now carries no handler at all and the
    values come from the dropdown item's existing data-* attributes, which is
    the pattern base.html already uses for the detail-panel delete button. */
-document.addEventListener('click', (ev) => {
-  const btn = ev.target.closest && ev.target.closest('.hdi-pin');
+document.addEventListener('click', (/** @type {MouseEvent} */ ev) => {
+  const btn = /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (ev.target).closest('.hdi-pin'));
   if (!btn) return;
   ev.stopPropagation();
-  const item = btn.closest('.host-dropdown-item');
+  const item = /** @type {HTMLElement} */ (btn.closest('.host-dropdown-item'));
   if (!item) return;
   const { hostId, hostname, status } = item.dataset;
   togglePin(hostId, hostname, status, btn);
@@ -623,7 +631,7 @@ function renderPinBar() {
   });
   // Sync pin buttons in dropdown
   document.querySelectorAll('.hdi-pin').forEach(btn => {
-    const item = btn.closest('.host-dropdown-item');
+    const item = /** @type {HTMLElement} */ (btn.closest('.host-dropdown-item'));
     if (item && isPinned(item.dataset.hostId)) btn.classList.add('pinned');
     else btn.classList.remove('pinned');
   });
@@ -637,12 +645,12 @@ function toggleHostDropdown(e) {
 
 document.addEventListener('click', e => {
   const dd = document.getElementById('host-dropdown');
-  if (dd && !dd.contains(e.target) && e.target.id !== 'host-selector-btn') {
+  if (dd && !dd.contains(/** @type {Node} */ (e.target)) && /** @type {HTMLElement} */ (e.target).id !== 'host-selector-btn') {
     dd.classList.remove('open');
   }
 });
 
-document.querySelectorAll('.host-dropdown-item').forEach(item => {
+document.querySelectorAll('.host-dropdown-item').forEach((/** @type {HTMLElement} */ item) => {
   item.addEventListener('click', () => {
     selectMonitorHost(item.dataset.hostId);
     document.getElementById('host-dropdown').classList.remove('open');
@@ -676,9 +684,9 @@ async function _fetchCardMetrics(ids) {
   return all;
 }
 
-async function refreshHostCards(root) {
+async function refreshHostCards(/** @type {HTMLElement=} */ root) {
   // Skip cards inside the collapsed inactive section — no live data needed.
-  const cards = [...(root || document).querySelectorAll('.host-card:not([data-inactive="1"])')];
+  const cards = [.../** @type {NodeListOf<HTMLElement & {dataset: HostCardDataset}>} */ ((root || document).querySelectorAll('.host-card:not([data-inactive="1"])'))];
   const ids = cards.filter(c => c.dataset.id && c.dataset.status === 'online').map(c => c.dataset.id);
   if (!ids.length) return;
   let all = {};
@@ -704,20 +712,20 @@ async function refreshHostCards(root) {
     const cpuPts = cpuData.filter(p => (p.labels || {}).core === 'total');
     if (cpuPts.length && cpuEl) {
       const v = Math.round(cpuPts[0].value);
-      cpuEl.querySelector('.host-metric-value').textContent = v + '%';
-      cpuEl.querySelector('.host-metric-fill').style.width = v + '%';
+      /** @type {HTMLElement} */ (cpuEl.querySelector('.host-metric-value')).textContent = v + '%';
+      /** @type {HTMLElement} */ (cpuEl.querySelector('.host-metric-fill')).style.width = v + '%';
     }
     if (memData.length && memEl) {
       const v = Math.round(memData[0].value);
-      memEl.querySelector('.host-metric-value').textContent = v + '%';
-      memEl.querySelector('.host-metric-fill').style.width = v + '%';
+      /** @type {HTMLElement} */ (memEl.querySelector('.host-metric-value')).textContent = v + '%';
+      /** @type {HTMLElement} */ (memEl.querySelector('.host-metric-fill')).style.width = v + '%';
     }
     if (diskData.length && diskEl) {
       // Aggregate latest disk usage across mounts — show the highest %.
       const max = diskData.reduce((m, p) => Math.max(m, p.value || 0), 0);
       const v = Math.round(max);
-      diskEl.querySelector('.host-metric-value').textContent = v + '%';
-      diskEl.querySelector('.host-metric-fill').style.width = v + '%';
+      /** @type {HTMLElement} */ (diskEl.querySelector('.host-metric-value')).textContent = v + '%';
+      /** @type {HTMLElement} */ (diskEl.querySelector('.host-metric-fill')).style.width = v + '%';
     }
 
     // Network rates require two adjacent samples. Sum across interfaces
@@ -732,11 +740,11 @@ async function refreshHostCards(root) {
       }
       let total = 0;
       for (const samples of Object.values(byIface)) {
-        samples.sort((a,b) => new Date(a.time) - new Date(b.time));
+        samples.sort((a,b) => new Date(a.time).getTime() - new Date(b.time).getTime());
         if (samples.length < 2) continue;
         const a = samples[samples.length - 2];
         const b = samples[samples.length - 1];
-        const dt = (new Date(b.time) - new Date(a.time)) / 1000;
+        const dt = (new Date(b.time).getTime() - new Date(a.time).getTime()) / 1000;
         if (dt > 0) total += Math.max(0, (b.value - a.value) / dt);
       }
       return total;
@@ -744,14 +752,14 @@ async function refreshHostCards(root) {
     const inRate = _rate(netInData);
     const outRate = _rate(netOutData);
     if (netInEl) {
-      netInEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(inRate);
+      /** @type {HTMLElement} */ (netInEl.querySelector('.host-metric-value')).textContent = _formatBytesPerSec(inRate);
       const pct = Math.min(100, Math.round((inRate / (1024*1024)) * 100));
-      netInEl.querySelector('.host-metric-fill').style.width = pct + '%';
+      /** @type {HTMLElement} */ (netInEl.querySelector('.host-metric-fill')).style.width = pct + '%';
     }
     if (netOutEl) {
-      netOutEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(outRate);
+      /** @type {HTMLElement} */ (netOutEl.querySelector('.host-metric-value')).textContent = _formatBytesPerSec(outRate);
       const pct = Math.min(100, Math.round((outRate / (1024*1024)) * 100));
-      netOutEl.querySelector('.host-metric-fill').style.width = pct + '%';
+      /** @type {HTMLElement} */ (netOutEl.querySelector('.host-metric-fill')).style.width = pct + '%';
     }
   }
 }
@@ -772,7 +780,7 @@ refreshHostCards();
 
 function filterHostCards(query) {
   const q = (query || '').trim().toLowerCase();
-  for (const card of document.querySelectorAll('.host-card')) {
+  for (const card of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.host-card'))) {
     if (!q) {
       card.classList.remove('hidden');
       continue;
@@ -788,7 +796,7 @@ function filterHostCards(query) {
   }
   // Auto-expand the inactive section when a search is active so matches
   // there don't stay hidden behind a collapsed details element.
-  const inactive = document.getElementById('inactive-hosts-section');
+  const inactive = /** @type {HTMLDetailsElement} */ (document.getElementById('inactive-hosts-section'));
   if (inactive) inactive.open = !!q;
 }
 

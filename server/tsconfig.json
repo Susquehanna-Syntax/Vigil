@@ -68,6 +68,8 @@
     "static/js/vigil-policies.js",
     "static/js/vigil-containers.js",
     "static/js/vigil-settings.js",
-    "static/js/vigil-deploy.js"
+    "static/js/vigil-deploy.js",
+    "static/js/vigil-host-cards.js",
+    "static/js/vigil-automations.js"
   ]
 }

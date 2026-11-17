@@ -1,20 +1,79 @@
+// @ts-check
 // vigil-automations.js
 // Owns: the Automation sub-panel on the Playbooks page. Create rules that run
 // a task or playbook when an event fires (with severity/tag filters) or on a
 // cron schedule. Backed by /api/v1/automations/.
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
-let _autoEvents = {};      // event name -> label
+/** The five cron fields as `views._row` renders them — each a string. */
+/** @typedef {{minute: string, hour: string, dom: string, month: string, dow: string}} AutomationCron */
+/** One automation as `apps/automations/views.py:_row` renders it and as the
+ *  editor reads it back. Every id in that JSON is already `str(...)`-ed, so all
+ *  of them — and the ones a dataset attribute or a hash link supplies — are
+ *  strings here; that is also why rows compare with String() rather than ===.
+ *  `auto_schedule_display` is the annotation `_index` adds on top of `_row`,
+ *  and an automation opened from `#open/automation/<id>` before the index
+ *  arrives carries only its id. */
+/** @typedef {{id: string, name?: string, enabled?: boolean, allow_high_risk?: boolean,
+ *  site_id?: string|null, trigger?: string, event?: string, min_severity?: string,
+ *  event_tags?: string[], event_rule?: string|null, event_rule_name?: string|null,
+ *  event_host?: string|null, event_host_name?: string|null, match_text?: string,
+ *  match_field?: string, match_mode?: string, condition_logic?: string,
+ *  conditions?: {field: string, op: string, value?: any}[], cron?: AutomationCron,
+ *  cron_display?: string, auto_schedule_display?: string|null, action_kind?: string,
+ *  dispatch_mode?: string, task_definition?: string|null, task_auto_sync?: boolean,
+ *  task_stale?: boolean, task_name?: string|null, playbook_name?: string,
+ *  params_override?: Record<string, any>, inputs?: Record<string, any>,
+ *  target?: string, target_tags?: string[], target_host?: string|null,
+ *  last_run?: string|null, run_count?: number} & Record<string, any>} AutomationRow */
+/** A task definition row / a playbook row / a host row, as far as this panel reads
+ *  them: an id and a name, plus the declared `inputs` the Inputs form mounts. */
+/** @typedef {{id: string|number, name: string, hostname?: string, inputs?: any[],
+ *  parsed_spec?: {inputs?: any[], actions?: {type: string, params?: Record<string, any>}[]}}} AutoPickRow */
+/** A task definition detail row, as far as the Inputs form and `openInputsModal`
+ *  read it: a name plus the parsed spec's declared `inputs` and per-action list.
+ *  The API is the only writer of this cache, so both are always present; the
+ *  modal reads `parsed_spec.actions` and requires a `name`. */
+/** @typedef {{id: string|number, name: string, inputs?: any[],
+ *  parsed_spec: {inputs?: any[], actions?: {type: string, params?: Record<string, any>}[]}}} AutoTaskDef */
+
+/** One condition field of /api/v1/automations/condition-meta/ — `kind` is
+ *  'severity' | 'number' | 'string' | 'bool', and `operators` holds the operator
+ *  names this field accepts. */
+/** @typedef {{name: string, label: string, kind: string, help: string, operators: string[]}} AutoCondField */
+/** One operator of the same payload. */
+/** @typedef {{name: string, label: string}} AutoCondOperator */
+/** What /api/v1/automations/condition-meta/ returns. */
+/** @typedef {{fields: AutoCondField[], operators: AutoCondOperator[], valueless: string[]}} AutoCondMeta */
+
+/** event name -> label */
+/** @type {Record<string, string>} */
+let _autoEvents = {};
+/** @type {AutoCondMeta} */
 let _autoCondMeta = { fields: [], operators: [], valueless: [] };
-let _autoDefs = [];        // task definitions
-let _autoPlaybooks = [];   // playbook names
-let _autoHosts = [];       // selectable hosts
-let _autoRules = [];       // alert rules (for specific-event)
-let _autoParamsOverride = {};  // task input overrides for the automation being edited
-let _autoInputs = {};          // values for the picked playbook's or task's declared inputs
-let _autoDefCache = {};        // definition id → its detail row, so the Inputs button is instant
-let _autoPlaybookCache = {};   // playbook id → its detail row, for the same reason on playbooks
-let _allAutomations = [];  // unfiltered, so the search box can re-filter without refetching
+/** @type {AutoPickRow[]} task definitions */
+let _autoDefs = [];
+/** @type {AutoPickRow[]} playbook names */
+let _autoPlaybooks = [];
+/** @type {AutoPickRow[]} selectable hosts */
+let _autoHosts = [];
+/** @type {{id: string|number, name: string, severity?: string}[]} alert rules (for specific-event) */
+let _autoRules = [];
+/** task input overrides for the automation being edited */
+/** @type {Record<string, Record<string, any>>} */
+let _autoParamsOverride = {};
+/** values for the picked playbook's or task's declared inputs */
+/** @type {Record<string, any>} */
+let _autoInputs = {};
+/** definition id → its detail row, so the Inputs button is instant */
+/** @type {Record<string, AutoTaskDef>} */
+let _autoDefCache = {};
+/** playbook id → its detail row, for the same reason on playbooks */
+/** @type {Record<string|number, {inputs?: any[]}>} */
+let _autoPlaybookCache = {};
+/** unfiltered, so the search box can re-filter without refetching */
+/** @type {AutomationRow[]} */
+let _allAutomations = [];
 
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
@@ -46,7 +105,7 @@ async function loadAutomations() {
 }
 
 function _filterAutomations() {
-  const q = (document.getElementById('auto-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('auto-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allAutomations;
   return _allAutomations.filter(a =>
     (a.name || '').toLowerCase().includes(q) ||
@@ -104,25 +163,27 @@ function _renderAutomations(autos) {
 
 function _wireAutoCards(autos) {
   const list = document.getElementById('automations-list');
-  list.querySelectorAll('[data-au-del]').forEach(b => b.addEventListener('click', async () => {
+  list.querySelectorAll('[data-au-del]').forEach((/** @type {HTMLElement & {dataset: AutomationCardDataset}} */ b) => b.addEventListener('click', async () => {
     if (!(await confirmModal('Delete this automation?', { danger: true, confirmText: 'Delete' }))) return;
     await fetch(`/api/v1/automations/${b.dataset.auDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
     loadAutomations();
   }));
-  list.querySelectorAll('[data-au-toggle]').forEach(b => b.addEventListener('click', async () => {
+  list.querySelectorAll('[data-au-toggle]').forEach((/** @type {HTMLElement & {dataset: AutomationCardDataset}} */ b) => b.addEventListener('click', async () => {
     await apiJson(`/api/v1/automations/${b.dataset.auToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: b.dataset.en !== 'true' }) });
     loadAutomations();
   }));
-  list.querySelectorAll('[data-au-run]').forEach(b => b.addEventListener('click', async () => {
+  list.querySelectorAll('[data-au-run]').forEach((/** @type {HTMLElement & {dataset: AutomationCardDataset}} */ b) => b.addEventListener('click', async () => {
     try { const r = await apiJson(`/api/v1/automations/${b.dataset.auRun}/run/`, { method: 'POST', body: '{}' });
       if (!r.dispatched && r.reason) showToast(`Nothing dispatched. ${r.reason}`, 'error');
       else showToast(`Dispatched to ${r.dispatched} host${r.dispatched === 1 ? '' : 's'}`, 'success');
       loadAutomations();
     } catch (e) { showToast('Run failed: ' + e.message, 'error'); }
   }));
-  list.querySelectorAll('[data-au-edit]').forEach(b => b.addEventListener('click', () =>
+  list.querySelectorAll('[data-au-edit]').forEach((/** @type {HTMLElement & {dataset: AutomationCardDataset}} */ b) => b.addEventListener('click', () =>
     _openAutoEditor(autos.find(a => a.id === b.dataset.auEdit))));
 }
+
+/** @typedef {{auDel?: string, auToggle?: string, auRun?: string, auEdit?: string, en?: string}} AutomationCardDataset */
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
 function _fillEditorOptions() {
@@ -131,11 +192,11 @@ function _fillEditorOptions() {
   // One select for the whole trigger. "schedule" is a value alongside the
   // events rather than a separate kind, because picking a kind and then an
   // event was two choices to express one thing.
-  const ev = document.getElementById('auto-trigger');
+  const ev = /** @type {HTMLSelectElement} */ (document.getElementById('auto-trigger'));
   if (ev) ev.innerHTML =
     Object.entries(_autoEvents).map(([k, v]) => `<option value="${escAttr(k)}">${escHtml(v)}</option>`).join('')
     + '<option value="schedule">On a schedule</option>';
-  const rule = document.getElementById('auto-event-rule');
+  const rule = /** @type {HTMLSelectElement} */ (document.getElementById('auto-event-rule'));
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
     _autoRules.map(r => `<option value="${escAttr(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
   // Scopes which alerts fire this automation, not which hosts it runs on.
@@ -146,11 +207,11 @@ function _fillEditorOptions() {
 
 // Open the picker for the current action kind and store the choice.
 function _autoPickAction() {
-  const kind = document.getElementById('auto-action-kind').value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind')).value;
   if (kind === 'task') {
     openPicker({ type: 'task', title: 'Pick a task to run', onSelect: (item) => {
       if (item.raw && !_autoDefs.some(d => String(d.id) === String(item.key))) _autoDefs.push(item.raw);
-      document.getElementById('auto-action-task').value = item.key;
+      /** @type {HTMLInputElement} */ (document.getElementById('auto-action-task')).value = item.key;
       _autoParamsOverride = {};   // new task — old inputs are meaningless
       _autoInputs = {};           // ditto for its declared inputs
       _autoRefreshActionLabel();
@@ -158,7 +219,7 @@ function _autoPickAction() {
   } else {
     openPicker({ type: 'playbook', title: 'Pick a playbook to run', onSelect: (item) => {
       if (!_autoPlaybooks.some(b => b.name === item.key)) _autoPlaybooks.push(item.raw);
-      document.getElementById('auto-action-playbook').value = item.key;
+      /** @type {HTMLInputElement} */ (document.getElementById('auto-action-playbook')).value = item.key;
       _autoInputs = {};
       _autoRefreshActionLabel();
     } });
@@ -168,7 +229,7 @@ function _autoPickAction() {
 function _autoPickHost() {
   openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
     if (!_autoHosts.some(h => String(h.id) === String(item.key))) _autoHosts.push(item.raw);
-    document.getElementById('auto-target-host').value = item.key;
+    /** @type {HTMLInputElement} */ (document.getElementById('auto-target-host')).value = item.key;
     _autoRefreshHostLabel();
   } });
 }
@@ -177,9 +238,9 @@ function _autoPickHost() {
 // or the task's. The playbook list row carries them; a task's are in its
 // definition detail, fetched once per editor session.
 async function _autoActionInputs() {
-  const kind = document.getElementById('auto-action-kind').value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind')).value;
   if (kind === 'playbook') {
-    const name = (document.getElementById('auto-action-playbook').value || '').trim().toLowerCase();
+    const name = (/** @type {HTMLInputElement} */ (document.getElementById('auto-action-playbook')).value || '').trim().toLowerCase();
     if (!name) return [];
     const row = _autoPlaybooks.find(p => (p.name || '').toLowerCase() === name);
     if (!row) return [];
@@ -190,19 +251,19 @@ async function _autoActionInputs() {
     }
     return _autoPlaybookCache[row.id].inputs || [];
   }
-  const id = document.getElementById('auto-action-task').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('auto-action-task')).value;
   if (!id) return [];
   if (!_autoDefCache[id]) {
-    _autoDefCache[id] = await apiJson(`/api/v1/tasks/definitions/${id}/`)
-      .catch(() => ({ parsed_spec: {} }));
+    _autoDefCache[id] = /** @type {AutoTaskDef} */ (await apiJson(`/api/v1/tasks/definitions/${id}/`)
+      .catch(() => ({ id: id, name: '', parsed_spec: {} })));
   }
   return (_autoDefCache[id].parsed_spec && _autoDefCache[id].parsed_spec.inputs) || [];
 }
 
 function _autoInputsNote() {
-  const note = document.getElementById('auto-inputs-note');
+  const note = /** @type {HTMLElement} */ (document.getElementById('auto-inputs-note'));
   if (!note) return;
-  const kind = document.getElementById('auto-action-kind')?.value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind'))?.value;
   const n = Object.keys(_autoInputs || {}).length;
   if (n && (kind === 'task' || kind === 'playbook')) {
     note.hidden = false;
@@ -217,7 +278,8 @@ function _autoInputsNote() {
 // deploy dialog; a task that declares none keeps the old per-action override
 // editor, and a playbook with none says so — there is nothing to fill.
 async function _openAutoInputs() {
-  const kind = document.getElementById('auto-action-kind').value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind')).value;
+  /** @type {any[]} */
   let inputs;
   try {
     inputs = await _autoActionInputs();
@@ -243,14 +305,14 @@ async function _openAutoInputs() {
       <button class="btn btn-outline btn-sm" data-ai-close>Cancel</button>
       <button class="btn btn-mint btn-sm" data-ai-save>Save</button>
     </div>`);
-  inputsFormMount(m.modal.querySelector('#ai-form'), inputs, _autoInputs);
+  inputsFormMount(/** @type {HTMLElement} */ (m.modal.querySelector('#ai-form')), inputs, _autoInputs);
   m.modal.querySelectorAll('[data-ai-close]').forEach(b => b.addEventListener('click', m.close));
   m.modal.querySelector('[data-ai-adv]')?.addEventListener('click', () => {
     m.close();
     _openAutoParamOverride();
   });
   m.modal.querySelector('[data-ai-save]').addEventListener('click', () => {
-    const read = inputsFormRead(m.modal.querySelector('#ai-form'));
+    const read = inputsFormRead(/** @type {HTMLElement} */ (m.modal.querySelector('#ai-form')));
     if (read.error) return showToast(read.error, 'error');
     _autoInputs = read.values;
     _autoInputsNote();
@@ -260,7 +322,10 @@ async function _openAutoInputs() {
 }
 
 function _openAutoParamOverride() {
-  const id = document.getElementById('auto-action-task').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('auto-action-task')).value;
+  // A picker row is the same /api/v1/tasks/definitions/ row the Playbooks page
+  // types as TaskDef, and openInputsModal reads that shape (`name`,
+  // `parsed_spec.actions`).
   const def = _autoDefs.find(d => String(d.id) === id);
   if (!def) return showToast('Pick a task first', 'error');
   openInputsModal({ def, override: _autoParamsOverride,
@@ -268,15 +333,15 @@ function _openAutoParamOverride() {
 }
 
 function _autoSyncVisibility() {
-  const ev = document.getElementById('auto-trigger').value;
+  const ev = /** @type {HTMLSelectElement} */ (document.getElementById('auto-trigger')).value;
   const isSchedule = ev === 'schedule';
   const trig = isSchedule ? 'schedule' : 'event';
-  document.getElementById('auto-event-fields').style.display = isSchedule ? 'none' : '';
+  /** @type {HTMLElement} */ (document.getElementById('auto-event-fields')).style.display = isSchedule ? 'none' : '';
   document.getElementById('auto-sched-fields').hidden = !isSchedule;
   // The rule picker only means anything for an alert event, and there is more
   // than one of those now.
   const isAlert = !isSchedule && ev.startsWith('alert_');
-  document.getElementById('auto-rule-wrap').style.display = isAlert ? '' : 'none';
+  /** @type {HTMLElement} */ (document.getElementById('auto-rule-wrap')).style.display = isAlert ? '' : 'none';
   // A host scope makes sense for any event that carries one.
   const hostWrap = document.getElementById('auto-event-host-wrap');
   if (hostWrap) hostWrap.style.display = isSchedule ? 'none' : '';
@@ -286,37 +351,37 @@ function _autoSyncVisibility() {
 
   _autoRefreshActionLabel();
 
-  const kind = document.getElementById('auto-action-kind').value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind')).value;
   const inputsBtn = document.getElementById('auto-inputs-btn');
   if (inputsBtn) inputsBtn.hidden = false;
   _autoInputsNote();
 
-  const tgt = document.getElementById('auto-target').value;
+  const tgt = /** @type {HTMLSelectElement} */ (document.getElementById('auto-target')).value;
   document.getElementById('auto-target-tags').hidden = tgt !== 'tags';
   document.getElementById('auto-target-host-btn').hidden = tgt !== 'host';
   // scheduled automations can't target the event host
-  const evOpt = document.querySelector('#auto-target option[value="event_host"]');
+  const evOpt = /** @type {HTMLOptionElement} */ (document.querySelector('#auto-target option[value="event_host"]'));
   if (evOpt) evOpt.disabled = trig === 'schedule';
-  if (trig === 'schedule' && tgt === 'event_host') { document.getElementById('auto-target').value = 'all'; _autoSyncVisibility(); }
+  if (trig === 'schedule' && tgt === 'event_host') { /** @type {HTMLSelectElement} */ (document.getElementById('auto-target')).value = 'all'; _autoSyncVisibility(); }
 }
 
 function _autoRefreshActionLabel() {
-  const kind = document.getElementById('auto-action-kind').value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind')).value;
   const label = document.getElementById('auto-action-label');
   if (kind === 'task') {
-    const id = document.getElementById('auto-action-task').value;
+    const id = /** @type {HTMLInputElement} */ (document.getElementById('auto-action-task')).value;
     const d = _autoDefs.find(x => String(x.id) === String(id));
     label.textContent = d ? d.name : 'Choose a task…';
   } else {
-    const name = document.getElementById('auto-action-playbook').value;
+    const name = /** @type {HTMLInputElement} */ (document.getElementById('auto-action-playbook')).value;
     label.textContent = name || 'Choose a playbook…';
   }
 }
 
 function _autoRefreshHostLabel() {
-  const id = document.getElementById('auto-target-host').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('auto-target-host')).value;
   const h = _autoHosts.find(x => String(x.id) === String(id));
-  document.getElementById('auto-target-host-label').textContent = h ? h.hostname : 'Choose a host…';
+  /** @type {HTMLElement} */ (document.getElementById('auto-target-host-label')).textContent = h ? h.hostname : 'Choose a host…';
 }
 
 // Whether the automation was already allowed high-risk steps when the editor
@@ -325,8 +390,8 @@ let _autoHighRiskWasOn = false;
 
 // The warning shows while the box is ticked and the authorization is new.
 function _autoSyncHighRiskWarning() {
-  const box = document.getElementById('auto-allow-high-risk');
-  const warn = document.getElementById('auto-highrisk-warn');
+  const box = /** @type {HTMLInputElement} */ (document.getElementById('auto-allow-high-risk'));
+  const warn = /** @type {HTMLElement} */ (document.getElementById('auto-highrisk-warn'));
   if (box && warn) warn.style.display = box.checked && !_autoHighRiskWasOn ? '' : 'none';
 }
 
@@ -335,13 +400,17 @@ function _closeAutoEditor() {
   document.getElementById('auto-editor-modal').classList.remove('open');
 }
 
+/** @param {AutomationRow|null} a @returns {void} */
 function _openAutoEditor(a) {
-  const modal = document.getElementById('auto-editor-modal');
+  const modal = /** @type {HTMLElement} */ (document.getElementById('auto-editor-modal'));
+  // dataset.editing is read back at save time to pick PATCH vs POST; a dataset
+  // value is a string on the way in and on the way out.
   modal.dataset.editing = a ? a.id : '';
-  document.getElementById('auto-editor-title').textContent = a ? 'Edit automation' : 'New automation';
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  /** @type {HTMLElement} */ (document.getElementById('auto-editor-title')).textContent = a ? 'Edit automation' : 'New automation';
+  /** @param {string} id @param {any} v @returns {void} */
+  const set = (id, v) => { const el = /** @type {HTMLInputElement} */ (document.getElementById(id)); if (el) el.value = v; };
   set('auto-name', a ? a.name : '');
-  sitePickFill(document.getElementById('auto-site'), document.getElementById('auto-site-field'),
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('auto-site')), /** @type {HTMLElement|null} */ (document.getElementById('auto-site-field')),
     a ? a.site_id : null, { editing: !!a });
   set('auto-trigger', a
     ? (a.trigger === 'schedule' ? 'schedule' : a.event)
@@ -365,9 +434,9 @@ function _openAutoEditor(a) {
   _autoInputs = (a && a.inputs) || {};
   _autoDefCache = {};
   _autoPlaybookCache = {};
-  document.getElementById('auto-enabled').checked = a ? a.enabled : true;
+  /** @type {HTMLInputElement} */ (document.getElementById('auto-enabled')).checked = a ? a.enabled : true;
   _autoHighRiskWasOn = !!(a && a.id && a.allow_high_risk);
-  document.getElementById('auto-allow-high-risk').checked = _autoHighRiskWasOn;
+  /** @type {HTMLInputElement} */ (document.getElementById('auto-allow-high-risk')).checked = _autoHighRiskWasOn;
   _autoSyncHighRiskWarning();
   _autoSyncVisibility();
   _autoRefreshActionLabel();
@@ -380,28 +449,29 @@ function _openAutoEditor(a) {
 // View/edit the referenced task (opens the task editor) or playbook (opens
 // its editor). Playbooks are edited on the Playbooks sub-tab.
 function _viewAutoAction() {
-  const kind = document.getElementById('auto-action-kind').value;
+  const kind = /** @type {HTMLSelectElement} */ (document.getElementById('auto-action-kind')).value;
   if (kind === 'task') {
-    const id = document.getElementById('auto-action-task').value;
+    const id = /** @type {HTMLInputElement} */ (document.getElementById('auto-action-task')).value;
     if (!id) return showToast('Pick a task first', 'error');
     // Stacked task modal — keeps the automation editor open behind it.
-    openTaskModal({ id, onSaved: (def) => {
+    openTaskModal({ id, onSaved: (/** @type {AutoPickRow} */ def) => {
       const idx = _autoDefs.findIndex(d => String(d.id) === String(def.id));
       if (idx >= 0) _autoDefs[idx] = def; else _autoDefs.push(def);
       _autoRefreshActionLabel();
     } });
   } else {
-    const name = document.getElementById('auto-action-playbook').value;
+    const name = /** @type {HTMLInputElement} */ (document.getElementById('auto-action-playbook')).value;
     if (!name) return showToast('Pick a playbook first', 'error');
     const b = _autoPlaybooks.find(x => x.name === name);
     _closeAutoEditor();
-    document.querySelector('#page-playbooks .sub-tab[data-subtab="bl-panel"]')?.click();
+    /** @type {HTMLElement} */ (document.querySelector('#page-playbooks .sub-tab[data-subtab="bl-panel"]'))?.click();
     if (b && typeof _startEdit === 'function') _startEdit(b.id);
   }
 }
 
 async function _saveAutomation() {
-  const v = id => document.getElementById(id).value.trim();
+  /** @param {string} id @returns {string} */
+  const v = id => /** @type {HTMLInputElement} */ (document.getElementById(id)).value.trim();
   // One select carries both: "schedule" is the kind, anything else is the
   // event and implies the kind.
   const when = v('auto-trigger');
@@ -425,10 +495,10 @@ async function _saveAutomation() {
     target_host: v('auto-target-host') || null,
     params_override: _autoParamsOverride,
     inputs: _autoInputs,
-    enabled: document.getElementById('auto-enabled').checked,
-    allow_high_risk: document.getElementById('auto-allow-high-risk').checked,
+    enabled: /** @type {HTMLInputElement} */ (document.getElementById('auto-enabled')).checked,
+    allow_high_risk: /** @type {HTMLInputElement} */ (document.getElementById('auto-allow-high-risk')).checked,
   };
-  const siteId = sitePickValue(document.getElementById('auto-site'), document.getElementById('auto-site-field'));
+  const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (document.getElementById('auto-site')), /** @type {HTMLElement|null} */ (document.getElementById('auto-site-field')));
   if (siteId !== undefined) body.site_id = siteId;
   if (!body.name) return showToast('Name the automation', 'error');
   // Only asked when the flag is being turned on: codes are single-use, so
@@ -466,8 +536,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auto-target-host-btn')?.addEventListener('click', _autoPickHost);
   // Changing task↔playbook clears the previous choice so the label is honest.
   document.getElementById('auto-action-kind')?.addEventListener('change', () => {
-    document.getElementById('auto-action-task').value = '';
-    document.getElementById('auto-action-playbook').value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('auto-action-task')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('auto-action-playbook')).value = '';
     _autoParamsOverride = {};
     _autoInputs = {};
     _autoRefreshActionLabel();
@@ -478,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 document.addEventListener('DOMContentLoaded', () => {
-  const mode = document.getElementById('auto-dispatch-mode');
+  const mode = /** @type {HTMLSelectElement} */ (document.getElementById('auto-dispatch-mode'));
   const note = document.getElementById('auto-dispatch-hint');
   if (!mode || !note) return;
   const sync = () => { note.hidden = mode.value !== 'rollout'; };
@@ -490,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ── Event-host picker (which alerts fire this, not which hosts it runs on) ── */
 
 function _autoRefreshEventHostLabel() {
-  const hidden = document.getElementById('auto-event-host');
+  const hidden = /** @type {HTMLInputElement} */ (document.getElementById('auto-event-host'));
   const label = document.getElementById('auto-event-host-label');
   if (!hidden || !label) return;
   const host = _autoHosts.find(h => String(h.id) === String(hidden.value));
@@ -501,7 +571,7 @@ function _autoPickEventHost() {
   openPicker({ type: 'machine', title: 'Only fire for events on this host', allowAdd: false,
     onSelect: (item) => {
       if (!_autoHosts.some(h => String(h.id) === String(item.key))) _autoHosts.push(item.raw);
-      document.getElementById('auto-event-host').value = item.key;
+      /** @type {HTMLInputElement} */ (document.getElementById('auto-event-host')).value = item.key;
       _autoRefreshEventHostLabel();
     } });
 }
@@ -509,7 +579,7 @@ function _autoPickEventHost() {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auto-event-host-btn')?.addEventListener('click', _autoPickEventHost);
   document.getElementById('auto-event-host-clear')?.addEventListener('click', () => {
-    document.getElementById('auto-event-host').value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('auto-event-host')).value = '';
     _autoRefreshEventHostLabel();
   });
 });
@@ -540,6 +610,12 @@ function _autoFieldMeta(name) {
   return _autoCondMeta.fields.find(f => f.name === name) || _autoCondMeta.fields[0];
 }
 
+/** @param {AutoCondField|{operators: string[]}|undefined} meta @returns {string} */
+function _autoFieldHelp(meta) {
+  return /** @type {AutoCondField} */ (meta).help || '';
+}
+
+/** @param {string} name @returns {string} */
 function _autoOpLabel(name) {
   const op = (_autoCondMeta.operators || []).find(o => o.name === name);
   return op ? op.label : name;
@@ -560,7 +636,7 @@ function _renderAutoConditions() {
       `<option value="${escAttr(o)}"${o === c.op ? ' selected' : ''}>${escHtml(_autoOpLabel(o))}</option>`).join('');
     const needsValue = !(_autoCondMeta.valueless || []).includes(c.op);
     const value = needsValue
-      ? `<input type="text" class="form-control auto-cond-value" data-i="${i}" value="${escAttr(c.value || '')}" placeholder="${escAttr(meta.help || 'value')}" maxlength="500">`
+      ? `<input type="text" class="form-control auto-cond-value" data-i="${i}" value="${escAttr(c.value || '')}" placeholder="${escAttr(_autoFieldHelp(meta) || 'value')}" maxlength="500">`
       : '';
     return `<div class="auto-cond-row">`
       + `<select class="form-control auto-cond-field" data-i="${i}">${fields}</select>`
@@ -570,7 +646,7 @@ function _renderAutoConditions() {
     + `</div>`;
   }).join('');
 
-  host.querySelectorAll('.auto-cond-field').forEach(el => el.addEventListener('change', () => {
+  host.querySelectorAll('.auto-cond-field').forEach((/** @type {HTMLSelectElement} */ el) => el.addEventListener('change', () => {
     const i = Number(el.dataset.i);
     _autoConds[i].field = el.value;
     // The operator list changes with the field; keep the current operator
@@ -579,11 +655,11 @@ function _renderAutoConditions() {
     if (!allowed.includes(_autoConds[i].op)) _autoConds[i].op = allowed[0] || '';
     _renderAutoConditions();
   }));
-  host.querySelectorAll('.auto-cond-op').forEach(el => el.addEventListener('change', () => {
+  host.querySelectorAll('.auto-cond-op').forEach((/** @type {HTMLSelectElement} */ el) => el.addEventListener('change', () => {
     _autoConds[Number(el.dataset.i)].op = el.value;
     _renderAutoConditions();
   }));
-  host.querySelectorAll('.auto-cond-value').forEach(el => el.addEventListener('input', () => {
+  host.querySelectorAll('.auto-cond-value').forEach((/** @type {HTMLInputElement} */ el) => el.addEventListener('input', () => {
     _autoConds[Number(el.dataset.i)].value = el.value;
   }));
 }
