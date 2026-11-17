@@ -62,6 +62,12 @@
 .host-dropdown-item .hdi-pin:hover { color: var(--lemon-ink); background: rgba(var(--rgb-lemon), var(--tint-a)); }
 .host-dropdown-item .hdi-pin.pinned { color: var(--lemon-ink); }
 .host-dropdown-item .hdi-pin svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+/* Inline-style ratchet (S6 08c): the + icon, the small status dot and the meta row. */
+.host-selector-btn-icon { width: 14px; height: 14px; }
+.host-dropdown-item .status-dot-xs { width: 8px; height: 8px; }
+.host-dropdown-item .hdi-meta-row { display: flex; align-items: center; gap: 4px; }
+/* The dropdown's "no hosts yet" line. */
+.host-dropdown-empty { padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
 
 .monitor-host-bar {
   display: flex; align-items: center; gap: 14px;
@@ -211,6 +217,33 @@
   font-weight: 600;
   font-size: 12px;
 }
+
+/* Inline-style ratchet (S6 08c). */
+.mon-jackil-section { margin: 12px 0; }
+.mon-jackil-body { font-size: 13px; }
+.gauge-text-sky { color: var(--sky-ink); }
+.gauge-text-lavender { color: var(--lavender-ink); }
+.gauge-text-mint { color: var(--mint-ink); }
+.gauge-card-label-flush { margin-bottom: 0; }
+.gauge-card-value-peach { color: var(--peach-ink); margin-top: 18px; }
+.gauge-load-sub { font-size: 11px; color: var(--text-3); margin-top: 10px; }
+.chart-card-latest {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; color: var(--text-3);
+}
+/* Beats `.host-os-logo` (0,1,0) the same way a later inline style used to: the
+   monitor bar's OS mark sits at full strength. */
+#monitor-content #mon-os-logo { opacity: 1; }
+.disk-bars-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 20px; }
+.net-legend { display: flex; gap: 12px; font-size: 11px; }
+.net-legend-recv { color: var(--sky-ink); }
+.net-legend-sent { color: var(--peach-ink); }
+.mon-section-label-far { margin-top: 36px; }
+.proc-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.chart-card-flush { padding: 0; overflow: hidden; }
+.chart-card-header-flush { padding: 16px 18px 10px; }
+.proc-table .proc-th-num { text-align: right; }
+.proc-table .proc-td-wait { color: var(--text-3); text-align: center; padding: 20px; }
 
 /* ═══════════════════════════════════════════
    INVENTORY TABLE

@@ -46,7 +46,7 @@
               data-hint="Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched.">?</span>
         <button class="btn btn-mint" data-act="openRolloutStart">New rollout</button>
       </div>
-      <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
+      <div id="rollout-list" class="rollout-list">
         <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
       </div>
     </div>
@@ -66,7 +66,7 @@
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="hist-search"
              placeholder="Search history by name, host, or outcome…">
-      <div class="sa-chips" id="hist-filters" style="margin:0;">
+      <div class="sa-chips" id="hist-filters">
         <button type="button" class="sa-chip on" data-src="automation,playbook">All</button>
         <button type="button" class="sa-chip" data-src="playbook">Playbooks</button>
         <button type="button" class="sa-chip" data-src="automation">Automations</button>
@@ -98,7 +98,7 @@
     <div class="bl-hint">Who may see and change it. A site's playbook runs on that site's hosts only.</div>
   </div>
   <div class="bl-field">
-    <label>Description <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
+    <label>Description <span class="bl-label-optional">(optional)</span></label>
     <textarea class="form-control bl-desc" id="bl-desc" rows="3" placeholder="What this playbook does" maxlength="2000"></textarea>
   </div>
   <div class="bl-field">
@@ -112,19 +112,19 @@
   <div class="bl-field">
     <label class="bl-check"><input type="checkbox" id="bl-auto-sync"> Use each task's latest version automatically</label>
     <div class="bl-hint">Off, each step keeps the version of its task it was given, so an edit to a task by its owner does not change what this playbook runs until you sync it.</div>
-    <div class="muted-note" id="bl-stale-note" hidden style="margin-top:6px;">
+    <div class="muted-note muted-note-below" id="bl-stale-note" hidden>
       <span id="bl-stale-text"></span>
       <button class="btn btn-outline btn-xs" type="button" id="bl-sync-latest">Sync latest</button>
     </div>
   </div>
   <div class="bl-field">
-    <label>Runs on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
+    <label>Runs on hosts tagged <span class="bl-label-optional">(comma-separated; blank = every approved host)</span></label>
     <input type="text" class="form-control" id="bl-tags" placeholder="os:linux, role:web">
   </div>
   <div class="bl-field">
-    <label>Completion tag <span style="color:var(--text-3);font-weight:400;">(applied to a host when the playbook finishes there)</span></label>
+    <label>Completion tag <span class="bl-label-optional">(applied to a host when the playbook finishes there)</span></label>
     <input type="text" class="form-control" id="bl-completion-tag" placeholder="hardened" maxlength="120">
-    <div class="muted-note" style="margin-top:6px;">
+    <div class="muted-note muted-note-below">
       A host carrying this tag is treated as done and is not run again. Remove
       it from a host to run the playbook there a second time. Required before
       auto-enrolment can be switched on.
@@ -134,7 +134,7 @@
     <label>Inputs</label>
     <div class="bl-inputs" id="bl-inputs"></div>
     <button class="btn btn-outline btn-xs" type="button" id="bl-input-add">Add input</button>
-    <div class="muted-note" style="margin-top:6px;">
+    <div class="muted-note muted-note-below">
       {% verbatim %}
       Ask for values when the playbook runs. A step uses them as
       ${{ inputs.&lt;id&gt; }}; a task input with the same id gets the value
@@ -157,7 +157,7 @@
       Saving asks for your TOTP code to authorize that — it stands for every
       future enrollment.
     </div>
-    <div class="muted-note" style="margin-top:8px;">
+    <div class="muted-note bl-highrisk-note">
       <code>update_agent</code> stays excluded either way — it replaces the
       executable that enforces the agent's own allowlist.
     </div>
@@ -182,8 +182,7 @@
           data-hint="This is the same YAML the community repo stores, so what you see here is exactly what a submission would carry.&#10;&#10;Steps and actions are named by slug rather than by id, because a shared file cannot reference rows on your server. Importing resolves those names against your own library.&#10;&#10;Saving replaces the item you opened it from.">?</span>
   </div>
   <div class="modal-body">
-    <textarea class="form-control" id="content-yaml-text" spellcheck="false"
-              style="min-height:340px;font-family:'IBM Plex Mono',monospace;font-size:13px;"></textarea>
+    <textarea class="form-control yaml-textarea" id="content-yaml-text" spellcheck="false"></textarea>
     <div class="editor-error" id="content-yaml-error"></div>
     <div class="bl-hint" id="content-yaml-filename"></div>
   </div>
@@ -229,7 +228,7 @@
       automation can watch one host and act on another, so neither is the
       same as "Run on" below.
     {% endcomment %}
-    <div class="auto-when" id="auto-event-fields" style="margin-top:10px;">
+    <div class="auto-when auto-when-below" id="auto-event-fields">
       <span id="auto-rule-wrap">for
         <select class="form-control" id="auto-event-rule"><option value="">any alert</option></select>
       </span>
@@ -241,13 +240,13 @@
         <input type="hidden" id="auto-event-host">
       </span>
     </div>
-    <div class="auto-when" id="auto-sched-fields" style="margin-top:10px;" hidden>
+    <div class="auto-when auto-when-below" id="auto-sched-fields" hidden>
       <span>cron</span>
-      <input type="text" class="form-control" id="auto-cron-min" value="0" style="width:64px;" title="minute">
-      <input type="text" class="form-control" id="auto-cron-hour" value="2" style="width:64px;" title="hour">
-      <input type="text" class="form-control" id="auto-cron-dom" value="*" style="width:64px;" title="day of month">
-      <input type="text" class="form-control" id="auto-cron-mon" value="*" style="width:64px;" title="month">
-      <input type="text" class="form-control" id="auto-cron-dow" value="*" style="width:64px;" title="day of week">
+      <input type="text" class="form-control cron-field" id="auto-cron-min" value="0" title="minute">
+      <input type="text" class="form-control cron-field" id="auto-cron-hour" value="2" title="hour">
+      <input type="text" class="form-control cron-field" id="auto-cron-dom" value="*" title="day of month">
+      <input type="text" class="form-control cron-field" id="auto-cron-mon" value="*" title="month">
+      <input type="text" class="form-control cron-field" id="auto-cron-dow" value="*" title="day of week">
       <span class="bl-hint">min hour dom mon dow</span>
     </div>
     {% comment %}
@@ -257,17 +256,17 @@
       and operator list the server advertises, so adding a field is a server
       change only.
     {% endcomment %}
-    <div class="bl-hint" id="auto-cond-wrap" style="margin-top:12px;">
+    <div class="bl-hint auto-cond-wrap" id="auto-cond-wrap">
       <div class="auto-cond-head">
         <span>Only when</span>
-        <select class="form-control" id="auto-cond-logic" style="display:inline-block;width:auto;">
+        <select class="form-control auto-cond-logic" id="auto-cond-logic">
           <option value="all">Match all of these</option>
           <option value="any">Match any of these</option>
         </select>
         <button class="btn btn-outline btn-sm" type="button" data-act="addAutoCondition">Add condition</button>
       </div>
       <div id="auto-cond-rows"></div>
-      <span class="bl-hint" style="display:block;margin-top:4px;">No conditions means it runs on every one of these events.</span>
+      <span class="bl-hint auto-cond-note">No conditions means it runs on every one of these events.</span>
     </div>
   </div>
   <div class="bl-field">
@@ -281,7 +280,7 @@
       <button class="btn btn-sky btn-sm" id="auto-view-action" type="button">View / edit</button>
       <button class="btn btn-outline btn-sm" id="auto-inputs-btn" type="button">Inputs</button>
     </div>
-    <span class="muted-note" id="auto-inputs-note" style="display:block;margin-top:5px;" hidden></span>
+    <span class="muted-note auto-inputs-note" id="auto-inputs-note" hidden></span>
     <input type="hidden" id="auto-action-task">
     <input type="hidden" id="auto-action-playbook">
   </div>
@@ -309,7 +308,7 @@
       <span class="field-hint" tabindex="0" aria-label="Dispatch modes"
             data-hint="All at once sends the work to every host matched by the target above.&#10;&#10;Wave by wave hands it to the rollout machinery instead — a canary wave first, then wider, halting if too many fail. In this mode the waves decide which hosts get it, so the target above is ignored.">?</span>
     </div>
-    <div class="confirm-hint" id="auto-dispatch-hint" style="margin-top:4px;" hidden>
+    <div class="confirm-hint auto-dispatch-hint" id="auto-dispatch-hint" hidden>
       Waves decide which hosts get this &mdash; the target above is ignored.
     </div>
   </div>

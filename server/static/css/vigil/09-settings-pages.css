@@ -220,6 +220,34 @@
 .sub-panel { padding-top: 4px; }
 .bl-toolbar { margin-bottom: 26px; }
 
+/* ── Playbooks page inline styles (S6 08c) ─────────────────────────────── */
+/* The rollout list keeps its own gap while vigil-rollout.js replaces the
+   loading state with cards. */
+.rollout-list { display: flex; flex-direction: column; gap: 10px; }
+/* Same specificity as `.sa-chips` but later in the cascade: the chip row in a
+   toolbar carries no vertical margin of its own. */
+.bl-toolbar .sa-chips { margin: 0; }
+.bl-label-optional { color: var(--text-3); font-weight: 400; }
+.muted-note-below { margin-top: 6px; }
+.bl-highrisk-note { margin-top: 8px; }
+/* `#content-yaml-text` so the rule beats textarea.form-control's min-height. */
+#content-yaml-text.yaml-textarea {
+  min-height: 340px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+}
+.auto-when-below { margin-top: 10px; }
+/* `.cron-field` ties .auto-when .form-control on specificity and wins on order:
+   the cron boxes are 64px wide, not the row's 150px minimum. */
+.cron-field { min-width: 0; width: 64px; }
+.auto-cond-wrap { margin-top: 12px; }
+/* Ties .auto-when .form-control on specificity and wins on order: the match-all
+   select sits inside that row and stays as wide as its text. */
+.auto-cond-logic { display: inline-block; width: auto; }
+.auto-cond-note { display: block; margin-top: 4px; }
+.auto-inputs-note { display: block; margin-top: 5px; }
+.auto-dispatch-hint { margin-top: 4px; }
+
 /* ── Settings: Jackil-style nav + content panes ──────────────────────── */
 /* minmax(0, …): a plain 1fr never shrinks below its widest line, so one long
    row pushed every pane past a phone's edge. */

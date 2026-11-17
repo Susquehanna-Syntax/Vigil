@@ -43,6 +43,14 @@ SECOND_BATCH = [
     "templates/pages/_vulns.html",
 ]
 
+# Still ratcheted at their remaining attributes, all bare style="display:none;":
+# scripts show those elements with element.style.display = '', which a class
+# could not undo (08c).
+THIRD_BATCH = [
+    "templates/pages/_monitor.html",
+    "templates/pages/_playbooks.html",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
@@ -119,4 +127,14 @@ class InlineStyleRatchetTests(SimpleTestCase):
                         and "{{" not in m.group(0) and "{%" not in m.group(0)]
             self.assertEqual(leftover, [],
                              f"{rel} was moved into classes in phase 08b; only "
+                             'style="display:none;" may remain.')
+
+    def test_the_third_batch_is_done(self):
+        for rel in THIRD_BATCH:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
+                        if not _ALLOWED_LEFTOVER.match(m.group(0))
+                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
+            self.assertEqual(leftover, [],
+                             f"{rel} was moved into classes in phase 08c; only "
                              'style="display:none;" may remain.')
