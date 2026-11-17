@@ -20,7 +20,7 @@ import tests._safety_net  # noqa: F401 — the guard, even when this file is run
 # isort: split
 from vigil_agent import client
 from vigil_agent.config import AgentConfig
-from vigil_agent.poller import MAX_RESULTS, Poller
+from vigil_agent.poller import MAX_RESULTS, Poller, _clean_check
 from vigil_agent.verify import agent_fingerprint
 
 TOKEN = "t" * 64
@@ -168,6 +168,12 @@ class ListReplacementTests(_Fixture):
 
 
 class MalformedEntryTests(_Fixture):
+    def test_an_snmp_entry_is_accepted(self):
+        # The community travels inside params, in the signed list (S9 05b).
+        params = {"host": "10.0.0.5", "community": "s3cret-community"}
+        self.assertEqual(_clean_check(_check("snmp-1", kind="snmp", params=params)),
+                         ("snmp-1", {"kind": "snmp", "params": params, "interval": 60}))
+
     def test_bad_entries_are_dropped_and_the_rest_kept(self):
         poller = self.poller()
         checks = [

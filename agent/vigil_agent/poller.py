@@ -23,7 +23,7 @@ from .failover import _canonical
 logger = logging.getLogger("vigil.poller")
 
 MAX_RESULTS = 500  # queued results, and the most sent in one check-in
-KINDS = ("icmp", "tcp", "http", "dns")
+KINDS = ("icmp", "tcp", "http", "dns", "snmp")
 MIN_INTERVAL = 30
 MAX_INTERVAL = 86400
 MAX_SLEEP = 30.0

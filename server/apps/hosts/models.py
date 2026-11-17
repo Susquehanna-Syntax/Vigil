@@ -459,6 +459,7 @@ class DeviceCheck(models.Model):
         TCP = "tcp", "TCP port"
         HTTP = "http", "HTTP(S)"
         DNS = "dns", "DNS"
+        SNMP = "snmp", "SNMP"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     device = models.ForeignKey(UnmanagedDevice, on_delete=models.CASCADE,
@@ -469,6 +470,8 @@ class DeviceCheck(models.Model):
     enabled = models.BooleanField(default=True)
     poller = models.ForeignKey(Host, on_delete=models.SET_NULL, null=True, blank=True,
                                related_name="assigned_checks")
+    # Fernet ciphertext (crypto.encrypt_secret) of the SNMP community; never in params, never in an API answer.
+    secret = models.BinaryField(blank=True, default=b"", editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

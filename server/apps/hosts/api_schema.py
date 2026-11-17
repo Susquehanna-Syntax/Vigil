@@ -712,8 +712,10 @@ class HostsDeviceCheckSerializer(serializers.Serializer):
     """One check on a device, as ``device_checks`` renders it."""
 
     id = serializers.CharField()
-    kind = serializers.CharField(help_text="icmp, tcp, http or dns.")
+    kind = serializers.CharField(help_text="icmp, tcp, http, dns or snmp.")
     params = serializers.DictField(help_text="Cleaned per kind; unknown keys are dropped.")
+    has_community = serializers.BooleanField(
+        help_text="Whether an SNMP community is stored. It is never returned.")
     interval_seconds = serializers.IntegerField(help_text="30 to 86400.")
     enabled = serializers.BooleanField()
     poller = serializers.CharField(
@@ -726,8 +728,11 @@ class HostsDeviceCheckSerializer(serializers.Serializer):
 class HostsDeviceCheckWriteSerializer(serializers.Serializer):
     """The body a device check is created or patched with. Every field is optional on PATCH."""
 
-    kind = serializers.CharField(required=False, help_text="icmp, tcp, http or dns.")
+    kind = serializers.CharField(required=False, help_text="icmp, tcp, http, dns or snmp.")
     params = serializers.DictField(required=False)
+    community = serializers.CharField(
+        required=False,
+        help_text="SNMP only. Stored encrypted and never returned.")
     interval_seconds = serializers.IntegerField(required=False)
     enabled = serializers.BooleanField(required=False)
     poller = serializers.CharField(

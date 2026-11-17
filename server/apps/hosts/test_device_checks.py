@@ -70,7 +70,7 @@ class ValidateParamsTests(TestCase):
             ("tcp", {"host": "10.0.0.1", "port": 0}),
             ("dns", {"name": "x y"}),
             ("dns", {"name": "example.com", "expect": "1.2.3.4"}),
-            ("snmp", {"host": "10.0.0.1"}),
+            ("snmp", {"host": "10.0.0.1", "version": "1"}),  # 05b: only v2c, host alone is valid
         ]
         for kind, params in refused:
             with self.subTest(kind=kind, params=params), self.assertRaises(ValueError):

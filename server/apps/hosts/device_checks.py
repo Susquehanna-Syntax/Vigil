@@ -20,10 +20,18 @@ from django.utils.timezone import now
 from vigil.scoping import site_id_of
 from vigil.signing import get_signing_key
 
+from .crypto import decrypt_secret
 from .models import CheckResult, DeviceCheck, Host
 
 # The same host rule as agent/vigil_agent/netcheck.py (_HOST_RE, _valid_host, MAX_HOST_LENGTH).
 _HOST_RE = re.compile(r"[A-Za-z0-9.:-]+")
+# A dotted numeric OID, and the lower-case label an extra result row is keyed by.
+_OID_RE = re.compile(r"[0-2](\.(0|[1-9][0-9]{0,9})){1,127}")
+_LABEL_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
+MAX_SNMP_OIDS = 8
+# A labelled OID must not shadow a key _snmp already puts in its own result.
+RESERVED_OID_LABELS = frozenset({"sys_name", "uptime_s", "check", "ok", "latency_ms", "detail",
+                                 "at", "kind", "target"})
 MAX_HOST_LENGTH = 253
 MIN_INTERVAL = 30
 MAX_INTERVAL = 86400
@@ -60,6 +68,40 @@ def _bool_value(value, label: str) -> bool:
 def validate_interval(value) -> int:
     """interval_seconds: a whole number of seconds from 30 to 86400."""
     return _int_in(value, "interval_seconds", MIN_INTERVAL, MAX_INTERVAL)
+
+
+def _snmp_params(params: dict) -> dict:
+    """Cleaned SNMP params. The community is not a params key (see views._check_fields)."""
+    cleaned = {"host": _host_value(params.get("host"), "host")}
+    port = _int_in(params.get("port", 161), "port", 1, 65535)
+    if port != 161:
+        cleaned["port"] = port
+    version = params.get("version", "2c")
+    if version != "2c":
+        raise ValueError("version must be 2c")
+    raw_oids = params.get("oids", [])
+    if not isinstance(raw_oids, list):
+        raise ValueError("oids must be a list of {oid, label}")
+    if len(raw_oids) > MAX_SNMP_OIDS:
+        raise ValueError("oids: at most 8")
+    oids = []
+    labels = set()
+    for item in raw_oids:
+        if not isinstance(item, dict) or not isinstance(item.get("oid"), str) \
+                or not isinstance(item.get("label"), str):
+            raise ValueError("oids must be a list of {oid, label}")
+        oid, label = item["oid"], item["label"]
+        if not _OID_RE.fullmatch(oid):
+            raise ValueError(f"oids: {oid} is not a numeric OID")
+        if not _LABEL_RE.fullmatch(label):
+            raise ValueError("oids: labels are lower-case letters, digits and _")
+        if label in RESERVED_OID_LABELS or label in labels:
+            raise ValueError(f"oids: {label} is a reserved label")
+        labels.add(label)
+        oids.append({"oid": oid, "label": label})
+    if oids:
+        cleaned["oids"] = oids
+    return cleaned
 
 
 def validate_params(kind: str, params) -> dict:
@@ -106,7 +148,11 @@ def validate_params(kind: str, params) -> dict:
                 raise ValueError("expect must be a list of strings")
             cleaned["expect"] = expect
         return cleaned
-    raise ValueError("kind must be icmp, tcp, http or dns")
+    if kind == DeviceCheck.Kind.SNMP:
+        # The community is a top-level write field stored encrypted on the
+        # model; params never carry it, so drop any that arrives here.
+        return _snmp_params({k: v for k, v in params.items() if k != "community"})
+    raise ValueError("kind must be icmp, tcp, http, dns or snmp")
 
 
 def _eligible(poller: Host, device) -> bool:
@@ -158,11 +204,35 @@ def checks_for(host: Host) -> list[DeviceCheck]:
     return sorted(mine, key=lambda c: str(c.id))
 
 
+def check_params_for(check: DeviceCheck) -> dict | None:
+    """The params this check is handed to a poller with, or None if it cannot run.
+
+    For an SNMP check that is a *copy* of the stored params plus the decrypted
+    community; nothing here is ever written back to the model. None for a check
+    whose community no longer decrypts (SECRET_KEY rotated): the caller leaves
+    such a check out rather than send a poller a check it cannot run.
+    """
+    if check.kind != DeviceCheck.Kind.SNMP:
+        return check.params
+    community = decrypt_secret(check.secret)
+    if not community:
+        return None
+    params = dict(check.params)
+    params["community"] = community
+    return params
+
+
 def signed_check_list(host: Host) -> dict:
+    entries = []
+    for c in checks_for(host):
+        params = check_params_for(c)
+        if params is None:
+            continue
+        entries.append({"id": str(c.id), "kind": c.kind, "params": params,
+                        "interval": c.interval_seconds})
     payload = {"v": 1, "type": "check-list", "agent": host.token_fingerprint,
                "issued": int(time.time()),
-               "checks": [{"id": str(c.id), "kind": c.kind, "params": c.params,
-                           "interval": c.interval_seconds} for c in checks_for(host)]}
+               "checks": entries}
     signature = base64.b64encode(
         get_signing_key().sign(json.dumps(payload, sort_keys=True).encode()).signature
     ).decode()

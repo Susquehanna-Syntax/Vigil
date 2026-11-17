@@ -5,7 +5,7 @@ plain result dict. It never raises: every failure, including a malformed
 check, becomes a result with ok False and a short detail sentence.
 
 Kinds: "icmp" (system ping), "tcp" (connect), "http" (status, plus TLS
-certificate expiry for https), "dns" (name resolution).
+certificate expiry for https), "dns" (name resolution), "snmp" (SNMP v2c GET).
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 import requests
 from requests.certs import where as _default_ca_bundle
 
+from vigil_agent import snmp
 from vigil_agent.procenv import clean_env
 
 # Every limit lives here. Values outside a limit are clamped, not rejected.
@@ -35,6 +36,10 @@ ICMP_DEFAULT_COUNT = 3
 ICMP_MAX_COUNT = 10  # echo requests per ping run
 MAX_HOST_LENGTH = 253  # DNS name length limit
 DEFAULT_CERT_DAYS = 14  # warn when a verified certificate has fewer days left
+SYSNAME_OID = "1.3.6.1.2.1.1.5.0"  # the agent's own name, always fetched
+SYSUPTIME_OID = "1.3.6.1.2.1.1.3.0"  # hundredths of a second since it booted
+MAX_SNMP_VALUE_CHARS = 100  # a string result value is cut to this
+MAX_SNMP_OIDS = 8  # labelled OIDs per SNMP check, the server's own limit
 
 _CERT_TIME_FORMAT = "%b %d %H:%M:%S %Y %Z"  # getpeercert() notAfter, e.g. "Jun  1 12:00:00 2027 GMT"
 _HOST_RE = re.compile(r"[A-Za-z0-9.:-]+")
@@ -61,6 +66,8 @@ def _new_extras(kind: str) -> dict:
         return {"status": None, "cert_days_left": None, "cert_expires": None}
     if kind == "dns":
         return {"addresses": []}
+    if kind == "snmp":
+        return {"sys_name": None, "uptime_s": None}
     return {}
 
 
@@ -471,10 +478,120 @@ def _dns(check: dict, timeout: float) -> dict:
     )
 
 
+# ---------------------------------------------------------------- snmp
+
+
+def _community_field(check: dict) -> str:
+    """The community the server handed inside the signed check list. Never logged."""
+    value = check.get("community")
+    if not isinstance(value, str) or not value:
+        raise _CheckError("no SNMP community")
+    return value
+
+
+def _snmp_oids(check: dict) -> list[tuple[str, str]]:
+    raw = check.get("oids", [])
+    if not isinstance(raw, list):
+        raise _CheckError("invalid oids")
+    oids: list[tuple[str, str]] = []
+    for item in raw:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("oid"), str)
+            or not isinstance(item.get("label"), str)
+        ):
+            raise _CheckError("invalid oids")
+        oids.append((item["oid"], item["label"]))
+    if len(oids) > MAX_SNMP_OIDS:
+        raise _CheckError("too many oids")
+    return oids
+
+
+def _snmp_value(tag: int, value: object) -> int | str | None:
+    """One varbind as a result value.
+
+    The tag is the SNMP type the agent used and says what the decoded bytes are:
+    an int for INTEGER, Counter32, Gauge32, TimeTicks and Counter64, the dotted
+    quad an IpAddress decodes to, a short string for an OCTET STRING, None for
+    anything else.
+    """
+    if tag in (snmp.INTEGER, snmp.Counter32, snmp.Gauge32, snmp.TimeTicks, snmp.Counter64):
+        return value if isinstance(value, int) else None
+    if tag == snmp.IpAddress:
+        return value if isinstance(value, str) else None
+    if tag == snmp.OCTET_STRING and isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")[:MAX_SNMP_VALUE_CHARS]
+    return None
+
+
+def _uptime_phrase(seconds: int | None) -> str:
+    """The uptime part of a detail: "" when there is nothing to say."""
+    if seconds is None:
+        return ""
+    days, rest = divmod(seconds, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes = rest // 60
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def _snmp(check: dict, timeout: float) -> dict:
+    host = _str_field(check, "host")
+    if not _valid_host(host):
+        raise _CheckError("invalid host")
+    port = 161 if check.get("port") is None else _port_field(check)
+    community = _community_field(check)
+    labelled = _snmp_oids(check)
+    oids = [SYSNAME_OID, SYSUPTIME_OID] + [oid for oid, _label in labelled]
+    client = snmp.V2cClient(host, community=community, port=port, timeout=timeout, retries=1)
+    start = time.monotonic()
+    try:
+        values = client.get(oids)
+    except snmp.SnmpTimeout:
+        # A wrong community and a closed UDP port look exactly the same from here.
+        return _result("snmp", host, False, "no SNMP response")
+    except snmp.SnmpError as exc:
+        return _result("snmp", host, False, str(exc)[:200])
+    latency = time.monotonic() - start
+
+    sys_name = values.get(SYSNAME_OID)
+    sys_name_text = (
+        sys_name[1].decode("utf-8", errors="replace")[:MAX_SNMP_VALUE_CHARS]
+        if isinstance(sys_name, tuple) and sys_name[0] == snmp.OCTET_STRING
+        and isinstance(sys_name[1], bytes) else ""
+    )
+    uptime = values.get(SYSUPTIME_OID)
+    uptime_s = uptime[1] // 100 if isinstance(uptime, tuple) and isinstance(uptime[1], int) else None
+
+    extras: dict = {"sys_name": sys_name_text or None, "uptime_s": uptime_s}
+    missing: list[str] = []
+    for oid, label in labelled:
+        entry = values.get(oid)
+        if entry is None or entry[0] in (snmp.noSuchObject, snmp.noSuchInstance):
+            missing.append(label)
+            extras[label] = None
+            continue
+        extras[label] = _snmp_value(entry[0], entry[1])
+
+    detail = "up"
+    uptime_part = _uptime_phrase(uptime_s)
+    if uptime_part:
+        detail += f" {uptime_part}"
+    if sys_name_text:
+        detail += f", {sys_name_text}"
+    if missing:
+        return _result("snmp", host, False, "no such object: " + ", ".join(missing),
+                       latency_s=latency, **extras)
+    return _result("snmp", host, True, detail[:200], latency_s=latency, **extras)
+
+
 # ---------------------------------------------------------------- entry point
 
-_HANDLERS = {"icmp": _icmp, "tcp": _tcp, "http": _http, "dns": _dns}
-_TARGET_KEYS = {"icmp": "host", "tcp": "host", "http": "url", "dns": "name"}
+_HANDLERS = {"icmp": _icmp, "tcp": _tcp, "http": _http, "dns": _dns, "snmp": _snmp}
+_TARGET_KEYS = {"icmp": "host", "tcp": "host", "http": "url", "dns": "name", "snmp": "host"}
 
 
 def run_check(check: dict, *, timeout: float = DEFAULT_TIMEOUT) -> dict:

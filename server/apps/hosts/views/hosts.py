@@ -31,8 +31,9 @@ from ..api_schema import (
 )
 from apps.alerts.device_alerts import resolve_for_check
 from apps.alerts.tasks import _is_older, _version_key
+from ..crypto import encrypt_secret
 from ..device_checks import device_states, validate_interval, validate_params
-from ..models import DeviceCheck
+from ..models import DeviceCheck, Host
 from ._common import *  # noqa: F401,F403
 
 
@@ -244,12 +245,21 @@ def unmanaged_device_detail(request, device_id):
     return Response(serializer.data)
 
 
+def _community_value(raw):
+    """The community of an SNMP check: 1 to 64 printable ASCII characters."""
+    if not isinstance(raw, str) or not (1 <= len(raw) <= 64) \
+            or not all(32 <= ord(c) <= 126 for c in raw):
+        raise ValueError("community must be 1 to 64 printable characters")
+    return encrypt_secret(raw)
+
+
 def _check_out(check) -> dict:
     latest = check.results.order_by("-time").first()
     return {
         "id": str(check.id),
         "kind": check.kind,
         "params": check.params,
+        "has_community": bool(check.secret),
         "interval_seconds": check.interval_seconds,
         "enabled": check.enabled,
         "poller": str(check.poller_id) if check.poller_id else None,
@@ -302,6 +312,19 @@ def _check_fields(device, data, current=None) -> dict:
                     device.site_id is not None and scoping.site_id_of(poller) != device.site_id):
                 raise ValueError("poller must be a poller host of this device's site")
             fields["poller"] = poller
+    # The community lives on its own encrypted column, never in params. An SNMP
+    # check needs one when it is created and keeps the stored one when a PATCH
+    # leaves it out; any other kind has none, so a check changed away from SNMP
+    # forgets it and a community in that body is ignored. encrypt_secret("") is
+    # b"", which is the field's default.
+    kind = fields.get("kind", current.kind if current else None)
+    if kind == DeviceCheck.Kind.SNMP:
+        if "community" in data:
+            fields["secret"] = _community_value(data["community"])
+        elif current is None:
+            raise ValueError("an SNMP check needs a community")
+    elif kind is not None:
+        fields["secret"] = encrypt_secret("")
     return fields
 
 
