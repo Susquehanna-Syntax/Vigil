@@ -27,15 +27,14 @@
   "static/js/vigil-widgets.js": 16,
   "templates/base.html": 137,
   "templates/login_verify.html": 1,
-  "templates/pages/_about.html": 21,
   "templates/pages/_firewall.html": 4,
   "templates/pages/_inventory.html": 1,
   "templates/pages/_monitor.html": 32,
   "templates/pages/_playbooks.html": 24,
-  "templates/pages/_reprovision.html": 11,
+  "templates/pages/_reprovision.html": 1,
   "templates/pages/_settings.html": 108,
   "templates/pages/_task_editor.html": 1,
   "templates/pages/_tasks.html": 1,
-  "templates/pages/_vulns.html": 29,
+  "templates/pages/_vulns.html": 2,
   "templates/status_public.html": 1
 }

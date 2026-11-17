@@ -18,7 +18,7 @@
       </div>
 
       <div id="repro-tab-library" class="tab-content active">
-      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
+      <div class="repro-list-panel">
         <div id="repro-images-list"></div>
       </div>
 
@@ -35,7 +35,7 @@
         {% endcomment %}
 
         <div class="repro-add-section">
-          <div class="section-label" style="margin-top:0;">Pull from the catalog</div>
+          <div class="section-label repro-catalog-label">Pull from the catalog</div>
           <div class="repro-add-card">
             <p class="muted-note repro-add-lede">
               Images Vigil can fetch and verify on its own — the checksum is
@@ -50,7 +50,7 @@
               Rendered by _reproRenderCatalog in static/js/vigil-reprovision.js.
             {% endcomment %}
             <div id="repro-catalog-grid" class="repro-catalog-grid"></div>
-            <div id="repro-catalog-empty" class="muted-note" style="display:none;margin-top:10px;">
+            <div id="repro-catalog-empty" class="muted-note repro-catalog-empty" style="display:none;">
               Catalog is unavailable — you may not have permission to view it, or
               nothing is configured.
             </div>
@@ -78,7 +78,7 @@
               SHA-256 instead. Legitimate source:
               <a href="https://access.redhat.com/downloads" target="_blank" rel="noopener noreferrer">Red Hat Customer Portal</a>.
             </div>
-            <div class="muted-note repro-add-note" style="color:var(--peach-ink);">
+            <div class="muted-note repro-add-note repro-note-warn">
               Windows images can't be imported yet — Vigil extracts a PXE
               kernel/initrd pair from the ISO, and a Windows installer needs a
               different pipeline (<code>boot.wim</code>/<code>bootmgr</code>)
@@ -184,7 +184,7 @@
 
       <div id="repro-tab-profiles" class="tab-content">
       <div class="repro-profiles-head">
-        <div class="section-label" style="margin-top:0;margin-bottom:0;">Install profiles</div>
+        <div class="section-label repro-head-label">Install profiles</div>
         <button class="btn btn-mint btn-sm" id="repro-profile-new-btn" type="button">+ New profile</button>
       </div>
       <p class="muted-note repro-add-lede">
@@ -192,7 +192,7 @@
         image and disk, how the machine gets on the network, and who can log
         in afterwards.
       </p>
-      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
+      <div class="repro-list-panel">
         <div id="repro-profiles-list"></div>
       </div>
 
@@ -200,7 +200,7 @@
 
       <div id="repro-tab-agentprofiles" class="tab-content">
       <div class="repro-profiles-head">
-        <div class="section-label" style="margin-top:0;margin-bottom:0;">Agent profiles</div>
+        <div class="section-label repro-head-label">Agent profiles</div>
         <button class="btn btn-peach btn-sm" id="ap-new-btn" type="button" data-act="openAgentProfileEditor">+ New agent profile</button>
       </div>
       <p class="muted-note repro-add-lede">
@@ -208,7 +208,7 @@
         run, where it checks in, and whether anyone may open a session on it.
         Applied at install and at rebuild — never to a running agent.
       </p>
-      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
+      <div class="repro-list-panel">
         <div id="agent-profiles-list"></div>
       </div>
 
@@ -216,7 +216,7 @@
 
       <div id="repro-tab-jobs" class="tab-content">
       <div class="repro-profiles-head">
-        <div class="section-label" style="margin-top:0;margin-bottom:0;">Rebuild jobs</div>
+        <div class="section-label repro-head-label">Rebuild jobs</div>
         <button class="btn btn-rose btn-sm" id="repro-rebuild-btn" type="button">Rebuild a host…</button>
       </div>
       {% comment %}
@@ -230,7 +230,7 @@
         <strong>This destroys everything on the target disk</strong> and cannot
         be undone once the installer starts.
       </p>
-      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;">
+      <div class="repro-jobs-panel">
         <div id="repro-jobs-list"></div>
       </div>
       </div>{# /repro-tab-jobs #}
@@ -344,7 +344,7 @@
     it produces a machine nobody can log into, discovered after the disk is
     already wiped. Said here so it is read before that happens.
   {% endcomment %}
-  <div class="muted-note repro-prof-hint" style="margin-bottom:14px;">
+  <div class="muted-note repro-prof-hint repro-prof-access-note">
     Set at least one of these. A profile with neither leaves a rebuilt
     machine nobody can log into.
   </div>

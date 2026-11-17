@@ -422,6 +422,9 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   .repro-method-grid { grid-template-columns: 1fr; }
 }
 
+.repro-catalog-empty { margin-top: 10px; }
+.repro-catalog-label { margin-top: 0; }
+
 /* ── Reprovision: catalog cards ──────────────────────────────────────────
    Square cards, one per fetchable image. Replaced a <select>, which showed
    one option at a time and could not say which images the library already
@@ -496,6 +499,13 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .bl-highrisk-lede strong { color: var(--rose-ink); }
 .bl-highrisk-warn .form-control { max-width: 160px; letter-spacing: 2px; }
 
+/* ── Reprovision: page chrome (S6 08b) ────────────────────────────────── */
+.repro-list-panel { background: var(--s1); border-radius: var(--r-lg); padding: 20px; margin-bottom: 8px; }
+.repro-jobs-panel { background: var(--s1); border-radius: var(--r-lg); padding: 20px; }
+.repro-head-label { margin: 0; }
+.repro-inline-form { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--s3); }
+.repro-note-warn { color: var(--peach-ink); }
+
 /* ── Reprovision: install profile editor ─────────────────────────────────
    The API has always supported create/edit/delete; the page could only
    list what someone had created through it directly. */
@@ -522,6 +532,7 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .repro-prof-step:first-of-type { margin-top: 4px; }
 
 .repro-prof-hint { margin-top: 6px; font-size: 12px; }
+.repro-prof-access-note { margin-bottom: 14px; }
 
 .repro-field-grid-three { grid-template-columns: 1fr 1fr 1fr; }
 

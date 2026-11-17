@@ -325,6 +325,51 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .vfix-cves { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 @media (max-width: 760px) { .vfix-detail { grid-template-columns: minmax(0, 1fr); } }
 
+/* ── Vulnerabilities: page chrome (S6 08b) ─────────────────────────── */
+.vulns-actions { display: flex; gap: 8px; }
+.vuln-stats { grid-template-columns: repeat(3, 1fr); margin-bottom: 28px; }
+.vuln-stat-c-rose  { color: var(--rose-ink); }
+.vuln-stat-c-coral { color: var(--coral-ink); }
+.vuln-stat-c-lemon { color: var(--lemon-ink); }
+
+.vuln-fleet-headline {
+  display: flex; align-items: center; gap: 24px;
+  background: var(--s1); border-radius: var(--r-lg);
+  padding: 24px; margin-bottom: 24px;
+}
+.vuln-fleet-face { flex-shrink: 0; width: 80px; height: 80px; }
+.vuln-fleet-body { flex: 1; min-width: 0; }
+.vuln-fleet-caption {
+  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 4px;
+}
+/* The score and its "of 100" share a baseline. */
+.vuln-fleet-score-row { display: flex; align-items: baseline; gap: 10px; }
+.vuln-fleet-score { font-size: 36px; font-weight: 600; line-height: 1; }
+.vuln-fleet-of { font-size: 13px; color: var(--text-3); }
+.vuln-fleet-worst { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+
+.vuln-scans-section { margin-top: 28px; }
+.vuln-scans-head {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.vuln-scans-title { font-weight: 600; font-size: 14px; color: var(--text-1); }
+.vuln-scans-note { font-size: 11px; color: var(--text-3); }
+
+.vulns-loading {
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 40px; text-align: center; color: var(--text-3); font-size: 13px;
+}
+.vulns-nc-card { background: var(--s1); border-radius: var(--r-lg); padding: 48px; text-align: center; }
+.vulns-nc-title { font-weight: 600; font-size: 16px; margin-bottom: 10px; color: var(--text-1); }
+.vulns-nc-body {
+  color: var(--text-2); font-size: 13px; max-width: 520px; margin: 0 auto; line-height: 1.7;
+}
+.vulns-nc-list { margin-top: 14px; text-align: left; display: inline-block; }
+.vulns-nc-item { margin-bottom: 7px; }
+.vulns-nc-strong { color: var(--text-1); }
+.vulns-nc-cta { margin-top: 18px; }
+
 /* ── Managed stacks (M11) ────────────────────────────────────────────── */
 .managed-stacks-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 14px; }
 .managed-stacks-label { font-size: 12px; color: var(--text-3); margin-right: 4px; }

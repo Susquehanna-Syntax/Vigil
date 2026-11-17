@@ -13,51 +13,51 @@
         </button>
       </div>
 
-      <div class="stats-row" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 28px;">
+      <div class="stats-row about-stats">
         <div class="stat-card">
           <div class="stat-label">Vigil server</div>
-          <div class="stat-value mono" style="color: var(--mint-ink); font-size: 28px;" id="about-server-version">—</div>
+          <div class="stat-value mono about-version-c-mint" id="about-server-version">—</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Expected agent version</div>
-          <div class="stat-value mono" style="color: var(--sky-ink); font-size: 28px;" id="about-agent-version">—</div>
+          <div class="stat-value mono about-version-c-sky" id="about-agent-version">—</div>
         </div>
       </div>
 
-      <div style="background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:20px;">
-        <div class="section-label" style="margin-bottom:12px;">Runtime</div>
-        <div style="display:grid;grid-template-columns:160px 1fr;gap:10px 18px;font-size:13px;">
-          <div style="color:var(--text-3);">Python</div>
+      <div class="about-panel">
+        <div class="section-label about-section-label">Runtime</div>
+        <div class="about-meta-grid">
+          <div class="about-meta-label">Python</div>
           <div class="mono" id="about-python">—</div>
-          <div style="color:var(--text-3);">Database</div>
+          <div class="about-meta-label">Database</div>
           <div class="mono" id="about-database">—</div>
-          <div style="color:var(--text-3);">Timezone</div>
+          <div class="about-meta-label">Timezone</div>
           <div class="mono" id="about-timezone">—</div>
-          <div style="color:var(--text-3);">Licensed to</div>
+          <div class="about-meta-label">Licensed to</div>
           <div id="about-licensed-to">—</div>
         </div>
       </div>
 
-      <div id="about-health" hidden style="background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:20px;">
-        <div class="section-label" style="margin-bottom:12px;">Instance health</div>
-        <div id="about-health-body" style="display:grid;grid-template-columns:200px 1fr;gap:10px 18px;font-size:13px;"></div>
+      <div id="about-health" hidden class="about-panel">
+        <div class="section-label about-section-label">Instance health</div>
+        <div id="about-health-body" class="about-health-grid"></div>
       </div>
 
-      <div style="background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:20px;">
-        <div class="section-label" style="margin-bottom:12px;">Vulnerability scanners</div>
-        <div id="about-scanners" style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
-          <div style="color:var(--text-3);">Loading…</div>
+      <div class="about-panel">
+        <div class="section-label about-section-label">Vulnerability scanners</div>
+        <div id="about-scanners" class="about-scanner-list">
+          <div class="about-muted">Loading…</div>
         </div>
-        <div style="font-size:11px;color:var(--text-3);margin-top:14px;">
+        <div class="about-fineprint">
           Trivy is agent-local — it reports configured as long as the registry knows about it; the actual scan
           only runs when a host has the <code>trivy</code> binary installed.
         </div>
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--text-3);margin-top:24px;">
-        <a href="/wiki/" style="color:var(--text-3);">Documentation</a>
+      <div class="about-footer">
+        <a href="/wiki/" class="about-footer-link">Documentation</a>
         ·
-        <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--text-3);">Community catalog</a>
+        <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" class="about-footer-link">Community catalog</a>
         ·
         Sleep well. Vigil's watching.
       </div>

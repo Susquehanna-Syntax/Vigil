@@ -452,3 +452,23 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
+/* ── About page (S6 08b) ─────────────────────────────────────────────── */
+.about-stats { grid-template-columns: repeat(2, 1fr); margin-bottom: 28px; }
+.about-version-c-mint { color: var(--mint-ink); font-size: 28px; }
+.about-version-c-sky { color: var(--sky-ink); font-size: 28px; }
+
+.about-panel { background: var(--s1); border-radius: var(--r-lg); padding: 24px; margin-bottom: 20px; }
+.about-section-label { margin-bottom: 12px; }
+.about-meta-grid {
+  display: grid; grid-template-columns: 160px 1fr; gap: 10px 18px; font-size: 13px;
+}
+.about-health-grid {
+  display: grid; grid-template-columns: 200px 1fr; gap: 10px 18px; font-size: 13px;
+}
+.about-meta-label, .about-muted { color: var(--text-3); }
+
+.about-scanner-list { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.about-fineprint { font-size: 11px; color: var(--text-3); margin-top: 14px; }
+.about-footer { text-align: center; font-size: 11px; color: var(--text-3); margin-top: 24px; }
+.about-footer-link { color: var(--text-3); }
+
