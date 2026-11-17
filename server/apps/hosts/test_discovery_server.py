@@ -249,6 +249,7 @@ class StoreScanResultTests(TestCase):
                          "found": [found("192.0.2.5")]},
                         {"found": [found("192.0.2.5")]},
                         {"id": 42, "found": []},
+                        {"id": "not-a-uuid", "found": []},
                         ["a list is not a result"],
                         None):
             with self.subTest(payload=payload):
@@ -256,6 +257,17 @@ class StoreScanResultTests(TestCase):
         theirs.refresh_from_db()
         self.assertEqual(theirs.state, DiscoveryScan.State.SENT)
         self.assertEqual(DiscoveredHost.objects.count(), 0)
+
+    def test_a_check_in_with_a_garbled_scan_id_still_succeeds(self):
+        resp = checkin(self.client, self.poller, {"scan_result": {"id": "not-a-uuid", "found": []}})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.scan.refresh_from_db()
+        self.assertEqual(self.scan.state, DiscoveryScan.State.SENT)
+
+    def test_a_name_with_control_characters_is_stored_printable(self):
+        store_scan_result(self.poller, {"id": str(self.scan.id),
+                                        "found": [found("192.0.2.5", name="sw\x1b[31m01\n")]})
+        self.assertEqual(self.scan.hosts.get().name, "sw[31m01")
 
     def test_a_finished_scan_keeps_its_first_answer(self):
         store_scan_result(self.poller, {"id": str(self.scan.id), "found": [found("192.0.2.5")]})

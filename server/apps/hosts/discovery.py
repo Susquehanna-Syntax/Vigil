@@ -12,6 +12,7 @@ import ipaddress
 import json
 import math
 import time
+import uuid
 from datetime import timedelta
 
 from django.db import transaction
@@ -102,7 +103,10 @@ def _ports(raw) -> list:
 
 
 def _text(value) -> str:
-    return value[:MAX_NAME] if isinstance(value, str) else ""
+    """A name a device reported: printable characters only, cut to MAX_NAME."""
+    if not isinstance(value, str):
+        return ""
+    return "".join(c for c in value if c.isprintable())[:MAX_NAME]
 
 
 def store_scan_result(host: Host, data) -> bool:
@@ -113,8 +117,9 @@ def store_scan_result(host: Host, data) -> bool:
     """
     if not isinstance(data, dict):
         return False
-    scan_id = data.get("id")
-    if not isinstance(scan_id, str):
+    try:
+        scan_id = uuid.UUID(data.get("id"))
+    except (TypeError, ValueError, AttributeError):   # not a string, or not a UUID
         return False
     with scoping.system(reason="agent check-in: this poller's own scan answer"), \
             transaction.atomic():
