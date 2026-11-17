@@ -1713,7 +1713,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .inv-sort-arrow { color: var(--sky-ink); margin-left: 4px; font-style: normal; }
 /* Drag states */
 .inv-th-dragging { opacity: 0.35; }
-.inv-th-drag-over { background: rgba(var(--rgb-sky), var(--tint-a)); }
+/* The sticky header keeps its opaque fill; the drop-target tint is laid over it. */
+.inv-table thead tr:first-child th.inv-th-drag-over { background-image: linear-gradient(rgba(var(--rgb-sky), var(--tint-a)), rgba(var(--rgb-sky), var(--tint-a))); }
 /* Column editor dropdown */
 .inv-col-editor {
   position: absolute; top: 100%; right: 0; z-index: 200;
