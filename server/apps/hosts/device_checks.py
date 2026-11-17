@@ -226,6 +226,12 @@ def store_check_results(host: Host, rows) -> int:
             extra=_extra(row),
         ))
     CheckResult.objects.bulk_create(to_create)
+    if to_create:
+        # A check that just failed twice opens an alert (S9 04b), in the worker.
+        # Late import: alerts imports hosts models, so a module-level import
+        # would be circular.
+        from apps.alerts.device_alerts import queue_evaluation
+        queue_evaluation({r.device_check_id for r in to_create})
     return len(to_create)
 
 

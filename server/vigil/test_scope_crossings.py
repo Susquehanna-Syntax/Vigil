@@ -17,9 +17,11 @@ SERVER = Path(__file__).resolve().parent.parent
 CROSSINGS: dict[str, list[str]] = {
     'apps/agentprofiles/redeem_views.py': ['agent install: a one-time profile token is the access control'],
     'apps/agentprofiles/views.py': ['agent profile names are unique across the install'],
+    'apps/alerts/device_alerts.py': ["device alert evaluation: every site's devices are polled by their own site's pollers"],
     'apps/alerts/tasks.py': ['background job: acknowledgements expire on every site',
                              "background job: agent versions are checked for every site's hosts",
                              "background job: alert rules are evaluated for every site's hosts",
+                             "background job: device alerts are evaluated for every site's devices",
                              "background job: every site's silent hosts are marked offline",
                              "background job: image updates are checked for every site's hosts",
                              "background job: retention prunes every site's alerts",

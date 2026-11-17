@@ -29,6 +29,7 @@ from ..api_schema import (
     HostsTotpSerializer,
     HostsValidationErrorSerializer,
 )
+from apps.alerts.device_alerts import resolve_for_check
 from apps.alerts.tasks import _is_older, _version_key
 from ..device_checks import device_states, validate_interval, validate_params
 from ..models import DeviceCheck
@@ -365,6 +366,9 @@ def device_check_detail(request, device_id, check_id):
         return denied
 
     if request.method == "DELETE":
+        # Resolve first: the alert's device_check FK is SET_NULL, so deleting
+        # the check would leave open alerts nothing can resolve (S9 04b).
+        resolve_for_check(check)
         check.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     if not isinstance(request.data, dict):
@@ -376,6 +380,10 @@ def device_check_detail(request, device_id, check_id):
     for key, value in fields.items():
         setattr(check, key, value)
     check.save()
+    if not check.enabled:
+        # A stopped check would otherwise leave its alert firing forever with
+        # nobody polling to resolve it (S9 04b).
+        resolve_for_check(check)
     return Response(_check_out(check))
 
 

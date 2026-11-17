@@ -100,6 +100,61 @@ def _channels_for_host(channels, host):
     return [c for c in channels if scoping.within_site(c, host)]
 
 
+def dispatch_device_alert(alert, event="firing"):
+    """Send a device alert (S9 04b) to the channels allowed to hear about it.
+
+    The payload has exactly the keys ``_build_payload`` produces, so neither
+    the webhook nor the email sender needs to know a device alert exists:
+    ``host`` carries the device's name and ``host_id`` is None because there is
+    no host. Channels are the same rule as ``_channels_for_host`` — global
+    channels, plus channels of the device's own site; a global device (site_id
+    None) reaches global channels only.
+
+    Deliberately no ``hooks.emit`` here: every subscriber of "alert_sent" and
+    "alert_resolved" reads ``alert.host``, which a device alert does not have.
+    Automations and Jackil learn about device alerts in a later phase.
+    """
+    from vigil import scoping
+
+    channels = NotificationChannel.objects.filter(enabled=True)
+    if event == "firing":
+        channels = channels.filter(on_firing=True)
+    elif event == "resolved":
+        channels = channels.filter(on_resolved=True)
+    else:
+        return
+
+    payload = _device_payload(alert, event)
+    # A global device reaches global channels only; a site's device also
+    # reaches its own site's channels. site_id_of() is None for both "global"
+    # cases, so the comparison is exactly that rule.
+    device_site_id = alert.device.site_id
+    for channel in channels:
+        if scoping.site_id_of(channel) not in (device_site_id, None):
+            continue
+        dispatcher = _DISPATCHERS.get(channel.kind)
+        if dispatcher:
+            dispatcher(channel, payload)
+
+
+def _device_payload(alert, event):
+    """A device alert in the shape every notification sender already reads."""
+    return {
+        "event": event,
+        "alert_id": str(alert.id),
+        "host": alert.device.name,
+        "host_id": None,
+        "device": alert.device.name,
+        "device_id": str(alert.device_id),
+        "severity": alert.severity,
+        "message": alert.message,
+        "metric_value": None,
+        "rule": None,
+        "fired_at": alert.fired_at.isoformat() if alert.fired_at else None,
+        "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None,
+    }
+
+
 def dispatch_alert_notification(alert, event="firing"):
     """Send notification to all enabled channels for an alert event.
 

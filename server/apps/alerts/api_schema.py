@@ -52,6 +52,32 @@ class AlertResponseSerializer(serializers.Serializer):
     fix_context = serializers.DictField()
 
 
+class DeviceAlertResponseSerializer(serializers.Serializer):
+    """One open device alert (S9 04b) as the alerts API returns it.
+
+    ``host_id`` has no device-alert equivalent: a device alert belongs to a
+    device, not a host, so ``device_id`` carries what ``host`` would elsewhere.
+    """
+
+    id = serializers.CharField()
+    device_id = serializers.CharField()
+    device_name = serializers.CharField()
+    check_id = serializers.CharField(allow_null=True)
+    state = serializers.CharField()
+    severity = serializers.CharField()
+    message = serializers.CharField()
+    fired_at = serializers.DateTimeField()
+    acknowledged_at = serializers.DateTimeField(allow_null=True)
+    resolved_at = serializers.DateTimeField(allow_null=True)
+
+
+class DeviceAlertAcknowledgeSerializer(serializers.Serializer):
+    """A device alert after acknowledge — the state it cannot be in twice."""
+
+    id = serializers.CharField()
+    state = serializers.CharField()
+
+
 class AlertBulkRequestSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.CharField())
     action = serializers.ChoiceField(choices=["acknowledge", "unacknowledge"])

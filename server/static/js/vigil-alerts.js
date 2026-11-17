@@ -165,8 +165,84 @@ async function refreshAlerts() {
     _renderAlertList('resolved', resolved);
     _renderAlertCounts();
     _updateBulkBar();
+    refreshDeviceAlerts();
   } catch (e) {
     showToast('Failed to load alerts: ' + e.message, 'error');
+  }
+}
+
+/* ── Device alerts (S9 04b) ─────────────────────────────────────────────
+   A block above the host alert list, shown only while a device check is
+   down. Built with createElement/textContent: the message carries a
+   poller-supplied detail, so it is data and never markup. */
+async function refreshDeviceAlerts() {
+  try {
+    const alerts = await apiJson('/api/v1/alerts/devices/');
+    _renderDeviceAlerts(alerts);
+  } catch (e) {
+    // A failed device block must not take the host alert list down with it.
+    showToast('Failed to load device alerts: ' + e.message, 'error');
+  }
+}
+
+function _renderDeviceAlerts(alerts) {
+  const block = document.getElementById('device-alerts-block');
+  const list = document.getElementById('device-alerts-list');
+  if (!block || !list) return;
+  while (list.firstChild) list.removeChild(list.firstChild);
+  // The open set only: an acknowledged device alert stays here until the
+  // check passes, so there is one visible row per down device at most.
+  const open = alerts.filter(a => a.state === 'firing' || a.state === 'acknowledged');
+  block.hidden = !open.length;
+  for (const alert of open) list.appendChild(_deviceAlertRow(alert));
+}
+
+function _deviceAlertRow(alert) {
+  const row = document.createElement('div');
+  row.className = 'device-alert-item';
+
+  const dot = document.createElement('div');
+  dot.className = 'device-alert-dot' +
+    (alert.state === 'acknowledged' ? ' device-alert-dot-ack' : '');
+  row.appendChild(dot);
+
+  const content = document.createElement('div');
+  content.className = 'device-alert-content';
+  const name = document.createElement('div');
+  name.className = 'device-alert-name';
+  name.textContent = alert.device_name;
+  const message = document.createElement('div');
+  message.className = 'device-alert-message';
+  message.textContent = alert.message;
+  content.appendChild(name);
+  content.appendChild(message);
+  row.appendChild(content);
+
+  const time = document.createElement('div');
+  time.className = 'device-alert-time';
+  time.textContent = timeAgo(alert.fired_at);
+  row.appendChild(time);
+
+  if (alert.state === 'firing') {
+    const ack = document.createElement('button');
+    ack.className = 'btn btn-sm btn-outline';
+    ack.type = 'button';
+    ack.textContent = 'Acknowledge';
+    // data-act, not onclick: the page's CSP allows no inline handlers.
+    ack.dataset.act = 'acknowledgeDeviceAlert';
+    ack.dataset.a1 = alert.id;
+    row.appendChild(ack);
+  }
+  return row;
+}
+
+async function acknowledgeDeviceAlert(alertId) {
+  try {
+    await apiJson(`/api/v1/alerts/devices/${alertId}/acknowledge/`, { method: 'POST' });
+    showToast('Device alert acknowledged', 'success');
+    refreshAlerts();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
   }
 }
 

@@ -35,7 +35,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.agentprofiles.models import AgentProfile
-from apps.alerts.models import Alert, AlertRule
+from apps.alerts.models import Alert, AlertRule, DeviceAlert
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
 from apps.hosts.models import DeviceCheck, Host, LogTailSession, Tag, UnmanagedDevice
@@ -233,6 +233,10 @@ ALLOWLIST = {
 #: model than FILLERS assumes.
 ROUTE_FILLERS = {
     "api/v1/hosts/log-tails/<uuid:session_id>/": {"session_id": lambda o: o["logtail"].id},
+    # The device-alert acknowledge names the *alert*, so without this the walk
+    # would fill it with site B's host alert and ask a different question.
+    "api/v1/alerts/devices/<uuid:alert_id>/acknowledge/": {
+        "alert_id": lambda o: o["device_alert"].id},
     "api/v1/agent-profiles/<uuid:profile_id>/": {"profile_id": lambda o: o["profile"].id},
     "api/v1/reprovision/profiles/<uuid:profile_id>/preview/": {
         "profile_id": lambda o: o["install_profile"].id},
@@ -562,6 +566,8 @@ class SiteIsolationTests(TestCase):
             o["device"] = UnmanagedDevice.objects.create(name=f"{tag}-device", site_id=site.pk)
             o["check"] = DeviceCheck.objects.create(
                 device=o["device"], kind="icmp", params={"host": "10.0.0.1"})
+            o["device_alert"] = DeviceAlert.objects.create(
+                device=o["device"], device_check=o["check"], message=f"{tag}-device is down")
             o["page"] = StatusPage.objects.create(title=f"{tag}-page", site_id=site.pk)
             o["key"] = IntegrationKey.objects.create(
                 name=f"shared-{shared}-key",

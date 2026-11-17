@@ -21,7 +21,7 @@ from apps.hosts.models import Host
 from apps.instance.config import setting
 from apps.metrics.models import MetricPoint
 
-from .models import Alert, AlertRule
+from .models import Alert, AlertRule, DeviceAlert
 from .notifications import dispatch_alert_notification
 
 logger = logging.getLogger(__name__)
@@ -194,6 +194,15 @@ def _evaluate_alert_rules():
                 dispatch_alert_notification(existing, event="resolved")
 
     return f"Evaluated {rules.count()} rules × {online_hosts.count()} hosts: {fired} fired, {resolved} resolved"
+
+
+@shared_task(name="alerts.evaluate_device_alerts")
+@scoping.system_job(reason="background job: device alerts are evaluated for every site's devices")
+def evaluate_device_alerts(check_ids: list[str]) -> str:
+    """Open or resolve device alerts for checks that just reported (S9 04b)."""
+    from .device_alerts import evaluate
+    fired, resolved = evaluate(check_ids)
+    return f"Device alerts: {fired} fired, {resolved} resolved"
 
 
 @shared_task(name="alerts.expire_acknowledgements")
@@ -585,7 +594,11 @@ def prune_old_alerts() -> str:
     cutoff = now() - timedelta(days=days)
     deleted, _ = Alert.objects.filter(
         state=Alert.State.RESOLVED, resolved_at__lt=cutoff).delete()
+    device_deleted, _ = DeviceAlert.objects.filter(
+        state=DeviceAlert.State.RESOLVED, resolved_at__lt=cutoff).delete()
+    deleted += device_deleted
     if deleted:
         logger.info("Pruned %d resolved alert(s) older than %d days",
                     deleted, days)
-    return f"Pruned {deleted} resolved alert(s) older than {days} days"
+    return (f"Pruned {deleted} resolved alert(s) "
+            f"({device_deleted} for a device) older than {days} days")

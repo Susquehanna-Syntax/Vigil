@@ -3,6 +3,7 @@ from uuid import UUID
 
 from django.utils.timezone import now
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,8 +16,10 @@ from .api_schema import (
     AlertErrorSerializer,
     AlertResponseSerializer,
     AlertRuleRowSerializer,
+    DeviceAlertAcknowledgeSerializer,
+    DeviceAlertResponseSerializer,
 )
-from .models import Alert
+from .models import Alert, DeviceAlert
 from .serializers import AlertSerializer
 
 
@@ -191,6 +194,65 @@ def alert_bulk(request):
         updated += 1
 
     return Response({"updated": updated, "skipped": skipped})
+
+
+def _device_alert_out(alert) -> dict:
+    return {
+        "id": str(alert.id),
+        "device_id": str(alert.device_id),
+        "device_name": alert.device.name,
+        "check_id": str(alert.device_check_id) if alert.device_check_id else None,
+        "state": alert.state,
+        "severity": alert.severity,
+        "message": alert.message,
+        "fired_at": alert.fired_at,
+        "acknowledged_at": alert.acknowledged_at,
+        "resolved_at": alert.resolved_at,
+    }
+
+
+@extend_schema(
+    parameters=[OpenApiParameter(
+        "state", str, enum=["open", "resolved", "all"],
+        description="open (the default: firing and acknowledged), resolved, or all.")],
+    responses={200: DeviceAlertResponseSerializer(many=True)},
+)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("alerts")
+def device_alert_list(request):
+    """Device alerts (S9 04b), newest first. Open by default; ?state=all for every one."""
+    state = request.query_params.get("state", "open")
+    qs = DeviceAlert.objects.all()
+    if state == "open":
+        qs = qs.filter(state__in=[DeviceAlert.State.FIRING, DeviceAlert.State.ACKNOWLEDGED])
+    elif state == "resolved":
+        qs = qs.filter(state=DeviceAlert.State.RESOLVED)
+    return Response([_device_alert_out(a) for a in qs.select_related("device")[:200]])
+
+
+@extend_schema(request=None,
+               responses={200: DeviceAlertAcknowledgeSerializer,
+                          400: AlertErrorSerializer,
+                          404: AlertErrorSerializer})
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def device_alert_acknowledge(request, alert_id):
+    """Acknowledge a firing device alert. Like a host alert's acknowledge, anyone
+    who can see the alert may. The manager scopes by device site, so one of
+    another site's devices is not found."""
+    try:
+        alert = DeviceAlert.objects.select_related("device").get(pk=alert_id)
+    except DeviceAlert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=status.HTTP_404_NOT_FOUND)
+    if alert.state != DeviceAlert.State.FIRING:
+        return Response({"error": "Only a firing alert can be acknowledged."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    alert.state = DeviceAlert.State.ACKNOWLEDGED
+    alert.acknowledged_at = now()
+    alert.acknowledged_by = request.user
+    alert.save(update_fields=["state", "acknowledged_at", "acknowledged_by"])
+    return Response({"id": str(alert.id), "state": alert.state})
 
 
 @extend_schema(request=AlertDurationRequestSerializer,

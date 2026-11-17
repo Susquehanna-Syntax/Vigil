@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 from apps.hosts.models import Host
@@ -94,3 +95,38 @@ class Alert(models.Model):
 
     def __str__(self):
         return f"[{self.severity}] {self.host.hostname}: {self.message}"
+
+
+class DeviceAlert(models.Model):
+    """A device check failed twice in a row (S9). Separate from Alert, which is host-bound."""
+
+    # The manager's own scope narrowing does the site work: the same `field=`
+    # form DeviceCheck uses, following the device's own site_id column.
+    objects = SiteScopedManager(field="device__site_id", app="alerts")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey("hosts.UnmanagedDevice", on_delete=models.CASCADE,
+                               related_name="alerts")
+    device_check = models.ForeignKey("hosts.DeviceCheck", on_delete=models.SET_NULL,
+                                     null=True, related_name="alerts")
+    state = models.CharField(max_length=20, choices=Alert.State.choices,
+                             default=Alert.State.FIRING)
+    #: The same three states as a host alert: the API and the page speak one vocabulary.
+    State = Alert.State
+    severity = models.CharField(max_length=10, default="critical")
+    message = models.TextField()
+    fired_at = models.DateTimeField(auto_now_add=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                        null=True, blank=True, related_name="+")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-fired_at"]
+        indexes = [
+            models.Index(fields=["device", "state"], name="devicealert_device_state"),
+            models.Index(fields=["state", "resolved_at"], name="devicealert_state_resolved"),
+        ]
+
+    def __str__(self):
+        return f"[{self.severity}] {self.device_id}: {self.message}"
