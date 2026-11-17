@@ -64,6 +64,8 @@
     "static/js/vigil-pickers.js",
     "static/js/vigil-monitor.js",
     "static/js/vigil-playbooks.js",
-    "static/js/vigil-widgets.js"
+    "static/js/vigil-widgets.js",
+    "static/js/vigil-policies.js",
+    "static/js/vigil-containers.js"
   ]
 }

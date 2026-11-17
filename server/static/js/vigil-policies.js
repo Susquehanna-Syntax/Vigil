@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-policies.js
 // Owns: the Policies page — app and patch policies, the editor (Apps /
 //   Patching / Preview), run now, and the changes waiting for approval.
@@ -10,6 +11,22 @@
 //      /compliance/; /api/v1/compliance/report{/,.html} (Business);
 //      GET /api/v1/software/apps/ (the app picker)
 
+/** One app rule as the API row carries it and as the editor edits it. */
+/** @typedef {{app: string, source: string, state: string, version: string}} PolRule */
+/** What /api/v1/policies/drift/?policy=<id> reports for one host that has
+ *  drifted: policy_drift() always gives those rows a `changes` list. */
+/** @typedef {{host_id: string, hostname: string, changes: object[]}} PolDriftHost */
+/** One row of /api/v1/policies/ (apps/policies/views.py _row, described by
+ *  PolicySerializer). `window_hours` and `deferral_days` are integers the editor
+ *  assigns to a text input's `.value`; DOM assignment coerces them to text at run
+ *  time, so those two statements carry a cast. */
+/** @typedef {{id: string, name: string, enabled: boolean, target_tags: string[],
+ *  site_id: string|null, cron_hour: string, cron_minute: string, cron_dow: string,
+ *  window_hours: number, wave_group_tag: string, approval_mode: string,
+ *  patch_enabled: boolean, windows_classifications: string[], deferral_days: number,
+ *  reboot: string, linux_updates: string, allow_high_risk: boolean, high_risk: boolean,
+ *  task_definition: string|null, app_rules: PolRule[]}} PolRow */
+
 const POL_CLASSIFICATIONS = [
   'Critical Updates', 'Security Updates', 'Definition Updates', 'Update Rollups',
   'Updates', 'Feature Packs', 'Service Packs', 'Drivers', 'Tools', 'Upgrades',
@@ -20,29 +37,37 @@ const POL_SOURCES = ['', 'dpkg', 'rpm', 'apk', 'pacman', 'flatpak', 'snap',
 const POL_STATES = [['present', 'Present'], ['latest', 'Latest'], ['pinned', 'Pinned'], ['absent', 'Absent']];
 const POL_COLUMNS = 6;
 
-const polState = { rows: [], changes: [], selected: new Set(), editing: null, rules: [], apps: null, explainSet: false };
+/** @type {{rows: PolRow[], changes: {id: string, policy_id: string, policy: string, hostname: string, changes: any[], state: string, created_at: string}[], selected: Set<string>, editing: string|null, rules: PolRule[], apps: {id: string, source: string, name?: string}[]|null, explainSet: boolean}} */
+const polState = {
+  rows: [], changes: [], selected: new Set(), editing: null, rules: [], apps: null, explainSet: false };
 
 /* ── List ────────────────────────────────────────────────────────────── */
+/** @param {{cron_dow: string, cron_hour: string, cron_minute: string, window_hours: number}} p @returns {string} */
 function _polWindow(p) {
-  const pad = (v) => (/^\d+$/.test(v) ? String(v).padStart(2, '0') : v);
+  // A guard against a count that needs no padding; RegExp.test coerces the
+  // number to this same text before matching.
+  const pad = (/** @type {string|number} */ v) => (/^\d+$/.test(String(v)) ? String(v).padStart(2, '0') : v);
   const days = p.cron_dow === '*' ? 'daily' : `days ${p.cron_dow}`;
   return `${pad(p.cron_hour)}:${pad(p.cron_minute)} ${days}, ${p.window_hours}h`;
 }
 
+/** @returns {Promise<void>} */
 async function fetchPolicies() {
-  const tbody = document.getElementById('pol-table-body');
+  const tbody = /** @type {HTMLElement|null} */ (document.getElementById('pol-table-body'));
   if (tbody) tbody.innerHTML = `<tr><td colspan="${POL_COLUMNS}" class="apps-detail-loading">Loading…</td></tr>`;
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
   } catch { polState.rows = []; }
   renderPolicies();
-  const ex = document.getElementById('pol-explain');
+  const ex = /** @type {HTMLDetailsElement|null} */ (document.getElementById('pol-explain'));
   if (ex && !polState.explainSet) { ex.open = polState.rows.length === 0; polState.explainSet = true; }
 }
 
+/** @returns {void} */
 function renderPolicies() {
-  const tbody = document.getElementById('pol-table-body');
+  const tbody = /** @type {HTMLElement|null} */ (document.getElementById('pol-table-body'));
   if (!tbody) return;
+  /** @type {Record<string, number>} */
   const pendingBy = {};
   for (const c of polState.changes) pendingBy[c.policy_id] = (pendingBy[c.policy_id] || 0) + 1;
   const html = polState.rows.map(p => {
@@ -67,8 +92,9 @@ function renderPolicies() {
 }
 
 /* ── Compliance (numbers Free; the report is Business) ───────────────── */
+/** @returns {Promise<void>} */
 async function fetchCompliance() {
-  const wrap = document.getElementById('pol-compliance');
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('pol-compliance'));
   if (!wrap) return;
   let c;
   try { c = await apiJson('/api/v1/policies/compliance/'); } catch { wrap.innerHTML = ''; return; }
@@ -78,6 +104,7 @@ async function fetchCompliance() {
     ${late ? `<span class="chip chip-rose">${late} critical update${late === 1 ? '' : 's'} missing over 30 days</span>` : ''}`;
 }
 
+/** @returns {Promise<void>} */
 async function openComplianceReport() {
   const resp = await fetch('/api/v1/compliance/report/', { credentials: 'same-origin' });
   if (resp.status === 402) {
@@ -88,12 +115,14 @@ async function openComplianceReport() {
 }
 
 /* ── Waiting for approval ────────────────────────────────────────────── */
+/** @param {{app?: string, title?: string, update?: string, action?: string, have?: string, want?: string}} c @returns {string} */
 function _changeText(c) {
   if (c.update) return `${c.update}${c.title && c.title !== c.update ? ` — ${c.title}` : ''}`;
   const want = c.want ? ` → ${c.want}` : '';
   return `${c.action} ${c.app}${c.have ? ` (${c.have}${want})` : want}`;
 }
 
+/** @returns {Promise<void>} */
 async function fetchPolicyChanges() {
   try {
     polState.changes = (await apiJson('/api/v1/policies/changes/?state=pending')).results || [];
@@ -104,10 +133,11 @@ async function fetchPolicyChanges() {
   renderPolicies();
 }
 
+/** @returns {void} */
 function renderPolicyChanges() {
-  const wrap = document.getElementById('pol-changes-list');
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('pol-changes-list'));
   if (!wrap) return;
-  const actions = document.getElementById('pol-changes-actions');
+  const actions = /** @type {HTMLElement|null} */ (document.getElementById('pol-changes-actions'));
   if (actions) actions.hidden = polState.selected.size === 0;
   if (!polState.changes.length) {
     wrap.innerHTML = '<div class="apps-empty-state">Nothing waiting. Policies set to approve each change list what they would do here.</div>';
@@ -121,6 +151,7 @@ function renderPolicyChanges() {
     </label>`).join('');
 }
 
+/** @param {'approve' | 'reject'} kind @returns {Promise<void>} */
 async function decidePolicyChanges(kind) {
   const ids = [...polState.selected];
   if (!ids.length) return;
@@ -140,8 +171,10 @@ async function decidePolicyChanges(kind) {
 }
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
-function _polEl(id) { return document.getElementById(id); }
+/** @param {string} id @returns {HTMLElement|null} */
+function _polEl(id) { return /** @type {HTMLElement|null} */ (document.getElementById(id)); }
 
+/** @returns {Promise<void>} */
 async function _loadAppPicker() {
   if (polState.apps) return;
   polState.apps = [];
@@ -158,12 +191,14 @@ async function _loadAppPicker() {
   }
 }
 
+/** @param {string} name @returns {void} */
 function setPolicyTab(name) {
-  document.querySelectorAll('[data-pol-tab]').forEach(t => t.classList.toggle('active', t.dataset.polTab === name));
-  document.querySelectorAll('.pol-panel').forEach(p => p.classList.toggle('active', p.id === `pol-panel-${name}`));
+  for (const t of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-pol-tab]'))) t.classList.toggle('active', t.dataset.polTab === name);
+  for (const p of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.pol-panel'))) p.classList.toggle('active', p.id === `pol-panel-${name}`);
   if (name === 'preview') loadPolicyPreview();
 }
 
+/** @returns {void} */
 function renderPolicyRules() {
   const wrap = _polEl('pol-rules');
   if (!wrap) return;
@@ -178,37 +213,39 @@ function renderPolicyRules() {
     </div>`).join('') || '<div class="apps-empty-state">No app rules. Add one, or use only the Patching tab.</div>';
 }
 
+/** @returns {void} */
 function addPolicyRule() {
   polState.rules.push({ app: '', source: '', state: 'present', version: '' });
   renderPolicyRules();
-  const inputs = document.querySelectorAll('#pol-rules [data-field="app"]');
+  const inputs = /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('#pol-rules [data-field="app"]'));
   if (inputs.length) inputs[inputs.length - 1].focus();
 }
 
 async function openPolicyEditor(policyId) {
-  const p = (typeof policyId === 'string' && polState.rows.find(r => r.id === policyId)) || null;
+  const p = /** @type {PolRow|null} */ ((typeof policyId === 'string' && polState.rows.find(r => r.id === policyId)) || null);
   polState.editing = p ? p.id : null;
   polState.rules = p ? p.app_rules.map(r => ({ ...r })) : [];
   _polEl('pol-title').textContent = p ? p.name : 'New policy';
-  _polEl('pol-name').value = p ? p.name : '';
-  sitePickFill(_polEl('pol-site'), _polEl('pol-site-field'),
+  /** @type {HTMLInputElement} */ (_polEl('pol-name')).value = p ? p.name : '';
+  sitePickFill(/** @type {HTMLSelectElement} */ (_polEl('pol-site')), _polEl('pol-site-field'),
     p ? p.site_id : null, { editing: !!p });
-  _polEl('pol-tags').value = p ? p.target_tags.join(', ') : '';
-  _polEl('pol-hour').value = p ? p.cron_hour : '2';
-  _polEl('pol-minute').value = p ? p.cron_minute : '0';
-  _polEl('pol-dow').value = p ? p.cron_dow : '*';
-  _polEl('pol-hours').value = p ? p.window_hours : 4;
-  _polEl('pol-waves').value = p ? p.wave_group_tag : '';
-  _polEl('pol-enabled').checked = p ? p.enabled : true;
-  _polEl('pol-approve').checked = p ? p.approval_mode === 'approve' : false;
-  _polEl('pol-patch').checked = p ? p.patch_enabled : false;
+  /** @type {HTMLInputElement} */ (_polEl('pol-tags')).value = p ? p.target_tags.join(', ') : '';
+  /** @type {HTMLInputElement} */ (_polEl('pol-hour')).value = p ? p.cron_hour : '2';
+  /** @type {HTMLInputElement} */ (_polEl('pol-minute')).value = p ? p.cron_minute : '0';
+  /** @type {HTMLInputElement} */ (_polEl('pol-dow')).value = p ? p.cron_dow : '*';
+  // The browser coerces this number to text on assignment; the cast states that.
+  /** @type {HTMLInputElement} */ (_polEl('pol-hours')).value = p ? String(p.window_hours) : '4';
+  /** @type {HTMLInputElement} */ (_polEl('pol-waves')).value = p ? p.wave_group_tag : '';
+  /** @type {HTMLInputElement} */ (_polEl('pol-enabled')).checked = p ? p.enabled : true;
+  /** @type {HTMLInputElement} */ (_polEl('pol-approve')).checked = p ? p.approval_mode === 'approve' : false;
+  /** @type {HTMLInputElement} */ (_polEl('pol-patch')).checked = p ? p.patch_enabled : false;
   const classes = p ? p.windows_classifications : POL_DEFAULT_CLASSES;
   _polEl('pol-classes').innerHTML = POL_CLASSIFICATIONS.map(c => `<label class="setting-check">
       <input type="checkbox" value="${escAttr(c)}"${classes.includes(c) ? ' checked' : ''}> ${escHtml(c)}</label>`).join('');
-  _polEl('pol-defer').value = p ? p.deferral_days : 7;
-  _polEl('pol-reboot').value = p ? p.reboot : 'in_window';
-  _polEl('pol-linux').value = p ? p.linux_updates : 'security';
-  _polEl('pol-high-risk').checked = p ? p.allow_high_risk : false;
+  /** @type {HTMLInputElement} */ (_polEl('pol-defer')).value = p ? String(p.deferral_days) : '7';
+  /** @type {HTMLSelectElement} */ (_polEl('pol-reboot')).value = p ? p.reboot : 'in_window';
+  /** @type {HTMLSelectElement} */ (_polEl('pol-linux')).value = p ? p.linux_updates : 'security';
+  /** @type {HTMLInputElement} */ (_polEl('pol-high-risk')).checked = p ? p.allow_high_risk : false;
   _polEl('pol-delete').hidden = !p;
   _polEl('pol-run').hidden = !p;
   _polEl('pol-error').classList.remove('show');
@@ -216,7 +253,7 @@ async function openPolicyEditor(policyId) {
   setPolicyTab('apps');
   _polEl('pol-overlay').classList.add('open');
   _polEl('pol-modal').classList.add('open');
-  _polEl('pol-name').focus();
+  /** @type {HTMLInputElement} */ (_polEl('pol-name')).focus();
   _loadAppPicker();
 }
 
@@ -227,6 +264,7 @@ async function openPolicyEditor(policyId) {
  *  `opts.windowsClassifications` is the same idea for OS updates: the Windows
  *  Update classifications an update actually arrived under, ticked into the
  *  Patching tab so the policy fetches that kind of update. */
+/** @param {string} appName @param {{app: string, source: string}[]} pairs @param {string[]} classifications @returns {string} */
 function _polNewMeta(appName, pairs, classifications) {
   if (!pairs.length && classifications.length) return `patches ${classifications.join(', ')} on Windows`;
   if (pairs.length && classifications.length) {
@@ -235,6 +273,7 @@ function _polNewMeta(appName, pairs, classifications) {
   return `keeps ${appName} installed and up to date`;
 }
 
+/** @param {string} appName @param {{app: string, source: string}[]} pairs @param {{windowsClassifications?: string[]}=} opts @returns {Promise<void>} */
 async function policyFromApp(appName, pairs, opts = {}) {
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
@@ -242,7 +281,7 @@ async function policyFromApp(appName, pairs, opts = {}) {
     showToast(`Update policies need an admin account: ${e.message}`, 'error');
     return;
   }
-  const want = (opts.windowsClassifications || []).filter(c => POL_CLASSIFICATIONS.includes(c));
+  const want = (opts.windowsClassifications || []).filter((/** @type {string} */ c) => POL_CLASSIFICATIONS.includes(c));
   const items = [
     { key: '', name: 'New policy', meta: _polNewMeta(appName, pairs, want) },
     ...polState.rows.map(p => ({ key: p.id, name: p.name,
@@ -253,7 +292,7 @@ async function policyFromApp(appName, pairs, opts = {}) {
     onSelect: async (item) => {
       navigateTo('policies');
       await openPolicyEditor(item.key || null);
-      if (!item.key) _polEl('pol-name').value = `${appName} updates`;
+      if (!item.key) /** @type {HTMLInputElement} */ (_polEl('pol-name')).value = `${appName} updates`;
       let added = 0;
       for (const pr of pairs) {
         if (polState.rules.some(r => r.app === pr.app && r.source === pr.source)) continue;
@@ -263,8 +302,8 @@ async function policyFromApp(appName, pairs, opts = {}) {
       renderPolicyRules();
       let patched = 0;
       if (want.length) {
-        _polEl('pol-patch').checked = true;
-        for (const box of _polEl('pol-classes').querySelectorAll('input')) {
+        /** @type {HTMLInputElement} */ (_polEl('pol-patch')).checked = true;
+        for (const box of /** @type {NodeListOf<HTMLInputElement>} */ (_polEl('pol-classes').querySelectorAll('input'))) {
           if (!want.includes(box.value)) continue;
           box.checked = true;
           patched += 1;
@@ -283,37 +322,39 @@ function closePolicyEditor() {
   _polEl('pol-modal').classList.remove('open');
 }
 
+/** @returns {Record<string, any>} */
 function _policyPayload() {
-  const tags = _polEl('pol-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  const tags = /** @type {HTMLInputElement} */ (_polEl('pol-tags')).value.split(',').map(t => t.trim()).filter(Boolean);
   const rules = polState.rules.filter(r => r.app.trim()).map(r => ({
     app: r.app.trim(), source: r.source, state: r.state,
     ...(r.state === 'pinned' ? { version: (r.version || '').trim() } : {}),
   }));
   return {
-    name: _polEl('pol-name').value.trim(),
+    name: /** @type {HTMLInputElement} */ (_polEl('pol-name')).value.trim(),
     target_tags: tags,
-    cron_hour: _polEl('pol-hour').value.trim(),
-    cron_minute: _polEl('pol-minute').value.trim(),
-    cron_dow: _polEl('pol-dow').value.trim() || '*',
-    window_hours: parseInt(_polEl('pol-hours').value, 10),
-    wave_group_tag: _polEl('pol-waves').value.trim(),
-    enabled: _polEl('pol-enabled').checked,
-    approval_mode: _polEl('pol-approve').checked ? 'approve' : 'automatic',
-    patch_enabled: _polEl('pol-patch').checked,
-    windows_classifications: [...document.querySelectorAll('#pol-classes input:checked')].map(i => i.value),
-    deferral_days: parseInt(_polEl('pol-defer').value, 10),
-    reboot: _polEl('pol-reboot').value,
-    linux_updates: _polEl('pol-linux').value,
+    cron_hour: /** @type {HTMLInputElement} */ (_polEl('pol-hour')).value.trim(),
+    cron_minute: /** @type {HTMLInputElement} */ (_polEl('pol-minute')).value.trim(),
+    cron_dow: /** @type {HTMLInputElement} */ (_polEl('pol-dow')).value.trim() || '*',
+    window_hours: parseInt(/** @type {HTMLInputElement} */ (_polEl('pol-hours')).value, 10),
+    wave_group_tag: /** @type {HTMLInputElement} */ (_polEl('pol-waves')).value.trim(),
+    enabled: /** @type {HTMLInputElement} */ (_polEl('pol-enabled')).checked,
+    approval_mode: /** @type {HTMLInputElement} */ (_polEl('pol-approve')).checked ? 'approve' : 'automatic',
+    patch_enabled: /** @type {HTMLInputElement} */ (_polEl('pol-patch')).checked,
+    windows_classifications: [...document.querySelectorAll('#pol-classes input:checked')].map((/** @type {HTMLInputElement} */ i) => i.value),
+    deferral_days: parseInt(/** @type {HTMLInputElement} */ (_polEl('pol-defer')).value, 10),
+    reboot: /** @type {HTMLSelectElement} */ (_polEl('pol-reboot')).value,
+    linux_updates: /** @type {HTMLSelectElement} */ (_polEl('pol-linux')).value,
     app_rules: rules,
   };
 }
 
+/** @returns {Promise<void>} */
 async function savePolicy() {
   const body = _policyPayload();
-  const siteId = sitePickValue(_polEl('pol-site'), _polEl('pol-site-field'));
+  const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (_polEl('pol-site')), _polEl('pol-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
   const current = polState.rows.find(r => r.id === polState.editing);
-  const wantHighRisk = _polEl('pol-high-risk').checked;
+  const wantHighRisk = /** @type {HTMLInputElement} */ (_polEl('pol-high-risk')).checked;
   if (wantHighRisk !== (current ? current.allow_high_risk : false)) {
     body.allow_high_risk = wantHighRisk;
     if (wantHighRisk) {
@@ -335,6 +376,7 @@ async function savePolicy() {
   }
 }
 
+/** @returns {Promise<void>} */
 async function deletePolicy() {
   if (!polState.editing) return;
   const p = polState.rows.find(r => r.id === polState.editing);
@@ -348,10 +390,12 @@ async function deletePolicy() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+/** @returns {Promise<void>} */
 async function loadPolicyPreview() {
   const wrap = _polEl('pol-preview');
   if (!wrap || !polState.editing) return;
   wrap.innerHTML = '<div class="apps-detail-loading">Working out what would change…</div>';
+  /** @type {{hosts: PolDriftHost[], compliant: number, unknown: {host_id: string, hostname: string}[]}} */
   let drift;
   try { drift = await apiJson(`/api/v1/policies/${polState.editing}/drift/`); } catch (e) {
     wrap.innerHTML = `<div class="apps-empty-state">${escHtml(e.message)}</div>`;
@@ -373,6 +417,7 @@ async function loadPolicyPreview() {
   if (link) link.hidden = !(p && p.task_definition);
 }
 
+/** @returns {Promise<void>} */
 async function runPolicyNow() {
   const totp = await totpPrompt('Running this policy now applies it to every host it targets.',
     { title: 'Run policy now', confirmText: 'Run now' });
@@ -432,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 const _origNavForPolicies = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavForPolicies(pageName);
   if (pageName === 'policies') {
     fetchPolicies();

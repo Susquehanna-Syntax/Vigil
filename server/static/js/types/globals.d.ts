@@ -232,3 +232,28 @@ declare function _runHasHuntSteps(run: {tasks?: object[]} | null | undefined): b
 
 /** Defined in server/static/js/vigil-hunts.js (the hunt results page for a run). */
 declare function openHuntResults(runId: any): Promise<void>;
+
+/** Defined in server/static/js/vigil-stacks.js (the Edit chip it renders inside
+ *  a stack's markup; `name` is the compose project, from a data attribute). */
+declare function managedStackEditButton(name: string): string;
+
+/** Defined in server/static/js/vigil-stacks.js (which projects this page showed,
+ *  and which of them had containers; both arrays are project names). */
+declare function setListedStacks(all: string[], withContainers: string[]): void;
+
+/** Defined in server/static/js/vigil-stacks.js (a managed stack of that project
+ *  that comes from Git, or null; `name` is a compose project name). */
+declare function managedGitStack(name: string): {id: string, [k: string]: any}|null;
+
+/** Defined in server/static/js/vigil-stacks.js (redeploy a Git-backed stack from
+ *  the latest commit; callers pass the stack id out of a data attribute). */
+declare function updateGitStack(stackId: string): Promise<void>;
+
+/** Defined in server/static/js/vigil-deploy.js (a seeded built-in task, with the
+ *  host it runs on and its declared inputs filled in). `taskName` comes from a
+ *  data attribute; `hostId` is opaque, as everywhere in this page. */
+declare function openBuiltinTask(taskName: string, hostId: any, inputs: Record<string, any>): Promise<void>;
+
+/** Defined in server/static/js/vigil-host-cards.js (loads the vendored terminal
+ *  assets once before the first shell; resolves when they are on the page). */
+declare function loadTerminalAssets(): Promise<void>;

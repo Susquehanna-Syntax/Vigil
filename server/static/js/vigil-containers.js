@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-containers.js
 // Owns: the Containers page — one host's containers grouped by compose stack,
 //   their lifecycle buttons (restart/stop/start, update, roll back, logs), the
@@ -15,11 +16,19 @@
 //      POST /api/v1/stacks/adopt/, POST /api/v1/hosts/{id}/containers/{name}/logs/
 
 let containersHostId = null;
-//: The page's state beyond the host: the open tab, the filter bar, and what
-//: was last fetched (so typing in the filter redraws without refetching).
+/** The page's state beyond the host: the open tab, the filter bar, and what
+ *  was last fetched (so typing in the filter redraws without refetching).
+ *  `containers` and `stacks` are the raw rows of /hosts/{id}/containers/ and
+ *  /hosts/{id}/stacks/ for the selected host; `docker` is the whole
+ *  /hosts/{id}/docker/ payload. */
+/** @type {{tab: string, q: string, chip: string,
+ *  hosts: {id: string, hostname: string, containers: number|null, running: number|null, engine?: string}[]|null,
+ *  raw: {hostId: any, containers: any[], stacks: any[]}|null,
+ *  docker: any}} */
 const ctrState = { tab: 'containers', q: '', chip: '', hosts: null, raw: null, docker: null };
 
 /* ── Host selection ──────────────────────────────────────────────────── */
+/** @param {boolean=} force @returns {Promise<{id: string, hostname: string, containers: number|null, running: number|null, engine?: string}[]>} */
 async function _ctrHosts(force) {
   if (!ctrState.hosts || force) {
     try { ctrState.hosts = await apiJson('/api/v1/hosts/docker-summary/'); } catch { ctrState.hosts = ctrState.hosts || []; }
@@ -28,20 +37,23 @@ async function _ctrHosts(force) {
 }
 
 /** The hostname for an id, for labels elsewhere (the stack editor's crumbs). */
+/** @param {*=} hostId @returns {string} */
 function containersHostLabel(hostId) {
   const h = (ctrState.hosts || []).find(x => x.id === hostId);
   return h ? h.hostname : '';
 }
 
+/** `hostId` is whatever the page's data attribute holds: an id, or '' for none. */
+/** @param {*=} hostId @returns {void} */
 function selectContainersHost(hostId) {
-  const input = document.getElementById('containers-host');
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('containers-host'));
   if (containersHostId !== (hostId || null)) { ctrState.raw = null; ctrState.docker = null; }
   containersHostId = hostId || null;
   if (input) input.value = hostId || '';
-  const label = document.getElementById('containers-host-label');
+  const label = /** @type {HTMLElement|null} */ (document.getElementById('containers-host-label'));
   if (label) label.textContent = containersHostLabel(hostId) || (hostId ? 'Host' : 'Choose a host…');
-  document.getElementById('containers-empty').hidden = !!containersHostId;
-  document.getElementById('containers-content').hidden = !containersHostId;
+  /** @type {HTMLElement} */ (document.getElementById('containers-empty')).hidden = !!containersHostId;
+  /** @type {HTMLElement} */ (document.getElementById('containers-content')).hidden = !containersHostId;
   _renderCtrPins();
   refreshContainers();
   if (hostId && !containersHostLabel(hostId)) {
@@ -49,6 +61,7 @@ function selectContainersHost(hostId) {
   }
 }
 
+/** @returns {Promise<void>} */
 async function pickContainersHost() {
   const hosts = await _ctrHosts(true);
   openPicker({
@@ -65,14 +78,16 @@ async function pickContainersHost() {
 }
 
 /** Pinned hosts (the Monitor page's pins) as one-click chips. */
+/** @returns {void} */
 function _renderCtrPins() {
-  const wrap = document.getElementById('containers-pins');
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('containers-pins'));
   if (!wrap) return;
   const pins = typeof getPins === 'function' ? getPins() : [];
   wrap.innerHTML = pins.slice(0, 8).map(p => `<button type="button" class="chip ctr-pin${p.id === containersHostId ? ' is-on' : ''}"
       data-ctr-host="${escAttr(p.id)}">${escHtml(p.hostname || '')}</button>`).join('');
 }
 
+/** @returns {void} */
 function refreshContainers() {
   if (!containersHostId) return;
   renderDockerContainers(containersHostId);
@@ -81,11 +96,13 @@ function refreshContainers() {
 
 // Open the Containers page on a given host — the Monitor page's Containers
 // button lands here with the host it was showing.
+/** @param {*=} hostId @returns {void} */
 function openContainersForHost(hostId) {
   navigateTo('containers');
   if (hostId) selectContainersHost(hostId);
 }
 
+/** @returns {void} */
 function openContainersForCurrentMonitor() {
   openContainersForHost(typeof monitorHostId !== 'undefined' ? monitorHostId : null);
 }
@@ -99,7 +116,7 @@ pollingInterval(() => {
 /* ── navigateTo wrapper: on entry, follow the host the Monitor page shows,
     else the first pinned host, else the first host there is. ── */
 const _origNavigateContainers = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavigateContainers(pageName);
   if (pageName !== 'containers') return;
   if (containersHostId) { refreshContainers(); return; }
@@ -121,11 +138,13 @@ const CTR_STATES = ['running', 'exited', 'dead', 'paused', 'restarting', 'create
 /* Docker's status text carries the exit code ("Exited (137) 2 hours ago").
    Code 0 is a clean stop; anything else (or "dead") is a crash, and the two
    must not look the same. */
+/** @param {{status?: string|null}} c @returns {number|null} */
 function _ctrExitCode(c) {
   const m = /exited \((-?\d+)\)/i.exec(c.status || '');
   return m ? parseInt(m[1], 10) : null;
 }
 
+/** @param {{state?: string|null, status?: string|null}} c @returns {string} */
 function _ctrStateBadge(c) {
   const state = (c.state || '').toLowerCase();
   const code = _ctrExitCode(c);
@@ -206,7 +225,7 @@ async function renderDockerContainers(hostId, fromCache) {
   const containers = allContainers.filter(_ctrContainerMatches);
   const filtering = !!(ctrState.q || ctrState.chip);
   const tabCount = document.getElementById('ctr-n-containers');
-  if (tabCount) tabCount.textContent = allContainers.length || '';
+  if (tabCount) tabCount.textContent = /** @type {string} */ (allContainers.length || '');
   const stackInfo = Object.fromEntries((stacks || []).map(s => [s.project, s]));
 
   // A stack Vigil deployed or adopted keeps its row after `down` or after its
@@ -318,29 +337,29 @@ async function renderDockerContainers(hostId, fromCache) {
     </div>`;
   }
   wrap.innerHTML = html;
-  wrap.querySelectorAll('[data-ctr-update]').forEach(btn => btn.addEventListener('click', () => {
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-ctr-update]'))) btn.addEventListener('click', () => {
     if (typeof openUpdateContainer === 'function') {
       openUpdateContainer(btn.dataset.host, btn.dataset.name);
     }
-  }));
-  wrap.querySelectorAll('[data-ctr-act]').forEach(btn => btn.addEventListener('click', () => {
+  });
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-ctr-act]'))) btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.ctrAct, btn.dataset.host, { container_name: btn.dataset.name });
-  }));
-  wrap.querySelectorAll('[data-ctr-rollback]').forEach(btn => btn.addEventListener('click', () => {
+  });
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-ctr-rollback]'))) btn.addEventListener('click', () => {
     openBuiltinTask('Roll back container', btn.dataset.host,
       { container_name: btn.dataset.name, image: btn.dataset.image });
-  }));
-  wrap.querySelectorAll('[data-ctr-logs]').forEach(btn => btn.addEventListener('click', () => {
+  });
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-ctr-logs]'))) btn.addEventListener('click', () => {
     openContainerLogs(btn.dataset.host, btn.dataset.name);
-  }));
+  });
   // The same terminal dialog the Connect menu opens. The container's name is
   // what the agent shells into; the host id is where the session starts.
-  wrap.querySelectorAll('[data-ctr-shell]').forEach(btn => btn.addEventListener('click', () => {
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-ctr-shell]'))) btn.addEventListener('click', () => {
     loadTerminalAssets()
       .then(() => openSession(btn.dataset.host, 'container', btn.dataset.name))
       .catch((err) => showToast(err.message, 'error'));
-  }));
-  wrap.querySelectorAll('[data-stack-adopt]').forEach(btn => btn.addEventListener('click', async () => {
+  });
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-stack-adopt]'))) btn.addEventListener('click', async () => {
     const totp = await totpPrompt(`Adopting ${btn.dataset.project} reads its compose file and .env into Vigil.`);
     if (!totp) return;
     try {
@@ -348,13 +367,13 @@ async function renderDockerContainers(hostId, fromCache) {
         { host_id: btn.dataset.host, project: btn.dataset.project, totp: totp.trim() }) });
       showToast(`Adopting ${btn.dataset.project} — it appears under Managed by Vigil after the agent's next check-in`, 'success');
     } catch (e) { showToast(e.message, 'error'); }
-  }));
-  wrap.querySelectorAll('[data-stack-act]').forEach(btn => btn.addEventListener('click', () => {
+  });
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-stack-act]'))) btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.stackAct, btn.dataset.host, { project: btn.dataset.project });
-  }));
-  wrap.querySelectorAll('[data-stack-git-update]').forEach(btn => btn.addEventListener('click', () => {
+  });
+  for (const btn of /** @type {NodeListOf<HTMLElement>} */ (wrap.querySelectorAll('[data-stack-git-update]'))) btn.addEventListener('click', () => {
     updateGitStack(btn.dataset.stackGitUpdate);
-  }));
+  });
 }
 
 
@@ -393,14 +412,14 @@ function _logEls() {
     document.body.append(overlay, modal);
     overlay.addEventListener('click', closeContainerLogs);
     modal.querySelector('#ctr-logs-close').addEventListener('click', closeContainerLogs);
-    modal.querySelector('#ctr-logs-wrap').addEventListener('click', (ev) => {
+    modal.querySelector('#ctr-logs-wrap').addEventListener('click', (/** @type {MouseEvent} */ ev) => {
       logView.wrap = !logView.wrap;
-      ev.currentTarget.setAttribute('aria-pressed', String(logView.wrap));
+      /** @type {HTMLElement} */ (ev.currentTarget).setAttribute('aria-pressed', String(logView.wrap));
       document.getElementById('ctr-logs-body').classList.toggle('term-wrap', logView.wrap);
     });
-    modal.querySelector('#ctr-logs-ts').addEventListener('click', (ev) => {
+    modal.querySelector('#ctr-logs-ts').addEventListener('click', (/** @type {MouseEvent} */ ev) => {
       logView.timestamps = logView.timestamps === 'off' ? 'time' : 'off';
-      ev.currentTarget.setAttribute('aria-pressed', String(logView.timestamps === 'time'));
+      /** @type {HTMLElement} */ (ev.currentTarget).setAttribute('aria-pressed', String(logView.timestamps === 'time'));
       _renderLogLines();
     });
     modal.querySelector('#ctr-logs-copy').addEventListener('click', _copyLogLines);
@@ -579,7 +598,7 @@ function _renderCtrChips() {
     networks: `<button class="btn btn-outline btn-xs" type="button" data-ctr-task="Prune unused networks">Prune unused</button>`,
   };
   document.getElementById('ctr-tab-actions').innerHTML = acts[ctrState.tab];
-  document.getElementById('ctr-filter-q').placeholder = {
+  /** @type {HTMLInputElement} */ (document.getElementById('ctr-filter-q')).placeholder = {
     containers: 'Filter by name, image or stack…', images: 'Filter by tag, id or container…',
     volumes: 'Filter by name, stack or container…', networks: 'Filter by name, subnet or container…',
   }[ctrState.tab];
@@ -655,12 +674,12 @@ function _renderCtrPanel() {
 function setCtrTab(tab) {
   ctrState.tab = tab;
   ctrState.chip = '';
-  document.querySelectorAll('[data-ctr-tab]').forEach((t) => {
+  document.querySelectorAll('[data-ctr-tab]').forEach((/** @type {HTMLElement} */ t) => {
     const on = t.dataset.ctrTab === tab;
     t.classList.toggle('is-on', on);
     t.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  document.querySelectorAll('[data-ctr-panel]').forEach((p) => { p.hidden = p.dataset.ctrPanel !== tab; });
+  document.querySelectorAll('[data-ctr-panel]').forEach((/** @type {HTMLElement} */ p) => { p.hidden = p.dataset.ctrPanel !== tab; });
   _renderCtrChips();
   _renderCtrPanel();
   try { sessionStorage.setItem('vigil-ctr-tab', tab); } catch (e) { /* private window */ }
@@ -681,10 +700,10 @@ delegateClick('[data-ctr-task]', (el) => {
 });
 
 let _ctrFilterTimer = null;
-document.addEventListener('input', (ev) => {
-  if (ev.target.id !== 'ctr-filter-q') return;
+document.addEventListener('input', (/** @type {InputEvent} */ ev) => {
+  if (/** @type {HTMLInputElement} */ (ev.target).id !== 'ctr-filter-q') return;
   clearTimeout(_ctrFilterTimer);
-  _ctrFilterTimer = setTimeout(() => { ctrState.q = ev.target.value.trim(); _renderCtrPanel(); }, 120);
+  _ctrFilterTimer = setTimeout(() => { ctrState.q = /** @type {HTMLInputElement} */ (ev.target).value.trim(); _renderCtrPanel(); }, 120);
 });
 
 document.addEventListener('DOMContentLoaded', () => {
