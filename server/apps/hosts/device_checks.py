@@ -248,21 +248,23 @@ def checks_for(host: Host) -> list[DeviceCheck]:
     return sorted(mine, key=lambda c: str(c.id))
 
 
-def _stored_v3_secret(check: DeviceCheck) -> dict | None:
-    """The SNMPv3 passwords of a stored check's secret, or None.
+def stored_v3_passwords(check: DeviceCheck) -> dict | None:
+    """``{"auth": str, "priv": str | None}`` from an SNMPv3 check's secret, or None.
 
-    A secret that does not decrypt, does not parse as this JSON object, or is
-    not shaped like one counts as none — the same "as good as gone" rule an
-    undecryptable community follows in check_params_for.
+    A secret that does not decrypt, does not parse as this JSON object, or has no
+    auth password counts as none: the same "as good as gone" rule an
+    undecryptable community follows. Never logged, never in an answer.
     """
-    plaintext = decrypt_secret(check.secret)
-    if not plaintext:
+    if not check.secret:
         return None
     try:
-        stored = json.loads(plaintext)
+        stored = json.loads(decrypt_secret(check.secret))
     except (ValueError, TypeError):
         return None
-    return stored if isinstance(stored, dict) else None
+    if not isinstance(stored, dict) or not isinstance(stored.get("auth"), str):
+        return None
+    priv = stored.get("priv")
+    return {"auth": stored["auth"], "priv": priv if isinstance(priv, str) else None}
 
 
 def check_params_for(check: DeviceCheck) -> dict | None:
@@ -286,17 +288,14 @@ def check_params_for(check: DeviceCheck) -> dict | None:
             return None
         params["community"] = community
         return params
-    stored = _stored_v3_secret(check)
+    stored = stored_v3_passwords(check)
     if stored is None:
         return None
-    auth_password = stored.get("auth")
-    if not isinstance(auth_password, str):
-        return None
     params["version"] = 3
-    params["auth_password"] = auth_password
+    params["auth_password"] = stored["auth"]
     if params.pop("priv", True):
-        priv_password = stored.get("priv")
-        if not isinstance(priv_password, str):
+        priv_password = stored["priv"]
+        if priv_password is None:
             return None
         params["priv_password"] = priv_password
     return params

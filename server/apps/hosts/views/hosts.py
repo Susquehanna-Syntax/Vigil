@@ -35,8 +35,8 @@ from ..api_schema import (
 )
 from apps.alerts.device_alerts import resolve_for_check
 from apps.alerts.tasks import _is_older, _version_key
-from ..crypto import decrypt_secret, encrypt_secret
-from ..device_checks import device_states, validate_interval, validate_params
+from ..crypto import encrypt_secret
+from ..device_checks import device_states, stored_v3_passwords, validate_interval, validate_params
 from ..models import DeviceCheck, Host
 from ._common import *  # noqa: F401,F403
 
@@ -270,34 +270,11 @@ def _v3_secret(auth_password: str, priv_password: str | None) -> bytes:
     return encrypt_secret(json.dumps({"auth": auth_password, "priv": priv_password}))
 
 
-def _stored_v3_passwords(check) -> dict | None:
-    """A stored check's SNMPv3 passwords, or None when its secret is not one.
-
-    Lives here rather than in device_checks so that module keeps a one-way
-    dependency on the model. A secret that does not decrypt, does not parse as
-    this JSON object, or has no string for the auth password counts as none —
-    the same "as good as gone" rule an undecryptable community follows when a
-    check list is signed. A null privacy password of an authNoPriv check is a
-    valid secret with nothing in that half of it, so it comes back as None too;
-    callers ask for the auth password before they care about privacy.
-    """
-    if not check.secret:
-        return None
-    try:
-        stored = json.loads(decrypt_secret(check.secret))
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(stored, dict) or not isinstance(stored.get("auth"), str):
-        return None
-    priv = stored.get("priv")
-    return {"auth": stored["auth"], "priv": priv if isinstance(priv, str) else None}
-
-
 def _check_out(check) -> dict:
     latest = check.results.order_by("-time").first()
     params = check.params if isinstance(check.params, dict) else {}
     v3 = params.get("version") == "3" and bool(check.secret)
-    passwords = _stored_v3_passwords(check) if v3 else None
+    passwords = stored_v3_passwords(check) if v3 else None
     return {
         "id": str(check.id),
         "kind": check.kind,
@@ -397,7 +374,10 @@ def _v3_fields(data, params, current) -> bytes:
     checked when it was written, and re-checking it here would refuse a PATCH
     that changes nothing about the secrets. Never in an exception message.
     """
-    stored = _stored_v3_passwords(current) if current is not None else None
+    # Only a check that was already v3 has passwords to keep: a v2c community is
+    # never read as one, whatever text it happens to be.
+    was_v3 = current is not None and (current.params or {}).get("version") == "3"
+    stored = stored_v3_passwords(current) if was_v3 else None
     if "auth_password" in data:
         auth = _v3_password(data["auth_password"], "auth_password")
     elif stored is not None:
