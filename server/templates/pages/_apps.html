@@ -26,7 +26,7 @@
           <input type="search" class="form-control" id="apps-q" placeholder="Search apps…" autocomplete="off">
           <label class="apps-filter"><input type="checkbox" id="apps-outdated"> Outdated only</label>
           <label class="apps-filter"><input type="checkbox" id="apps-unmanaged"> Unmanaged only<span class="field-hint" tabindex="0" aria-label="About the unmanaged filter" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></label>
-          <select class="form-control" id="apps-source">
+          <select class="form-control" id="apps-source" aria-label="App source">
             <option value="">All sources</option>
             <option value="dpkg">dpkg</option>
             <option value="rpm">rpm</option>

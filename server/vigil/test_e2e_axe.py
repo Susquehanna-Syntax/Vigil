@@ -99,3 +99,19 @@ class AxeBaselineTests(SimpleTestCase):
         self.assertEqual(
             baseline_is_well_formed(["events sepia color-contrast h1"]),
             "'events sepia color-contrast h1': the theme is neither dark nor light")
+
+
+class FlowRegistrationTests(SimpleTestCase):
+    """Every step main() runs is a @flow: an undecorated one runs unreported, so
+    its failure stops the suite without saying which step it was."""
+
+    def test_every_step_main_calls_carries_one_flow_decorator(self):
+        source = RUN_PY.read_text()
+        main = source.split("\ndef main(")[1]
+        steps = set(re.findall(r"^\s+(\w+)\((?:admin|browser)\b", main, re.M)) - {"Session"}
+        self.assertGreater(len(steps), 5, steps)
+        for name in sorted(steps):
+            with self.subTest(step=name):
+                found = re.search(r"((?:@flow\([^\n]*\)\n)*)def " + name + r"\(", source)
+                self.assertIsNotNone(found, f"{name} is not defined in run.py")
+                self.assertEqual(found.group(1).count("@flow("), 1, f"{name} needs exactly one @flow")

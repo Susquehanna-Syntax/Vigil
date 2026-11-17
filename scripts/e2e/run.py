@@ -235,6 +235,53 @@ def axe_pages(s: Session):
     assert errors == [], errors
 
 
+@flow("tabs switch from the keyboard")
+def keyboard_tabs(s: Session):
+    s.go("alerts")
+    bar = '.tab-bar[data-tab-group="alerts"]'
+    # Where the keyboard is, and what it did. One tab holds the bar's place in the
+    # tab order; it is the selected one, it is the one under the focus, and its
+    # panel is the one on screen.
+    state = """sel => {
+      const tabs = [...document.querySelectorAll(sel + ' .tab')];
+      const on = tabs.findIndex(t => t.classList.contains('active'));
+      const tab = tabs[on];
+      return {count: tabs.length, on,
+              selected: tab ? tab.getAttribute('aria-selected') : null,
+              held: tabs.filter(t => t.getAttribute('tabindex') === '0').length,
+              focused: document.activeElement === tab,
+              panel: !!(tab && document.getElementById(tab.dataset.tab)
+                        && document.getElementById(tab.dataset.tab).classList.contains('active'))};
+    }"""
+
+    assert s.page.locator(bar + " .tab").count() >= 3, s.page.locator(bar + " .tab").count()
+    # A real browser has no keyboard position until the user gives it one. Focusing
+    # a tab from a script is what Tab does, and a bar leaves only its selected tab
+    # in the tab order, so that is where the keys start.
+    s.page.evaluate(
+        "sel => document.querySelector(sel).querySelector('.tab[aria-selected=\"true\"]').focus()", bar)
+    s.page.keyboard.press("ArrowRight")
+    s.page.wait_for_timeout(200)
+    after = s.page.evaluate(state, bar)
+    assert after["on"] == 1, after
+    assert after["selected"] == "true", after
+    assert after["focused"], after
+    assert after["panel"], after
+    assert after["held"] == 1, after
+
+    s.page.keyboard.press("Home")
+    s.page.wait_for_timeout(200)
+    first = s.page.evaluate(state, bar)
+    assert first["on"] == 0, first
+    assert first["selected"] == "true", first
+    assert first["focused"], first
+    assert first["panel"], first
+    assert first["held"] == 1, first
+    s.shot("keyboard-tabs")
+    problems = s.drain()
+    assert not problems, problems
+
+
 @flow("approve a pending host with a TOTP code")
 def approve_host(s: Session):
     pending = [h for h in s.api("/api/v1/hosts/") if h["hostname"] == "e2e-pending-1"]
@@ -377,6 +424,7 @@ def main():
         admin = Session(browser, "e2e-admin").login()
         every_page(admin)
         axe_pages(admin)
+        keyboard_tabs(admin)
         approve_host(admin)
         deploy_task(admin)
         rollout_playbook(admin)

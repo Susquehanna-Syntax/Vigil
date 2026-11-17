@@ -48,7 +48,7 @@ function _dashToolbar() {
   const board = DASH.current;
   return `
     <div class="dash-toolbar">
-      <select class="form-control dash-switch" id="dash-switch">${opts}</select>
+      <select class="form-control dash-switch" id="dash-switch" aria-label="Dashboard">${opts}</select>
       ${mine ? `
         <button class="btn btn-${DASH.editing ? 'mint' : 'sky'} btn-sm" id="dash-edit">
           ${DASH.editing ? 'Done' : 'Edit layout'}</button>
