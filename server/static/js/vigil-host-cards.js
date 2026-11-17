@@ -580,7 +580,8 @@ function togglePin(hostId, hostname, status, btnEl) {
    values come from the dropdown item's existing data-* attributes, which is
    the pattern base.html already uses for the detail-panel delete button. */
 document.addEventListener('click', (/** @type {MouseEvent} */ ev) => {
-  const btn = /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (ev.target).closest('.hdi-pin'));
+  const target = /** @type {HTMLElement} */ (ev.target);
+  const btn = /** @type {HTMLElement} */ (target.closest && target.closest('.hdi-pin'));
   if (!btn) return;
   ev.stopPropagation();
   const item = /** @type {HTMLElement} */ (btn.closest('.host-dropdown-item'));

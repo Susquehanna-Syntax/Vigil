@@ -48,32 +48,32 @@
 
 /** event name -> label */
 /** @type {Record<string, string>} */
-let _autoEvents = {};
+let _autoEvents = {};      // event name -> label
 /** @type {AutoCondMeta} */
 let _autoCondMeta = { fields: [], operators: [], valueless: [] };
 /** @type {AutoPickRow[]} task definitions */
-let _autoDefs = [];
+let _autoDefs = [];        // task definitions
 /** @type {AutoPickRow[]} playbook names */
-let _autoPlaybooks = [];
+let _autoPlaybooks = [];   // playbook names
 /** @type {AutoPickRow[]} selectable hosts */
-let _autoHosts = [];
+let _autoHosts = [];       // selectable hosts
 /** @type {{id: string|number, name: string, severity?: string}[]} alert rules (for specific-event) */
-let _autoRules = [];
+let _autoRules = [];       // alert rules (for specific-event)
 /** task input overrides for the automation being edited */
 /** @type {Record<string, Record<string, any>>} */
-let _autoParamsOverride = {};
+let _autoParamsOverride = {};  // task input overrides for the automation being edited
 /** values for the picked playbook's or task's declared inputs */
 /** @type {Record<string, any>} */
-let _autoInputs = {};
+let _autoInputs = {};          // values for the picked playbook's or task's declared inputs
 /** definition id → its detail row, so the Inputs button is instant */
 /** @type {Record<string, AutoTaskDef>} */
-let _autoDefCache = {};
+let _autoDefCache = {};        // definition id → its detail row, so the Inputs button is instant
 /** playbook id → its detail row, for the same reason on playbooks */
 /** @type {Record<string|number, {inputs?: any[]}>} */
-let _autoPlaybookCache = {};
+let _autoPlaybookCache = {};   // playbook id → its detail row, for the same reason on playbooks
 /** unfiltered, so the search box can re-filter without refetching */
 /** @type {AutomationRow[]} */
-let _allAutomations = [];
+let _allAutomations = [];  // unfiltered, so the search box can re-filter without refetching
 
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
@@ -389,6 +389,8 @@ function _autoRefreshHostLabel() {
 let _autoHighRiskWasOn = false;
 
 // The warning shows while the box is ticked and the authorization is new.
+
+// The warning shows while the box is ticked and the authorization is new.
 function _autoSyncHighRiskWarning() {
   const box = /** @type {HTMLInputElement} */ (document.getElementById('auto-allow-high-risk'));
   const warn = /** @type {HTMLElement} */ (document.getElementById('auto-highrisk-warn'));
@@ -610,11 +612,6 @@ function _autoFieldMeta(name) {
   return _autoCondMeta.fields.find(f => f.name === name) || _autoCondMeta.fields[0];
 }
 
-/** @param {AutoCondField|{operators: string[]}|undefined} meta @returns {string} */
-function _autoFieldHelp(meta) {
-  return /** @type {AutoCondField} */ (meta).help || '';
-}
-
 /** @param {string} name @returns {string} */
 function _autoOpLabel(name) {
   const op = (_autoCondMeta.operators || []).find(o => o.name === name);
@@ -636,7 +633,7 @@ function _renderAutoConditions() {
       `<option value="${escAttr(o)}"${o === c.op ? ' selected' : ''}>${escHtml(_autoOpLabel(o))}</option>`).join('');
     const needsValue = !(_autoCondMeta.valueless || []).includes(c.op);
     const value = needsValue
-      ? `<input type="text" class="form-control auto-cond-value" data-i="${i}" value="${escAttr(c.value || '')}" placeholder="${escAttr(_autoFieldHelp(meta) || 'value')}" maxlength="500">`
+      ? `<input type="text" class="form-control auto-cond-value" data-i="${i}" value="${escAttr(c.value || '')}" placeholder="${escAttr(/** @type {AutoCondField} */ (meta).help || 'value')}" maxlength="500">`
       : '';
     return `<div class="auto-cond-row">`
       + `<select class="form-control auto-cond-field" data-i="${i}">${fields}</select>`
