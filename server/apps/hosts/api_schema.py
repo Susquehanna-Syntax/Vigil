@@ -717,6 +717,10 @@ class HostsDeviceCheckSerializer(serializers.Serializer):
     params = serializers.DictField(help_text="Cleaned per kind; unknown keys are dropped.")
     has_community = serializers.BooleanField(
         help_text="Whether an SNMP community is stored. It is never returned.")
+    has_auth_password = serializers.BooleanField(
+        help_text="SNMPv3 only: whether an auth password is stored. It is never returned.")
+    has_priv_password = serializers.BooleanField(
+        help_text="SNMPv3 only: whether a privacy password is stored. It is never returned.")
     interval_seconds = serializers.IntegerField(help_text="30 to 86400.")
     enabled = serializers.BooleanField()
     poller = serializers.CharField(
@@ -730,10 +734,20 @@ class HostsDeviceCheckWriteSerializer(serializers.Serializer):
     """The body a device check is created or patched with. Every field is optional on PATCH."""
 
     kind = serializers.CharField(required=False, help_text="icmp, tcp, http, dns or snmp.")
-    params = serializers.DictField(required=False)
+    params = serializers.DictField(
+        required=False,
+        help_text="Cleaned per kind; unknown keys are dropped. For SNMP: host, port, oids, "
+                  'interfaces and version ("2c", the default, or "3"); an SNMPv3 check also '
+                  "has user, auth (sha or sha256) and priv.")
     community = serializers.CharField(
         required=False,
-        help_text="SNMP only. Stored encrypted and never returned.")
+        help_text="SNMP v2c only. Stored encrypted and never returned.")
+    auth_password = serializers.CharField(
+        required=False,
+        help_text="SNMPv3 only. Stored encrypted and never returned.")
+    priv_password = serializers.CharField(
+        required=False,
+        help_text="SNMPv3 only. Stored encrypted and never returned.")
     interval_seconds = serializers.IntegerField(required=False)
     enabled = serializers.BooleanField(required=False)
     poller = serializers.CharField(

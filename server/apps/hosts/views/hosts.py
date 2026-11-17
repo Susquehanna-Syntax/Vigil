@@ -1,5 +1,6 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
 import itertools
+import json
 from datetime import timedelta
 from datetime import timezone as dt_timezone
 
@@ -34,7 +35,7 @@ from ..api_schema import (
 )
 from apps.alerts.device_alerts import resolve_for_check
 from apps.alerts.tasks import _is_older, _version_key
-from ..crypto import encrypt_secret
+from ..crypto import decrypt_secret, encrypt_secret
 from ..device_checks import device_states, validate_interval, validate_params
 from ..models import DeviceCheck, Host
 from ._common import *  # noqa: F401,F403
@@ -256,13 +257,56 @@ def _community_value(raw):
     return encrypt_secret(raw)
 
 
+def _v3_password(raw, name: str) -> str:
+    """An SNMPv3 password: 8 to 64 printable ASCII characters."""
+    if not isinstance(raw, str) or not (8 <= len(raw) <= 64) \
+            or not all(32 <= ord(c) <= 126 for c in raw):
+        raise ValueError(f"{name} must be 8 to 64 printable characters")
+    return raw
+
+
+def _v3_secret(auth_password: str, priv_password: str | None) -> bytes:
+    """The secret column of an SNMPv3 check: both passwords, JSON, encrypted."""
+    return encrypt_secret(json.dumps({"auth": auth_password, "priv": priv_password}))
+
+
+def _stored_v3_passwords(check) -> dict | None:
+    """A stored check's SNMPv3 passwords, or None when its secret is not one.
+
+    Lives here rather than in device_checks so that module keeps a one-way
+    dependency on the model. A secret that does not decrypt, does not parse as
+    this JSON object, or has no string for the auth password counts as none —
+    the same "as good as gone" rule an undecryptable community follows when a
+    check list is signed. A null privacy password of an authNoPriv check is a
+    valid secret with nothing in that half of it, so it comes back as None too;
+    callers ask for the auth password before they care about privacy.
+    """
+    if not check.secret:
+        return None
+    try:
+        stored = json.loads(decrypt_secret(check.secret))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(stored, dict) or not isinstance(stored.get("auth"), str):
+        return None
+    priv = stored.get("priv")
+    return {"auth": stored["auth"], "priv": priv if isinstance(priv, str) else None}
+
+
 def _check_out(check) -> dict:
     latest = check.results.order_by("-time").first()
+    params = check.params if isinstance(check.params, dict) else {}
+    v3 = params.get("version") == "3" and bool(check.secret)
+    passwords = _stored_v3_passwords(check) if v3 else None
     return {
         "id": str(check.id),
         "kind": check.kind,
         "params": check.params,
-        "has_community": bool(check.secret),
+        # A v3 secret holds no community, so has_community says nothing about it;
+        # the two v3 flags answer for its passwords instead. Never a password.
+        "has_community": bool(check.secret) and not v3,
+        "has_auth_password": bool(passwords),
+        "has_priv_password": bool(passwords and passwords["priv"]),
         "interval_seconds": check.interval_seconds,
         "enabled": check.enabled,
         "poller": str(check.poller_id) if check.poller_id else None,
@@ -316,21 +360,62 @@ def _check_fields(device, data, current=None) -> dict:
                     device.site_id is not None and scoping.site_id_of(poller) != device.site_id):
                 raise ValueError("poller must be a poller host of this device's site")
             fields["poller"] = poller
-    # The community lives on its own encrypted column, never in params. An SNMP
-    # check needs one when it is created and keeps the stored one when a PATCH
-    # leaves it out; any other kind has none, so a check changed away from SNMP
-    # forgets it and a community in that body is ignored. encrypt_secret("") is
-    # b"", which is the field's default.
+    # The secrets live on their own encrypted column, never in params. For v2c
+    # that column holds the community: an SNMP check needs one when it is
+    # created and keeps the stored one when a PATCH leaves it out. For v3 it
+    # holds both passwords as JSON. Any other kind has none, so a check changed
+    # away from SNMP forgets them and a secret in that body is ignored.
+    # encrypt_secret("") is b"", which is the field's default.
     kind = fields.get("kind", current.kind if current else None)
     if kind == DeviceCheck.Kind.SNMP:
-        if "community" in data:
-            fields["secret"] = _community_value(data["community"])
-        elif current is None or not current.secret:
-            # Created, or changed to SNMP from a kind that had none.
-            raise ValueError("an SNMP check needs a community")
+        params = fields.get("params", current.params if current else {})
+        if params.get("version") == "3":
+            fields["secret"] = _v3_fields(data, params, current)
+        else:
+            fields["secret"] = _v2c_secret(data, current)
     elif kind is not None:
         fields["secret"] = encrypt_secret("")
     return fields
+
+
+def _v2c_secret(data, current) -> bytes:
+    """The community column of a v2c check: the body's, or the stored one."""
+    if "community" in data:
+        return _community_value(data["community"])
+    # A PATCH that leaves the community out keeps the stored one — unless it is
+    # a v3 secret, which holds no community to keep.
+    if current is not None and current.secret and (current.params or {}).get("version") != "3":
+        return current.secret
+    raise ValueError("an SNMP check needs a community")
+
+
+def _v3_fields(data, params, current) -> bytes:
+    """The password column of an SNMPv3 check, from the body over the stored one.
+
+    A ``community`` in this body is ignored: v3 has none. Passwords given in the
+    body are validated first; one taken back out of the column is not — it was
+    checked when it was written, and re-checking it here would refuse a PATCH
+    that changes nothing about the secrets. Never in an exception message.
+    """
+    stored = _stored_v3_passwords(current) if current is not None else None
+    if "auth_password" in data:
+        auth = _v3_password(data["auth_password"], "auth_password")
+    elif stored is not None:
+        auth = stored["auth"]
+    else:
+        raise ValueError("an SNMPv3 check needs an auth password")
+
+    if params.get("priv", True):
+        if "priv_password" in data:
+            priv_password = _v3_password(data["priv_password"], "priv_password")
+        elif stored is not None and stored["priv"] is not None:
+            priv_password = stored["priv"]
+        else:
+            raise ValueError("an SNMPv3 check with privacy needs a privacy password")
+    else:
+        # `priv` false says the check does not encrypt: no privacy password.
+        priv_password = None
+    return _v3_secret(auth, priv_password)
 
 
 @extend_schema(methods=["GET"], responses=HostsDeviceCheckSerializer(many=True))

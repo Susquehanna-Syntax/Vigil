@@ -11,6 +11,7 @@ import json
 import math
 import re
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
@@ -31,7 +32,9 @@ _LABEL_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
 MAX_SNMP_OIDS = 8
 # A labelled OID must not shadow a key _snmp already puts in its own result.
 RESERVED_OID_LABELS = frozenset({"sys_name", "uptime_s", "check", "ok", "latency_ms", "detail",
-                                 "at", "kind", "target", "interfaces"})
+                                 "at", "kind", "target", "interfaces",
+                                 "version", "user", "auth", "priv", "community",
+                                 "auth_password", "priv_password"})
 MAX_HOST_LENGTH = 253
 MIN_INTERVAL = 30
 MAX_INTERVAL = 86400
@@ -74,15 +77,45 @@ def validate_interval(value) -> int:
     return _int_in(value, "interval_seconds", MIN_INTERVAL, MAX_INTERVAL)
 
 
+def _bool_value(value, name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{name} must be true or false")
+
+
+def _snmp_user(value) -> str:
+    """An SNMPv3 user name: 1 to 32 bytes of UTF-8 with no control characters.
+
+    The length is counted in bytes because that is what goes on the wire as the
+    USM security name; a two-byte character therefore buys two of the 32.
+    """
+    if isinstance(value, bool) or not isinstance(value, str) \
+            or any(unicodedata.category(c) == "Cc" for c in value) \
+            or not 1 <= len(value.encode("utf-8")) <= 32:
+        raise ValueError("user must be 1 to 32 characters")
+    return value
+
+
 def _snmp_params(params: dict) -> dict:
-    """Cleaned SNMP params. The community is not a params key (see views._check_fields)."""
+    """Cleaned SNMP params. The secrets are not params keys (see views._check_fields)."""
     cleaned = {"host": _host_value(params.get("host"), "host")}
     port = _int_in(params.get("port", 161), "port", 1, 65535)
     if port != 161:
         cleaned["port"] = port
     version = params.get("version", "2c")
-    if version != "2c":
-        raise ValueError("version must be 2c")
+    if version == "3":
+        cleaned["version"] = "3"
+        cleaned["user"] = _snmp_user(params.get("user"))
+        auth = params.get("auth")
+        if auth not in ("sha", "sha256"):
+            raise ValueError("auth must be sha or sha256")
+        cleaned["auth"] = auth
+        # `priv` says whether the check encrypts. It is not a secret, so it is
+        # stored; check_params_for drops it again before a poller sees it.
+        cleaned["priv"] = _bool_value(params.get("priv", True), "priv")
+    elif version != "2c":
+        # v2c is the default and stays stored as it has always been: no `version` key.
+        raise ValueError("version must be 2c or 3")
     raw_oids = params.get("oids", [])
     if not isinstance(raw_oids, list):
         raise ValueError("oids must be a list of {oid, label}")
@@ -158,9 +191,11 @@ def validate_params(kind: str, params) -> dict:
             cleaned["expect"] = expect
         return cleaned
     if kind == DeviceCheck.Kind.SNMP:
-        # The community is a top-level write field stored encrypted on the
-        # model; params never carry it, so drop any that arrives here.
-        return _snmp_params({k: v for k, v in params.items() if k != "community"})
+        # The community and the SNMPv3 passwords are top-level write fields
+        # stored encrypted on the model; params never carry a secret, so drop
+        # any that arrive here.
+        return _snmp_params({k: v for k, v in params.items()
+                             if k not in ("community", "auth_password", "priv_password")})
     raise ValueError("kind must be icmp, tcp, http, dns or snmp")
 
 
@@ -213,21 +248,57 @@ def checks_for(host: Host) -> list[DeviceCheck]:
     return sorted(mine, key=lambda c: str(c.id))
 
 
+def _stored_v3_secret(check: DeviceCheck) -> dict | None:
+    """The SNMPv3 passwords of a stored check's secret, or None.
+
+    A secret that does not decrypt, does not parse as this JSON object, or is
+    not shaped like one counts as none — the same "as good as gone" rule an
+    undecryptable community follows in check_params_for.
+    """
+    plaintext = decrypt_secret(check.secret)
+    if not plaintext:
+        return None
+    try:
+        stored = json.loads(plaintext)
+    except (ValueError, TypeError):
+        return None
+    return stored if isinstance(stored, dict) else None
+
+
 def check_params_for(check: DeviceCheck) -> dict | None:
     """The params this check is handed to a poller with, or None if it cannot run.
 
     For an SNMP check that is a *copy* of the stored params plus the decrypted
-    community; nothing here is ever written back to the model. None for a check
-    whose community no longer decrypts (SECRET_KEY rotated): the caller leaves
-    such a check out rather than send a poller a check it cannot run.
+    secret — the community for v2c, the SNMPv3 passwords for v3; nothing here is
+    ever written back to the model. None for a check whose secret no longer
+    decrypts or lacks a password its params ask for (SECRET_KEY rotated, a
+    secret written by another kind): the caller leaves such a check out rather
+    than send a poller a check it cannot authenticate with. ``priv`` is a stored
+    param but not a wire one — an authNoPriv v3 entry carries no privacy
+    password and says nothing else about privacy.
     """
     if check.kind != DeviceCheck.Kind.SNMP:
         return check.params
-    community = decrypt_secret(check.secret)
-    if not community:
-        return None
     params = dict(check.params)
-    params["community"] = community
+    if params.get("version") != "3":
+        community = decrypt_secret(check.secret)
+        if not community:
+            return None
+        params["community"] = community
+        return params
+    stored = _stored_v3_secret(check)
+    if stored is None:
+        return None
+    auth_password = stored.get("auth")
+    if not isinstance(auth_password, str):
+        return None
+    params["version"] = 3
+    params["auth_password"] = auth_password
+    if params.pop("priv", True):
+        priv_password = stored.get("priv")
+        if not isinstance(priv_password, str):
+            return None
+        params["priv_password"] = priv_password
     return params
 
 

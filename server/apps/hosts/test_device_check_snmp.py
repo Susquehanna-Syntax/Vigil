@@ -64,7 +64,6 @@ class SnmpParamsTests(TestCase):
             ({"host": "-rf"}, "host must be a host name or address"),
             (_snmp_params(port=0), "port must be a whole number from 1 to 65535"),
             (_snmp_params(port="161"), "port must be a whole number from 1 to 65535"),
-            (_snmp_params(version="3"), "version must be 2c"),
             (_snmp_params(oids="1.3.6.1"), "oids must be a list of {oid, label}"),
             (_snmp_params(oids=[{"oid": 5, "label": "x"}]), "oids must be a list of {oid, label}"),
             (_snmp_params(oids=[{"oid": "1.3.6.9999999999999.1", "label": "x"}]),
