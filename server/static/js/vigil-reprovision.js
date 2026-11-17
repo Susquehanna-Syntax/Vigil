@@ -914,26 +914,17 @@ function _reproSetProfileOpen(open) {
   overlay.classList.toggle('open', open);
 }
 
-// The install-profile form's #repro-prof-* fields by id, all of them in
-// pages/_reprovision.html. Every one is an <input> or a <select> read or written
-// through .value; the only two <textarea>s it holds (#repro-prof-keys and
-// #repro-prof-raw) have that property too.
-/** @param {string} id @returns {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null} */
-function _profField(id) {
-  return /** @type {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null} */ (document.getElementById(id));
-}
-
 // Static/DHCP: the static fields are meaningless under DHCP, and the
 // serializer rejects static without an address and gateway.
 function _reproSyncProfileNetwork() {
-  const mode = _profField('repro-prof-netmode')?.value;
+  const mode = (/** @type {HTMLSelectElement|null} */ (document.getElementById('repro-prof-netmode')))?.value;
   for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#repro-profile-modal .repro-prof-static'))) {
     el.style.display = mode === 'static' ? '' : 'none';
   }
 }
 
 function _reproFillProfileImages(selectedId) {
-  const sel = _profField('repro-prof-image');
+  const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('repro-prof-image'));
   const hint = document.getElementById('repro-prof-image-hint');
   if (!sel) return;
   sel.replaceChildren();
@@ -963,8 +954,8 @@ function _reproOpenProfile(prof) {
     editing ? 'Edit install profile' : 'New install profile';
 
   const set = (/** @type {string} */ id, /** @type {string|number|null|undefined} */ value) => {
-    const el = _profField(id);
-    if (el) el.value = String(value);
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    if (el) el.value = /** @type {string} */ (value);
   };
   set('repro-prof-name', prof?.name || '');
   set('repro-prof-disk', prof?.disk_target || '');
@@ -1000,7 +991,7 @@ function _reproOpenProfile(prof) {
     prof ? prof.site_id : null, { editing: !!editing });
   _reproFillProfileImages(prof?.image);
   _reproFillProfileAgentProfiles();
-  const agentProfile = _profField('repro-prof-agentprofile');
+  const agentProfile = /** @type {HTMLSelectElement|null} */ (document.getElementById('repro-prof-agentprofile'));
   if (agentProfile) agentProfile.value = prof?.agent_profile ? String(prof.agent_profile) : '';
   _reproSyncProfileNetwork();
   _reproSetProfileOpen(true);
@@ -1009,7 +1000,7 @@ function _reproOpenProfile(prof) {
 async function _reproSaveProfile() {
   const modal = _reproProfileModal();
   if (!modal) return;
-  const val = (/** @type {string} */ id) => (_profField(id)?.value || '').trim();
+  const val = (/** @type {string} */ id) => ((/** @type {HTMLInputElement|null} */ (document.getElementById(id)))?.value || '').trim();
   const editing = modal.dataset.editing;
 
   const body = {
