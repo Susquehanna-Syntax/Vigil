@@ -155,6 +155,12 @@ class _FakeAgent:
                 rows = _successor_chain(names[0], 1) + [
                     (names[0], endOfMibView, None)
                 ] * max(0, count - 1)
+            elif self.mode == "endofmib_first":
+                # the last subtree in the MIB: the agent echoes the start OID
+                rows = [(names[0], endOfMibView, None)]
+            elif self.mode == "backwards":
+                rows = [(f"{IF_DESCR}.2", *MIB[f"{IF_DESCR}.2"]),
+                        (f"{IF_DESCR}.1", *MIB[f"{IF_DESCR}.1"])]
             else:
                 rows = _successor_chain(names[0], count)
             self._send(peer, request_id, rows)
@@ -241,6 +247,8 @@ class EncodingVectors(unittest.TestCase):
         self.assertEqual(
             encode_oid("1.3.6.1.4.1.4294967295").hex(), "060a2b060104018fffffff7f"
         )
+        # X.690 8.19.5's own example: the first subidentifier 40*2+999 = 1079 takes two bytes.
+        self.assertEqual(encode_oid("2.999.3").hex(), "0603883703")
 
     def test_integer_decodes_back(self):
         for value in (0, 127, 128, -1, -129, 256, 2**31 - 1, -(2**31)):
@@ -250,7 +258,7 @@ class EncodingVectors(unittest.TestCase):
             )
 
     def test_oid_decodes_back(self):
-        for oid in ("1.3.6.1.2.1.1.1.0", "1.3.6.1.4.1.4294967295", "0.0", "2.5.4.3"):
+        for oid in ("1.3.6.1.2.1.1.1.0", "1.3.6.1.4.1.4294967295", "0.0", "2.5.4.3", "2.999.3"):
             tag, decoded, _ = decode(encode_oid(oid))
             self.assertEqual((tag, decoded), (OBJECT_IDENTIFIER, oid))
 
@@ -485,6 +493,20 @@ class ClientTests(unittest.TestCase):
         )
         rows = client.walk(IF_DESCR, max_repetitions=10)
         self.assertEqual([oid for oid, _t, _v in rows], [f"{IF_DESCR}.1"])
+
+    def test_walk_of_the_last_subtree_ends_at_an_echoed_end_of_mib_view(self):
+        agent = _FakeAgent(mode="endofmib_first")
+        self.addCleanup(agent.stop)
+        client = V2cClient("127.0.0.1", community="public", port=agent.port, timeout=1.0)
+        self.assertEqual(client.walk(IF_DESCR), [])
+
+    def test_a_batch_that_goes_backwards_is_reported(self):
+        agent = _FakeAgent(mode="backwards")
+        self.addCleanup(agent.stop)
+        client = V2cClient("127.0.0.1", community="public", port=agent.port, timeout=1.0)
+        with self.assertRaises(SnmpError) as caught:
+            client.walk(IF_DESCR)
+        self.assertEqual(str(caught.exception), "SNMP agent returned OIDs out of order")
 
     def test_wrong_community_times_out_quickly(self):
         quiet = V2cClient(

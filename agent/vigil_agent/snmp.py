@@ -134,7 +134,7 @@ def encode_oid(oid: str) -> bytes:
         raise SnmpError(f"invalid SNMP OID {oid!r}: the first arc must be 0, 1 or 2")
     if first < 2 and second > 39:
         raise SnmpError(f"invalid SNMP OID {oid!r}: the second arc must be at most 39")
-    body = bytearray([40 * first + second])
+    body = bytearray(_base128(40 * first + second))
     for arc in arcs[2:]:
         body.extend(_base128(arc))
     return bytes([OBJECT_IDENTIFIER]) + encode_length(len(body)) + bytes(body)
@@ -274,8 +274,8 @@ def _decode_value(buf: bytes, tag: int, start: int, length: int, depth: int) -> 
 def _decode_oid(body: bytes) -> str:
     if not body:
         raise _malformed("an OBJECT IDENTIFIER has no arcs")
-    arcs = [body[0] // 40, body[0] % 40]
-    index = 1
+    arcs: list[int] = []
+    index = 0
     while index < len(body):
         value = 0
         while True:
@@ -286,7 +286,11 @@ def _decode_oid(body: bytes) -> str:
             value = (value << 7) | (byte & 0x7F)
             if not byte & 0x80:
                 break
-        arcs.append(value)
+        if not arcs:  # the first subidentifier holds two arcs: 40*a+b, a at most 2
+            first = min(value // 40, 2)
+            arcs.extend((first, value - 40 * first))
+        else:
+            arcs.append(value)
     return ".".join(str(arc) for arc in arcs)
 
 
@@ -416,11 +420,14 @@ class V2cClient:
         current = root
         while len(rows) < max_rows:
             batch = self._bulk_round(current, max_repetitions)
-            if not batch or oid_key(batch[0][0]) <= oid_key(current):
-                raise SnmpError("SNMP agent returned OIDs out of order")
+            if not batch:
+                raise SnmpError("SNMP agent returned no rows for a walk")
             for oid, tag, value in batch:
-                if not _inside(oid_key(oid), wanted) or tag == endOfMibView:
+                # endOfMibView first: an agent may echo the requested OID with it.
+                if tag == endOfMibView or not _inside(oid_key(oid), wanted):
                     return rows
+                if oid_key(oid) <= oid_key(current):
+                    raise SnmpError("SNMP agent returned OIDs out of order")
                 rows.append((oid, tag, value))
                 current = oid
                 if len(rows) >= max_rows:
