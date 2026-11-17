@@ -1,5 +1,13 @@
 """SNMP v2c as a device check kind (S9, phase 05b): params validation, the community kept
-encrypted on its own column, and the community inside the signed hand-off to a poller."""
+encrypted on its own column, and the community inside the signed hand-off to a poller.
+
+The ``interfaces`` param, the IF-MIB walk's samples and the rate endpoints are
+phase 05d's, in apps.hosts.test_device_check_interfaces; nothing here asserts
+them, so an edit that touches interfaces belongs to one file and not both. The
+one exception is deliberate: a check created with `interfaces` in params has to
+come back through the same create/PATCH path as a community, which is this
+file's subject.
+"""
 
 import base64
 import json
@@ -188,6 +196,51 @@ class SnmpCommunityApiTests(TestCase):
         self.assertEqual(check.secret, b"")
         self.assertFalse(created.data["has_community"])
         self.assertNotIn(COMMUNITY.encode(), created.content)
+
+
+class WalkAlongsideACommunityTests(TestCase):
+    """The interface walk is only a param, so it rides the create/PATCH path this
+    file owns — with a community beside it and without one ever leaking out."""
+
+    def setUp(self):
+        admin = get_user_model().objects.create_user(username="admin-" + uuid4().hex[:8])
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        self.client = APIClient()
+        self.client.force_authenticate(admin)
+        self.device = UnmanagedDevice.objects.create(name="sw-01", device_type="switch")
+        self.url = f"/api/v1/hosts/devices/{self.device.id}/checks/"
+
+    def test_a_walk_is_created_and_patched_with_the_community_present(self):
+        created = self.client.post(self.url, {"kind": "snmp", "community": COMMUNITY,
+                                             "params": _snmp_params(interfaces=True)},
+                                   format="json")
+        self.assertEqual(created.status_code, 201, created.data)
+        detail = f"{self.url}{created.data['id']}/"
+        patched = self.client.patch(detail, {"params": _snmp_params()}, format="json")
+        self.assertEqual(patched.status_code, 200, patched.data)
+        check = DeviceCheck.objects.get(pk=created.data["id"])
+        self.assertEqual(check.params, {"host": "10.0.0.5"})  # the walk is off again
+        self.assertEqual(decrypt_secret(check.secret), COMMUNITY)  # kept across the PATCH
+
+    def test_a_walk_refused_at_validation_says_so_before_any_community_rule(self):
+        refused = self.client.post(self.url, {"kind": "snmp", "community": COMMUNITY,
+                                              "params": _snmp_params(interfaces="yes")},
+                                   format="json")
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(refused.data["error"], "interfaces must be true or false")
+        self.assertEqual(DeviceCheck.objects.count(), 0)
+
+    def test_the_walk_makes_a_check_answerable_but_never_shows_a_community(self):
+        created = self.client.post(self.url, {"kind": "snmp", "community": COMMUNITY,
+                                             "params": _snmp_params(interfaces=True)},
+                                   format="json")
+        detail = f"{self.url}{created.data['id']}/"
+        for resp in (created, self.client.get(self.url), self.client.patch(detail, {"enabled": False},
+                                                                           format="json")):
+            with self.subTest(resp=resp.status_code):
+                self.assertLess(resp.status_code, 300)
+                self.assertNotIn(COMMUNITY.encode(), resp.content)
+                self.assertNotIn(b'"community"', resp.content)
 
 
 class SnmpLatestValuesTests(TestCase):

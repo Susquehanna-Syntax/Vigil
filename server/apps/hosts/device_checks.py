@@ -31,13 +31,17 @@ _LABEL_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
 MAX_SNMP_OIDS = 8
 # A labelled OID must not shadow a key _snmp already puts in its own result.
 RESERVED_OID_LABELS = frozenset({"sys_name", "uptime_s", "check", "ok", "latency_ms", "detail",
-                                 "at", "kind", "target"})
+                                 "at", "kind", "target", "interfaces"})
 MAX_HOST_LENGTH = 253
 MIN_INTERVAL = 30
 MAX_INTERVAL = 86400
 MAX_RESULTS_PER_CHECKIN = 500
 MAX_DETAIL = 300
 MAX_EXTRA_KEYS = 20
+MAX_SAMPLES_PER_RESULT = 64
+MAX_IF_INDEX = 2147483647          # an ifIndex is a 32-bit counter, so this is its top
+MAX_COUNTER = 9223372036854775807
+MAX_SAMPLE_NAME = 100
 MAX_RESULT_AGE = timedelta(hours=1)
 _RESULT_KEYS = {"check", "ok", "latency_ms", "detail", "at"}
 
@@ -101,6 +105,11 @@ def _snmp_params(params: dict) -> dict:
         oids.append({"oid": oid, "label": label})
     if oids:
         cleaned["oids"] = oids
+    if "interfaces" in params:
+        if not isinstance(params["interfaces"], bool):
+            raise ValueError("interfaces must be true or false")
+        if params["interfaces"]:
+            cleaned["interfaces"] = True
     return cleaned
 
 
@@ -273,12 +282,60 @@ def _extra(row: dict) -> dict:
     return out
 
 
+def _sample_int(value) -> int | None:
+    """A counter as stored, or None. A Counter64 past the signed range is dropped."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if not 0 <= value <= MAX_COUNTER:
+        return None
+    return value
+
+
+def _interface_samples(check: DeviceCheck, sample_time, interfaces) -> list:
+    """One InterfaceSample per interface an SNMP result carries.
+
+    A malformed entry is dropped rather than refused with it: one bad row from
+    a device would otherwise cost the check every interface it does report.
+    """
+    from .models import InterfaceSample
+
+    samples = []
+    seen: set[int] = set()
+    for entry in interfaces[:MAX_SAMPLES_PER_RESULT]:
+        if not isinstance(entry, dict):
+            continue
+        index = entry.get("index")
+        if isinstance(index, bool) or not isinstance(index, int):
+            continue
+        if not 1 <= index <= MAX_IF_INDEX or index in seen:
+            continue
+        seen.add(index)
+        name = entry.get("name")
+        up = entry.get("up")
+        samples.append(InterfaceSample(
+            device_check=check, time=sample_time, if_index=index,
+            name=name[:MAX_SAMPLE_NAME] if isinstance(name, str) else "",
+            up=up if isinstance(up, bool) else None,
+            speed_mbps=_sample_int(entry.get("speed_mbps")),
+            in_octets=_sample_int(entry.get("in_octets")),
+            out_octets=_sample_int(entry.get("out_octets"))))
+    return samples
+
+
 def store_check_results(host: Host, rows) -> int:
-    """Store the results a poller sent. Only results for checks it is assigned now are kept."""
+    """Store the results a poller sent. Only results for checks it is assigned now are kept.
+
+    An SNMP result carrying an ``interfaces`` list feeds InterfaceSample rows
+    with the same time as its CheckResult, so the rate between two runs is the
+    distance between two rows the device answered at one instant.
+    """
+    from .models import InterfaceSample
+
     if not isinstance(rows, list):
         return 0
     allowed = {str(c.id): c for c in checks_for(host)}
     to_create = []
+    samples = []
     for row in rows[:MAX_RESULTS_PER_CHECKIN]:
         if not isinstance(row, dict):
             continue
@@ -295,7 +352,10 @@ def store_check_results(host: Host, rows) -> int:
             detail=(detail if isinstance(detail, str) else "")[:MAX_DETAIL],
             extra=_extra(row),
         ))
+        if check.kind == DeviceCheck.Kind.SNMP and isinstance(row.get("interfaces"), list):
+            samples.extend(_interface_samples(check, to_create[-1].time, row["interfaces"]))
     CheckResult.objects.bulk_create(to_create)
+    InterfaceSample.objects.bulk_create(samples)
     if to_create:
         # A check that just failed twice opens an alert (S9 04b), in the worker.
         # Late import: alerts imports hosts models, so a module-level import

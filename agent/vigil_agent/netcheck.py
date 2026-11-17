@@ -40,6 +40,12 @@ SYSNAME_OID = "1.3.6.1.2.1.1.5.0"  # the agent's own name, always fetched
 SYSUPTIME_OID = "1.3.6.1.2.1.1.3.0"  # hundredths of a second since it booted
 MAX_SNMP_VALUE_CHARS = 100  # a string result value is cut to this
 MAX_SNMP_OIDS = 8  # labelled OIDs per SNMP check, the server's own limit
+IF_NAME_OID = "1.3.6.1.2.1.31.1.1.1.1"       # ifName
+IF_HC_IN_OID = "1.3.6.1.2.1.31.1.1.1.6"      # ifHCInOctets (Counter64)
+IF_HC_OUT_OID = "1.3.6.1.2.1.31.1.1.1.10"    # ifHCOutOctets (Counter64)
+IF_HIGH_SPEED_OID = "1.3.6.1.2.1.31.1.1.1.15"  # ifHighSpeed, Mbit/s
+IF_OPER_OID = "1.3.6.1.2.1.2.2.1.8"          # ifOperStatus: 1 up, 2 down, others unknown
+MAX_INTERFACES = 64
 
 _CERT_TIME_FORMAT = "%b %d %H:%M:%S %Y %Z"  # getpeercert() notAfter, e.g. "Jun  1 12:00:00 2027 GMT"
 _HOST_RE = re.compile(r"[A-Za-z0-9.:-]+")
@@ -538,6 +544,57 @@ def _uptime_phrase(seconds: int | None) -> str:
     return f"{minutes}m"
 
 
+def _walk_indexed(client, root: str) -> dict[int, tuple[int, object]]:
+    """One walk as ifIndex -> (tag, value). The ifIndex is the OID's last part."""
+    rows: dict[int, tuple[int, object]] = {}
+    for oid, tag, value in client.walk(root, max_rows=MAX_INTERFACES):
+        try:
+            index = int(oid.rsplit(".", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        rows.setdefault(index, (tag, value))
+    return rows
+
+
+def _int_value(row) -> int | None:
+    """The int an INTEGER, Gauge32 or Counter64 answers with; anything else is no value."""
+    if row is None:
+        return None
+    value = _snmp_value(*row)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _interface_name(row) -> str:
+    """ifName as text; an interface the device names nothing has no name."""
+    if row is None:
+        return ""
+    value = _snmp_value(*row)
+    return value if isinstance(value, str) else ""
+
+
+def _snmp_interfaces(client) -> list[dict]:
+    """The interface table, five walks joined on ifIndex.
+
+    The ifName walk picks which interfaces exist: an index that only another
+    column reports has no name to show it under. Counters go out as the device
+    reported them — rates are worked out later, on read.
+    """
+    named = _walk_indexed(client, IF_NAME_OID)
+    oper = _walk_indexed(client, IF_OPER_OID)
+    speed = _walk_indexed(client, IF_HIGH_SPEED_OID)
+    octets_in = _walk_indexed(client, IF_HC_IN_OID)
+    octets_out = _walk_indexed(client, IF_HC_OUT_OID)
+    return [{"index": index,
+             "name": _interface_name(named[index]),
+             "up": {1: True, 2: False}.get(_int_value(oper.get(index))),
+             "speed_mbps": _int_value(speed.get(index)),
+             "in_octets": _int_value(octets_in.get(index)),
+             "out_octets": _int_value(octets_out.get(index))}
+            for index in sorted(named)[:MAX_INTERFACES]]
+
+
 def _snmp(check: dict, timeout: float) -> dict:
     host = _str_field(check, "host")
     if not _valid_host(host):
@@ -585,7 +642,18 @@ def _snmp(check: dict, timeout: float) -> dict:
     if missing:
         return _result("snmp", host, False, "no such object: " + ", ".join(missing),
                        latency_s=latency, **extras)
-    return _result("snmp", host, True, detail[:200], latency_s=latency, **extras)
+    if check.get("interfaces") is not True:
+        return _result("snmp", host, True, detail[:200], latency_s=latency, **extras)
+    # The interface table is a second exchange on the same client. An agent
+    # that cannot answer it leaves the GET's result exactly as it was, with
+    # one clause added and no interfaces key at all.
+    try:
+        interfaces = _snmp_interfaces(client)
+    except (snmp.SnmpTimeout, snmp.SnmpError):
+        return _result("snmp", host, True, f"{detail}, interfaces unreadable"[:200],
+                       latency_s=latency, **extras)
+    return _result("snmp", host, True, detail[:200], latency_s=latency,
+                   interfaces=interfaces, **extras)
 
 
 # ---------------------------------------------------------------- entry point

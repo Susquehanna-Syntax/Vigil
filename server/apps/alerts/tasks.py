@@ -312,8 +312,10 @@ def prune_old_metric_points():
     cutoff = now() - timedelta(days=retention_days)
     # Device check results (S9) follow the metrics' retention. They are an
     # ordinary table even on TimescaleDB, so they are pruned here either way.
-    from apps.hosts.models import CheckResult
+    from apps.hosts.models import CheckResult, InterfaceSample
     CheckResult.objects.filter(time__lt=cutoff).delete()
+    # Interface samples are the same history at a finer grain (S9 05d).
+    InterfaceSample.objects.filter(time__lt=cutoff).delete()
     if _metricpoint_is_hypertable():
         return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()

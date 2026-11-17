@@ -750,6 +750,39 @@ class HostsDeviceCheckResultSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
+class HostsDeviceCheckInterfaceSerializer(serializers.Serializer):
+    """One interface of a device check, at its newest sample in the window.
+
+    ``in_bps``/``out_bps`` are worked out from that sample and the one before
+    it; null means there was no usable pair — a first sample, a counter the
+    device never reported, or a counter reset.
+    """
+
+    time = serializers.DateTimeField()
+    index = serializers.IntegerField()
+    name = serializers.CharField(allow_blank=True)
+    up = serializers.BooleanField(allow_null=True)
+    speed_mbps = serializers.IntegerField(allow_null=True)
+    in_bps = serializers.IntegerField(allow_null=True)
+    out_bps = serializers.IntegerField(allow_null=True)
+
+
+class HostsDeviceCheckInterfacePointSerializer(serializers.Serializer):
+    """One point of one interface's rate series: a sample paired with its predecessor."""
+
+    time = serializers.DateTimeField()
+    in_bps = serializers.IntegerField(allow_null=True)
+    out_bps = serializers.IntegerField(allow_null=True)
+
+
+class HostsDeviceCheckInterfaceSeriesSerializer(serializers.Serializer):
+    """One interface's rate over the window, oldest first."""
+
+    index = serializers.IntegerField()
+    name = serializers.CharField(allow_blank=True)
+    series = HostsDeviceCheckInterfacePointSerializer(many=True)
+
+
 class HostsTopologyDeviceSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()

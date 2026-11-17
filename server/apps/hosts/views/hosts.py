@@ -1,4 +1,5 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
+import itertools
 from datetime import timedelta
 from datetime import timezone as dt_timezone
 
@@ -17,6 +18,8 @@ from ..api_schema import (
     HostsAdSyncQueuedSerializer,
     HostsAgentVersionsSerializer,
     HostsDeletedSerializer,
+    HostsDeviceCheckInterfaceSeriesSerializer,
+    HostsDeviceCheckInterfaceSerializer,
     HostsDeviceCheckResultSerializer,
     HostsDeviceCheckSerializer,
     HostsDeviceCheckWriteSerializer,
@@ -441,6 +444,116 @@ def device_check_results(request, device_id, check_id):
     rows.reverse()
     return Response([{"time": r.time, "ok": r.ok, "latency_ms": r.latency_ms,
                       "detail": r.detail} for r in rows])
+
+
+MAX_SERIES_POINTS = 2000
+
+
+def _check_window(request, device_id, check_id):
+    """(check, hours) for an interface read, or an error Response to return."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+        check = DeviceCheck.objects.get(pk=check_id, device=device)
+    except (UnmanagedDevice.DoesNotExist, DeviceCheck.DoesNotExist):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        hours = int(request.query_params.get("hours", 24))
+    except (TypeError, ValueError):
+        hours = 0
+    if not 1 <= hours <= 720:
+        return Response({"error": "hours must be a whole number from 1 to 720"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return check, hours
+
+
+def _rate(newer, older, field):
+    """Bits per second between two samples of one interface, or None.
+
+    No previous sample, a counter the device never reported, no elapsed time
+    or a counter that went backwards — a reset or a reboot — all mean the same
+    thing: this interval has no rate to report.
+    """
+    if older is None:
+        return None
+    high = getattr(newer, field)
+    low = getattr(older, field)
+    if high is None or low is None:
+        return None
+    seconds = (newer.time - older.time).total_seconds()
+    if seconds <= 0 or high < low:
+        return None
+    return round((high - low) * 8 / seconds)
+
+
+@extend_schema(methods=["GET"],
+               parameters=[OpenApiParameter(
+                   "hours", int, required=False,
+                   description="How far back to read, 1 to 720 hours. Default 24.")],
+               responses={200: HostsDeviceCheckInterfaceSerializer(many=True),
+                          400: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_interfaces(request, device_id, check_id):
+    """What each interface of an SNMP check was doing at its newest sample.
+
+    The newest row of every interface in the window, with its rate over the gap
+    behind it — see `_rate`, which both these views use so the answer to "no
+    usable pair" is written once. A check of another kind answers `[]`: an empty
+    table and no interfaces are the same thing to a chart.
+    """
+    found = _check_window(request, device_id, check_id)
+    if isinstance(found, Response):
+        return found
+    check, hours = found
+    if check.kind != DeviceCheck.Kind.SNMP:
+        # Samples only ever come from an SNMP check's walk, so a check of any
+        # other kind has no interfaces to answer with.
+        return Response([])
+    since = now() - timedelta(hours=hours)
+    rows = list(check.interface_samples.filter(time__gte=since).order_by("if_index", "time"))
+    newest: dict[int, list] = {}
+    for row in rows:
+        newest.setdefault(row.if_index, []).append(row)
+    out = []
+    for index in sorted(newest):
+        seen = newest[index]
+        latest = seen[-1]
+        out.append({"time": latest.time, "index": index, "name": latest.name,
+                    "up": latest.up, "speed_mbps": latest.speed_mbps,
+                    "in_bps": _rate(latest, seen[-2] if len(seen) > 1 else None, "in_octets"),
+                    "out_bps": _rate(latest, seen[-2] if len(seen) > 1 else None, "out_octets")})
+    return Response(out)
+
+
+@extend_schema(methods=["GET"],
+               parameters=[OpenApiParameter(
+                   "hours", int, required=False,
+                   description="How far back to read, 1 to 720 hours. Default 24.")],
+               responses={200: HostsDeviceCheckInterfaceSeriesSerializer,
+                          400: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_interface(request, device_id, check_id, if_index):
+    """One interface's rate over the window, oldest first: a point per pair of samples."""
+    found = _check_window(request, device_id, check_id)
+    if isinstance(found, Response):
+        return found
+    check, hours = found
+    rows = list(check.interface_samples
+                .filter(if_index=if_index, time__gte=now() - timedelta(hours=hours))
+                .order_by("-time")[:MAX_SERIES_POINTS])
+    if not rows:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    rows.reverse()
+    series = [{"time": newer.time,
+               "in_bps": _rate(newer, older, "in_octets"),
+               "out_bps": _rate(newer, older, "out_octets")}
+              for older, newer in itertools.pairwise(rows)]
+    return Response({"index": if_index, "name": rows[-1].name, "series": series})
 
 
 @extend_schema(methods=["GET"], responses=HostsAdConfigSerializer)

@@ -7,6 +7,11 @@ exception values noSuchObject and noSuchInstance — and assert the whole result
 The wrong-community case is the exception: a timeout is the only thing a wrong
 community can look like, and it must never say which. That one runs against the
 fake UDP agent of tests/test_snmp.py for real.
+
+The interface walk (`interfaces: true`, five walks joined on ifIndex, the
+", interfaces unreadable" clause) is phase 05d's and lives in
+tests.test_netcheck_snmp_interfaces. Nothing here asserts it — that fake client
+would have to grow a walk() for it and both files would then own one answer.
 """
 
 import sys

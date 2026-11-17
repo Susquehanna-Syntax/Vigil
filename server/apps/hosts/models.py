@@ -500,6 +500,41 @@ class CheckResult(models.Model):
         indexes = [models.Index(fields=["device_check", "-time"], name="checkresult_check_time")]
 
 
+class InterfaceSample(models.Model):
+    """One interface of one SNMP result (S9 05d): counters as the device reported them.
+
+    Rates are worked out on read, between consecutive samples — a device that
+    reboots and resets its counters is then a missing rate rather than a huge
+    false one. ``up`` is tri-state: an agent that answers no ifOperStatus does
+    not know, which is not the same answer as down.
+
+    ``views.hosts._rate`` owns the way out of these columns — one interface's
+    bits per second over an interval — so a rate is never worked out twice and
+    the rule for a missing pair lives in that one function.
+    """
+
+    objects = SiteScopedManager(field="device_check__device__site_id", app="devices")
+
+    id = models.BigAutoField(primary_key=True)
+    device_check = models.ForeignKey(DeviceCheck, on_delete=models.CASCADE,
+                                     related_name="interface_samples")
+    time = models.DateTimeField()
+    if_index = models.PositiveIntegerField()
+    name = models.CharField(max_length=100, blank=True, default="")
+    up = models.BooleanField(null=True)
+    speed_mbps = models.BigIntegerField(null=True)
+    in_octets = models.BigIntegerField(null=True)
+    out_octets = models.BigIntegerField(null=True)
+
+    class Meta:
+        ordering = ["-time"]
+        indexes = [models.Index(fields=["device_check", "if_index", "-time"],
+                                 name="ifsample_check_index_time")]
+
+    def __str__(self):
+        return f"if{self.if_index} of check {self.device_check_id} @ {self.time:%Y-%m-%d %H:%M}"
+
+
 class HostFirewall(models.Model):
     """The last firewall snapshot read from a host.
 

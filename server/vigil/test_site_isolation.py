@@ -114,6 +114,10 @@ FILLERS = {
     "name": "nginx",
     "number": 1,
     "index": 0,
+    # An ifIndex is whatever a device calls its interface. The interface reads
+    # find the check through device_id and check_id, so this only picks which
+    # interface of *that* check to answer for.
+    "if_index": 1,
     "kind": "cpu",
     "category": "cpu",
     "metric_name": "cpu_pct",
