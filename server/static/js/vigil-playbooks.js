@@ -27,7 +27,7 @@
 /* ── Playbooks page (Playbooks tab) ──────────────────────────────────── */
 
 let _playbookDefs = /** @type {TaskDef[]} */ ([]);   // all task definitions, for the picker (id -> def)
-let _editingTree = /** @type {any} */ ([]);    // the playbook being edited: a flow tree (see vigil-playbook-flow.js)
+let _editingTree = /** @type {object[]} */ ([]);    // the playbook being edited: a flow tree (see vigil-playbook-flow.js)
 /** @type {any[]} */
 let _allPlaybooks = [];   // cached, for client-side search
 
