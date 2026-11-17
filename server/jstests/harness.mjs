@@ -46,6 +46,12 @@ class StubElement {
   // has to mean the same thing here as in a browser.
   get parentElement() { return this._parent || null; }
   remove() { if (this._parent) this._parent.removeChild(this); }
+  after(n) {
+    const parent = this._parent;
+    if (!parent) return;
+    parent.children.splice(parent.children.indexOf(this) + 1, 0, n);
+    n._parent = parent;
+  }
   _walk(fn) {
     const out = [];
     for (const child of this.children) {

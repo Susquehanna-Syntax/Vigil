@@ -247,8 +247,8 @@ function _snmpUptime(seconds) {
   const units = ['d', 'h', 'm'];
   const firstKept = parts.findIndex((n) => n > 0);
   if (firstKept < 0) return '0m';
-  // "3d 4h 5m", then whatever the largest non-zero unit leaves: 5m, not 0d 0h 5m.
-  const kept = parts.slice(firstKept, firstKept + 2);
+  // From the largest non-zero unit down: 3d 4h 5m, 4h 5m, 5m; never 0d 0h 5m.
+  const kept = parts.slice(firstKept);
   return kept.map((n, i) => `${n}${units[firstKept + i]}`).join(' ');
 }
 
@@ -344,9 +344,6 @@ async function toggleDeviceCheckChart(row) {
   collapseDeviceCheckChart();
   _openCheckId = checkId;
   holder.hidden = false;
-  // The container the chart lives in: an expanded row hangs its values list
-  // under the chart, in this same element.
-  const expanded = holder.parentElement || holder;
 
   let results = [];
   try {
@@ -372,8 +369,10 @@ async function toggleDeviceCheckChart(row) {
   const check = _loadedChecks.get(String(checkId));
   const extra = check && check.latest ? check.latest.extra : null;
   if (check && check.kind === 'snmp' && extra && Object.keys(extra).length) {
+    // Straight after the chart host: the host is a fixed-height box Chart.js
+    // sizes itself to, and the rows share one list, so the values follow it.
     _checkValues = _snmpValuesList(extra);
-    expanded.appendChild(_checkValues);
+    holder.after(_checkValues);
   }
   _checkChart = new Chart(canvas.getContext('2d'), {
     type: 'line',

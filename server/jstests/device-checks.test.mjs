@@ -262,13 +262,15 @@ test('an expanded SNMP row lists the values of its newest result', async () => {
 
   const list = container.children.find((c) => c.tagName === 'DL');
   assert.ok(list, 'the expanded row carries no values list');
+  // Right under its own chart, not at the foot of the list of rows.
+  assert.equal(container.children.indexOf(list), container.children.findIndex((c) => c.classList.contains('device-check-chart')) + 1);
   assert.equal(list.className, 'device-check-values');
   // The two named ones first, then the rest in key order; kind and target are
   // what the row above already says. A value is text, never markup.
   assert.deepEqual(list.children.filter((c) => c.tagName === 'DT').map((c) => c.textContent),
                    ['Name', 'Uptime', 'if_in', 'if_out']);
   assert.deepEqual(list.children.filter((c) => c.tagName === 'DD').map((c) => c.textContent),
-                   ['<b>sw</b>', '3d 4h', '91234', '-']);
+                   ['<b>sw</b>', '3d 4h 5m', '91234', '-']);
 });
 
 test('collapsing a row takes its values with the chart', async () => {

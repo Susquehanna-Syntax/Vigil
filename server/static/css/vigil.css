@@ -2266,11 +2266,11 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .device-check-add .form-control { width: auto; }
 .device-check-add #device-check-kind { flex: 0 0 130px; }
 .device-check-add #device-check-target { flex: 1 1 180px; min-width: 140px; }
-.device-check-add #device-check-port { flex: 0 0 90px; }
+.device-check-add #device-check-port { flex: 0 0 116px; }
+.device-check-add #device-check-community { flex: 1 1 160px; }
 .device-check-add #device-check-interval { flex: 1 1 160px; }
 /* The add row is one flex line, so the OIDs textarea takes a line to itself. */
-.device-check-add .device-check-oids { flex-basis: 100%; }
-.device-check-oids { font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-height: 64px; }
+.device-check-add .device-check-oids { flex-basis: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-height: 64px; }
 .device-check-values { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 12px; }
 .device-check-values dt { color: var(--text-2); }
 .device-check-values dd { margin: 0; font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; }
