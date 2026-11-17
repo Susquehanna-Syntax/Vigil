@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from nacl.signing import SigningKey
 
-from apps.hosts.models import Host
+from apps.hosts.models import CheckResult, DeviceCheck, Host, UnmanagedDevice
 from vigil import licensing
 
 from .models import HostUptimeSample, StatusPage
@@ -379,3 +379,236 @@ class PublicPageDoesNotPublishHostIdsTests(TestCase):
             body = resp.content.decode()
             self.assertIn("web-1", body)
             self.assertNotIn(str(host.id), body)
+
+
+# ── Devices on a status page (S9 04c) ───────────────────────────────────────
+
+def make_page_device(name="wiki", site_id=None):
+    return UnmanagedDevice.objects.create(name=name, device_type="server",
+                                          site_id=site_id)
+
+
+def make_page_check(device, enabled=True):
+    return DeviceCheck.objects.create(device=device, kind=DeviceCheck.Kind.HTTP,
+                                      params={"url": "https://example.com/"},
+                                      enabled=enabled)
+
+
+def result(check, ok, when=None):
+    from django.utils.timezone import now
+
+    return CheckResult.objects.create(
+        device_check=check, time=when or now(), ok=ok, detail="ok" if ok else "boom")
+
+
+class DeviceRowTests(TestCase):
+    """A device row on the public page is a host row: name, up or down, bars,
+    uptime percent. It is up when its checks' latest results all succeeded."""
+
+    def setUp(self):
+        get_user_model().objects.create_user("someone", password="x")
+        self.device = make_page_device("wiki.example")
+        self.check = make_page_check(self.device)
+        self.page = StatusPage.objects.create(
+            enabled=True, host_ids=[], device_ids=[str(self.device.id)])
+
+    def _data(self):
+        resp = self.client_class().get(f"/status/{self.page.token}/data/")
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()
+
+    def test_a_device_whose_latest_result_succeeded_shows_up_on_both_endpoints(self):
+        result(self.check, True)
+        data = self._data()
+        self.assertEqual([h["hostname"] for h in data["hosts"]], ["wiki.example"])
+        self.assertTrue(data["hosts"][0]["up"])
+        self.assertTrue(data["all_up"])
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(len(data["hosts"][0]["bars"]), 90)
+        html = self.client_class().get(f"/status/{self.page.token}/").content.decode()
+        self.assertIn("wiki.example", html)
+
+    def test_its_public_label_replaces_its_name(self):
+        result(self.check, True)
+        self.page.device_labels = {str(self.device.id): "Company wiki"}
+        self.page.save(update_fields=["device_labels"])
+        self.assertEqual(self._data()["hosts"][0]["hostname"], "Company wiki")
+
+    def test_a_device_whose_latest_result_failed_shows_down(self):
+        result(self.check, True)                    # older, then the failure
+        result(self.check, False)
+        data = self._data()
+        self.assertFalse(data["hosts"][0]["up"])
+        self.assertFalse(data["all_up"])
+
+    def test_a_device_whose_checks_never_reported_is_not_listed(self):
+        self.assertEqual(self._data()["hosts"], [])
+        self.assertEqual(self._data()["total"], 0)
+
+    def test_a_disabled_check_says_nothing_even_with_results(self):
+        result(self.check, True)
+        self.check.enabled = False
+        self.check.save(update_fields=["enabled"])
+        self.assertEqual(self._data()["hosts"], [])
+
+    def test_empty_device_ids_lists_no_devices_though_empty_host_ids_lists_every_host(self):
+        host = Host.objects.create(hostname="web-1",
+                                   agent_token="tok-web-1-000000000000",
+                                   status=Host.Status.ONLINE)
+        page = StatusPage.objects.create(enabled=True)     # both empty
+        rows = self.client_class().get(f"/status/{page.token}/data/").json()["hosts"]
+        self.assertEqual([r["hostname"] for r in rows], ["web-1"])
+        self.assertEqual(host.hostname, "web-1")
+
+    def test_two_days_of_results_give_two_live_bars_with_their_percentages(self):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        result(self.check, True)
+        yesterday = now() - timedelta(days=1)
+        CheckResult.objects.create(device_check=self.check, time=yesterday, ok=True)
+        CheckResult.objects.create(device_check=self.check,
+                                   time=yesterday + timedelta(minutes=1), ok=False)
+        bars = self._data()["hosts"][0]["bars"]
+        today, back_one = bars[-1], bars[-2]
+        self.assertEqual(today["state"], "up")
+        self.assertEqual(today["pct"], 1.0)
+        self.assertEqual(back_one["state"], "down")
+        self.assertEqual(back_one["pct"], 0.5)
+        self.assertEqual(bars[0]["state"], "nodata")
+
+    def test_the_device_rows_come_after_the_host_rows(self):
+        host = Host.objects.create(hostname="web-1",
+                                   agent_token="tok-web-1-000000000000",
+                                   status=Host.Status.ONLINE)
+        result(self.check, True)
+        self.page.host_ids = [str(host.id)]
+        self.page.save(update_fields=["host_ids"])
+        rows = self.client_class().get(f"/status/{self.page.token}/data/").json()["hosts"]
+        self.assertEqual([r["hostname"] for r in rows], ["web-1", "wiki.example"])
+
+    def test_the_public_page_never_publishes_another_sites_device(self):
+        """A forged or stale device id saved straight on the model must not put
+        a device of another site on a public page (S1 04e's rule for hosts)."""
+        from django.conf import settings
+
+        if not settings.BUSINESS_INSTALLED:
+            self.skipTest("needs the vigil-business package")
+        from apps_business.sites.models import Site
+
+        west = Site.objects.create(name="West", slug="west")
+        lab = Site.objects.create(name="Lab", slug="lab")
+        theirs = make_page_device("zzlab-router", site_id=lab.id)
+        mine = make_page_device("west-ntp", site_id=west.id)
+        result(make_page_check(theirs), False)   # would show a false outage
+        result(make_page_check(mine), True)
+        page = StatusPage.objects.create(enabled=True, site_id=west.id,
+                                         device_ids=[str(mine.id), str(theirs.id)])
+        rows = self.client_class().get(f"/status/{page.token}/data/").json()["hosts"]
+        self.assertEqual([r["hostname"] for r in rows], ["west-ntp"])
+
+
+class DeviceEditorApiTests(TestCase):
+    """/api/v1/status-pages/devices/ and the device fields of a page."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("admin", password="pw")
+        from apps.accounts.models import Role, UserProfile
+
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.client.force_login(self.user)
+        self.viewer = get_user_model().objects.create_user("viewer", password="pw")
+        from apps.accounts.models import UserProfile as _UP
+
+        _UP.objects.create(user=self.viewer, role=Role.VIEWER)
+        self.device = make_page_device("core switch")
+        self.check = make_page_check(self.device)
+        self.page = StatusPage.objects.create(title="p", host_ids=[])
+
+    def test_the_picker_answers_with_name_and_state(self):
+        result(self.check, True)
+        rows = self.client.get("/api/v1/status-pages/devices/").json()
+        self.assertEqual([r["name"] for r in rows], ["core switch"])
+        self.assertEqual(rows[0]["state"], "up")
+        self.assertEqual(rows[0]["id"], str(self.device.id))
+
+    def test_the_picker_says_null_for_a_device_no_check_reported_on(self):
+        rows = self.client.get("/api/v1/status-pages/devices/").json()
+        self.assertIsNone(rows[0]["state"])
+
+    def test_a_non_admin_cannot_list_devices(self):
+        self.client.force_login(self.viewer)
+        self.assertEqual(self.client.get("/api/v1/status-pages/devices/").status_code, 403)
+
+    def test_an_empty_page_returns_no_devices_and_no_labels(self):
+        row = self.client.get("/api/v1/status-pages/").json()[0]
+        self.assertEqual(row["device_ids"], [])
+        self.assertEqual(row["device_labels"], {})
+
+    def test_saving_device_ids_and_labels_round_trips_through_the_row(self):
+        resp = self.client.patch(f"/api/v1/status-pages/{self.page.id}/",
+                                 data=json.dumps({
+                                     "device_ids": [str(self.device.id)],
+                                     "device_labels": {str(self.device.id): "Wiki"},
+                                 }),
+                                 content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["device_ids"], [str(self.device.id)])
+        self.assertEqual(resp.json()["device_labels"], {str(self.device.id): "Wiki"})
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.device_ids, [str(self.device.id)])
+
+    def test_an_unknown_device_id_is_refused(self):
+        resp = self.client.patch(f"/api/v1/status-pages/{self.page.id}/",
+                                 data=json.dumps({"device_ids": [str(uuid.uuid4())]}),
+                                 content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("device_ids", resp.json()["detail"])
+        self.page.refresh_from_db()
+        self.assertEqual(self.page.device_ids, [])
+
+    def test_clearing_device_ids_removes_the_devices_and_their_labels(self):
+        self.page.device_ids = [str(self.device.id)]
+        self.page.device_labels = {str(self.device.id): "Wiki"}
+        self.page.save()
+        resp = self.client.patch(f"/api/v1/status-pages/{self.page.id}/",
+                                 data=json.dumps({"device_ids": []}),
+                                 content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["device_ids"], [])
+
+
+class DeviceRowsQueryCountTests(TestCase):
+    """The bars and states come in a fixed number of queries: a device picker
+    with dozens of rows must not cost one request per device."""
+
+    def setUp(self):
+        get_user_model().objects.create_user("someone", password="x")
+
+    def _row_queries(self, page):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/status/{page.token}/data/"
+        self.client.get(url)          # a cold process caches a lookup or two
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        # Only the device rows' own queries: a request can also write session
+        # or activity rows when enough time has passed, which says nothing
+        # about how many devices a page lists.
+        return [q["sql"] for q in ctx.captured_queries if "hosts_" in q["sql"]]
+
+    def test_the_data_endpoint_costs_the_same_for_two_devices_as_for_five(self):
+        devices = [make_page_device(f"dev-{i}") for i in range(5)]
+        for d in devices:
+            result(make_page_check(d), True)
+        small = StatusPage.objects.create(
+            enabled=True, host_ids=[], device_ids=[str(d.id) for d in devices[:2]])
+        large = StatusPage.objects.create(
+            enabled=True, host_ids=[], device_ids=[str(d.id) for d in devices])
+        two, five = self._row_queries(small), self._row_queries(large)
+        self.assertTrue(two, "no device query was captured")
+        self.assertEqual(len(two), len(five),
+                         "the device rows cost queries per device, not per page")

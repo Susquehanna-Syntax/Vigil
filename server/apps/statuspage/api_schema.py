@@ -47,6 +47,10 @@ class StatusPageSerializer(serializers.Serializer):
     host_ids = serializers.ListField(child=serializers.CharField())
     #: Display-name overrides, host id to public name. The keys are data.
     host_labels = serializers.DictField(child=serializers.CharField())
+    #: Device ids as strings; unlike host_ids, empty means NO devices.
+    device_ids = serializers.ListField(child=serializers.CharField())
+    #: Display-name overrides, device id to public name. The keys are data.
+    device_labels = serializers.DictField(child=serializers.CharField())
     site_id = serializers.CharField(allow_null=True)
     url = serializers.CharField(help_text="Where the public page lives.")
     is_primary = serializers.BooleanField()
@@ -66,6 +70,13 @@ class StatusPageWriteSerializer(serializers.Serializer):
                   "host of the page's site.")
     host_labels = serializers.DictField(child=serializers.CharField(),
                                         required=False, allow_null=True)
+    device_ids = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_null=True,
+        help_text="Device ids the page may publish, all of them visible to the "
+                  "caller and in the page's site. Unlike host_ids, empty means "
+                  "NO devices.")
+    device_labels = serializers.DictField(child=serializers.CharField(),
+                                          required=False, allow_null=True)
     rotate_token = serializers.BooleanField(
         required=False, help_text="Any true value mints a new page token.")
     # Branding fields: the first status page is free; these need Business, and
@@ -89,6 +100,15 @@ class StatusPageHostChoiceSerializer(serializers.Serializer):
     id = serializers.CharField()
     hostname = serializers.CharField()
     up = serializers.BooleanField()
+
+
+class StatusPageDeviceChoiceSerializer(serializers.Serializer):
+    """One row of the device picker. ``state`` is null when none of the
+    device's enabled checks has ever reported."""
+
+    id = serializers.CharField()
+    name = serializers.CharField()
+    state = serializers.ChoiceField(choices=["up", "down"], allow_null=True)
 
 
 class StatusPageUptimeDaySerializer(serializers.Serializer):

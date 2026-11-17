@@ -2421,6 +2421,12 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   border-radius: 8px; color: var(--text-1); }
 .sp-host-status { font-size: 11px; font-weight: 600; }
 .sp-host-status.up { color: var(--mint-ink); } .sp-host-status.down { color: var(--rose-ink); }
+/* A device whose checks have never reported says neither up nor down. */
+.sp-host-status.unknown { color: var(--text-3); }
+/* The state dot the Inventory list uses, beside a device's name in the picker. */
+.sp-device-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 5px; vertical-align: middle; background: var(--text-3); }
+.sp-device-dot.up { background: var(--mint); } .sp-device-dot.down { background: var(--rose); }
 .sp-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Confirm modal */
