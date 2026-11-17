@@ -110,6 +110,17 @@ class HostsDeviceSerializer(serializers.Serializer):
     extra = serializers.DictField(child=serializers.CharField(),
                                   help_text='Free-form facts, as {"Rack": "B4"}.')
     notes = serializers.CharField()
+    check_state = serializers.CharField(
+        allow_null=True, required=False,
+        help_text="What the device's checks last said: 'up' when every enabled "
+                  "check's latest result was ok, 'down' when any was not, and "
+                  "null when the device has no checks or none has ever reported. "
+                  "Read-only; one query per list, never one per device.")
+    can_edit_checks = serializers.BooleanField(
+        required=False,
+        help_text="Whether this user may add, change or delete the device's "
+                  "checks — an admin with the device in their write scope. The "
+                  "page offers only what it shows as true.")
     site_id = serializers.CharField(
         allow_null=True,
         help_text="The site the device is filed in; set by the view from the "

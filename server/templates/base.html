@@ -690,6 +690,23 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <label class="form-label" for="device-notes">Notes</label>
     <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
   </div>
+  <div class="form-group device-checks" id="device-checks" hidden>
+    <label class="form-label">Checks</label>
+    <div id="device-checks-list" class="device-checks-list"></div>
+    <div class="device-check-add" id="device-check-add" hidden>
+      <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind">
+        <option value="icmp">Ping</option><option value="tcp">TCP port</option>
+        <option value="http">HTTP(S)</option><option value="dns">DNS</option>
+      </select>
+      <input class="form-control" id="device-check-target" placeholder="Address, URL or name">
+      <input class="form-control" id="device-check-port" type="number" min="1" max="65535" placeholder="Port" hidden>
+      <select class="form-control" id="device-check-interval">
+        <option value="60">Every minute</option><option value="300">Every 5 minutes</option>
+        <option value="900">Every 15 minutes</option><option value="3600">Every hour</option>
+      </select>
+      <button class="btn btn-sm btn-mint" type="button" data-act="addDeviceCheck">Add check</button>
+    </div>
+  </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
     <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose-ink);" data-act="deleteDeviceFromModal">Delete</button>
     <div style="display:flex;gap:10px;margin-left:auto;">

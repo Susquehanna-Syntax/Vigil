@@ -300,6 +300,100 @@ class _AdminMixin:
         self.base = f"/api/v1/hosts/devices/{self.device.id}/checks/"
 
 
+class DeviceListCheckStateTests(_AdminMixin, TestCase):
+    """The dot on a device row: the list answers with each device's check_state,
+    in a number of queries that does not grow with the inventory."""
+
+    URL = "/api/v1/hosts/devices/"
+
+    def _states(self):
+        resp = self.client.get(self.URL)
+        return {row["name"]: row["check_state"] for row in resp.data}, resp
+
+    def _result(self, check, ok, minutes_ago=0, latency=12.34):
+        CheckResult.objects.create(device_check=check, time=timezone.now() - timedelta(minutes=minutes_ago),
+                                   ok=ok, latency_ms=latency if ok else None,
+                                   detail="ok" if ok else "refused")
+
+    def test_up_down_and_none_come_back_correctly(self):
+        healthy = make_device("healthy")
+        ailing = make_device("ailing")
+        make_device("untouched")
+        self._result(make_check(healthy, params={"host": "10.0.0.1"}), True)
+        ok_too = make_check(healthy, kind=DeviceCheck.Kind.DNS, params={"name": "a.lan"})
+        self._result(ok_too, True, minutes_ago=5)
+        fine = make_check(ailing, params={"host": "10.0.0.2"})
+        broke = make_check(ailing, kind=DeviceCheck.Kind.TCP, params={"host": "10.0.0.2", "port": 443})
+        self._result(fine, True, minutes_ago=9)
+        self._result(broke, True, minutes_ago=60)
+        self._result(broke, False, minutes_ago=1)     # its latest result failed
+        states, resp = self._states()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(states["healthy"], "up")
+        self.assertEqual(states["ailing"], "down")
+        self.assertIsNone(states["untouched"])
+
+    def test_only_the_latest_result_of_a_check_counts(self):
+        device = make_device("recovered")
+        check = make_check(device)
+        self._result(check, False, minutes_ago=40)
+        self._result(check, True, minutes_ago=2)
+        states, _ = self._states()
+        self.assertEqual(states["recovered"], "up")
+
+    def test_a_disabled_check_that_failed_does_not_hold_a_device_down(self):
+        device = make_device("off-check")
+        off = make_check(device, params={"host": "10.0.0.9"})
+        self._result(off, False)
+        on = make_check(device, kind=DeviceCheck.Kind.DNS, params={"name": "b.lan"})
+        self._result(on, True)
+        DeviceCheck.objects.filter(pk=off.pk).update(enabled=False)
+        states, _ = self._states()
+        self.assertEqual(states["off-check"], "up")
+
+    def test_enabled_checks_with_no_results_say_nothing(self):
+        device = make_device("unpolled")
+        make_check(device)
+        states, _ = self._states()
+        self.assertIsNone(states["unpolled"])
+
+    def test_the_state_costs_a_bounded_number_of_queries(self):
+        """Three devices with results, then two more: the count must not move.
+
+        The naive read is one query per check; a Subquery keeps it to the list
+        plus a fixed handful however big the inventory grows.
+        """
+        for name in ("q-a", "q-b", "q-c"):
+            device = make_device(name)
+            for kind in (DeviceCheck.Kind.ICMP, DeviceCheck.Kind.HTTP):
+                check = make_check(device, kind=kind, params={"host": "10.0.0.7"} if kind == "icmp"
+                                   else {"url": "http://x.lan/"})
+                self._result(check, True)
+        self.client.get(self.URL)          # warm any lazy connection work
+        # One per-list set, whatever the inventory holds: the devices, their
+        # enabled checks with each one's newest result (a Subquery inside the
+        # SELECT, not a round trip per check), which of those succeeded, and two
+        # reads of the caller's own site grants.
+        with self.assertNumQueries(5):
+            states, _ = self._states()
+        self.assertEqual(states["q-a"], "up")
+
+        for name in ("q-d", "q-e"):
+            device = make_device(name)
+            self._result(make_check(device), True)
+        with self.assertNumQueries(5):
+            states, _ = self._states()
+        self.assertEqual(states["q-e"], "up")
+
+    def test_the_list_says_whether_checks_may_be_written(self):
+        make_device("sw")
+        _, resp = self._states()
+        self.assertTrue(resp.data[0]["can_edit_checks"])
+        self.client.force_authenticate(self.viewer)
+        _, resp = self._states()
+        self.assertFalse(resp.data[0]["can_edit_checks"])
+
+
 class DeviceCheckApiTests(_AdminMixin, TestCase):
     def test_create_list_patch_and_delete(self):
         created = self.client.post(self.base, {"kind": "tcp", "params": {"host": "10.0.0.2", "port": 22},

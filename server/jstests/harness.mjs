@@ -35,6 +35,11 @@ class StubElement {
   getAttribute(k) { return this.attributes[k] ?? null; }
   removeAttribute(k) { delete this.attributes[k]; }
   appendChild(c) { this.children.push(c); return c; }
+  // The DOM methods Vigil's renderers use on a host, in terms of the one child
+  // store. clear() only empties: children and text are separate stores here, so
+  // dropping text as a side effect would wipe what an earlier test put there.
+  replaceChildren(...nodes) { this.children = [...nodes]; }
+  removeChild(c) { this.children = this.children.filter((x) => x !== c); return c; }
   addEventListener() {}
   querySelector() { return null; }
   querySelectorAll() { return []; }
