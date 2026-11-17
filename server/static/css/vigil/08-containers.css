@@ -1,0 +1,152 @@
+/* ═══════════════════════════════════════════
+   DOCKER CONTAINERS (monitor page)
+   ═══════════════════════════════════════════ */
+.section-count {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.docker-stacks { display: flex; flex-direction: column; gap: 14px; }
+.docker-empty {
+  color: var(--text-3);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}
+.docker-stack {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.docker-stack-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 18px 10px;
+}
+.docker-stack-acts { margin-left: auto; display: inline-flex; gap: 6px; }
+.ctr-logs { margin: 0; height: 60vh; overflow: auto; padding: 12px; border-radius: var(--r-md);
+  background: var(--s1); color: var(--text-1); font-family: var(--font-mono); font-size: 12px;
+  line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ctr-logs-state { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+.ctr-fix { white-space: nowrap; }
+.ctr-fix .btn + .btn { margin-left: 4px; }
+.docker-stack-name {
+  font-family: 'Fraunces', serif;
+  font-size: 15px;
+  color: var(--text-1);
+}
+.docker-stack-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ctr-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ctr-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 18px;
+}
+.ctr-table thead th.num { text-align: right; }
+.ctr-table tbody td {
+  padding: 9px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-2);
+  vertical-align: middle;
+}
+.ctr-table tbody tr:hover { background: var(--wash); }
+.ctr-name { color: var(--text-1); font-weight: 500; }
+.ctr-svc { color: var(--text-3); font-size: 11px; font-family: 'IBM Plex Mono', monospace; }
+.ctr-image {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-2);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctr-stat {
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: right;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ctr-state {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  text-transform: capitalize;
+  background: var(--ctr-state-stopped-bg);
+  color: var(--text-3);
+}
+.ctr-state.running { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.ctr-state.exited,
+.ctr-state.dead { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.ctr-state.paused,
+.ctr-state.restarting,
+.ctr-state.partial { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
+/* A clean stop (exit 0) is not a crash: neutral, where a crash is rose. */
+.ctr-state.stopped { background: var(--ctr-state-stopped-bg); color: var(--text-2); text-transform: none; }
+.ctr-state.exited,
+.ctr-state.partial { text-transform: none; }
+.ctr-state.stopped,
+.ctr-state.exited,
+.ctr-state.partial { white-space: nowrap; }
+.docker-stack-header .ctr-state { margin-left: 4px; }
+
+/* Unmanaged devices (inventory page) */
+.dev-sub {
+  color: var(--text-3);
+  font-size: 12px;
+  margin: -10px 0 16px;
+}
+.dev-empty {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 32px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.dev-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.dev-table tbody tr:first-child td { border-top: none; }
+.dev-mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* SSH command modal */
+.ssh-cmd-row { display: flex; align-items: center; gap: 10px; }
+.ssh-cmd {
+  flex: 1;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--text-1);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+

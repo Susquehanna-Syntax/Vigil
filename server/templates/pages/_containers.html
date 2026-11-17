@@ -1,5 +1,5 @@
 {# Containers page section — a host's containers by compose stack, Vigil-managed stacks, live logs, and (14.3) its images, volumes and networks in sub-tabs #}
-{# Logic: static/js/vigil-containers.js (containers, logs, host picker) + vigil-stacks.js (managed stacks) | Styles: vigil.css .docker-*, .managed-stack*, .ctr-logs | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/, /api/v1/hosts/{id}/docker/, /api/v1/hosts/docker-summary/, /api/v1/stacks/ #}
+{# Logic: static/js/vigil-containers.js (containers, logs, host picker) + vigil-stacks.js (managed stacks) | Styles: css/vigil/*.css .docker-*, .managed-stack*, .ctr-logs | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/, /api/v1/hosts/{id}/docker/, /api/v1/hosts/docker-summary/, /api/v1/stacks/ #}
     <section id="page-containers" class="page">
 
       <div class="page-header">

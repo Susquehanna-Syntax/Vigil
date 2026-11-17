@@ -4,6 +4,8 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -30,7 +32,7 @@ class PolicyPageWiringTests(SimpleTestCase):
             self.assertIn(call, js)
 
     def test_no_side_stripes(self):
-        css = (ROOT / "static/css/vigil.css").read_text(encoding="utf-8")
+        css = design_css()
         start = css.index("/* ── Policies (M8)")
         block = css[start:css.index("/* ── Deploy: hosts", start)]
         # A reset to 0 is fine; any real width on one side is a stripe.

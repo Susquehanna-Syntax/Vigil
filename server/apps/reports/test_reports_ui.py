@@ -16,9 +16,10 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-reports.js"
-CSS = ROOT / "static/css/vigil.css"
 HTML = ROOT / "templates/pages/_reports.html"
 PLAYBOOKS_HTML = ROOT / "templates/pages/_playbooks.html"
 DASHBOARD = ROOT / "templates/dashboard.html"
@@ -236,21 +237,21 @@ class ReportSafetyTests(SimpleTestCase):
 class ReportStyleTests(SimpleTestCase):
 
     def test_css_appended_not_replaced(self):
-        """A previous phase overwrote vigil.css with its ten new lines."""
-        css = CSS.read_text()
+        """A previous phase overwrote the stylesheets with its ten new lines."""
+        css = design_css()
         self.assertGreater(len(css.splitlines()), 4500)
         self.assertIn(".modal {", css)
         self.assertIn(".fcn-if {", css)
         self.assertIn(".rpt-grid", css)
 
     def test_no_side_stripe(self):
-        css = CSS.read_text()
+        css = design_css()
         rules = "\n".join(re.findall(r"\.rpt-[\w-]*\s*\{[^}]*\}", css))
         for banned in ("border-left", "border-right"):
             self.assertNotIn(banned, rules)
 
     def test_the_chart_has_a_boxed_height_and_the_grid_collapses(self):
-        css = CSS.read_text()
+        css = design_css()
         self.assertRegex(css, r"\.rpt-chart \{ height: 220px; position: relative; \}")
         self.assertRegex(css, r"\.rpt-picks \{[^}]*max-height: 180px; overflow-y: auto")
         self.assertRegex(

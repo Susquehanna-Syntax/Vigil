@@ -1,6 +1,6 @@
 {# Community page section — one sub-tab per content type #}
 {% comment %}
-Logic: static/js/vigil-community.js | Styles: vigil.css .def-*, .sub-tab, .task-search-*
+Logic: static/js/vigil-community.js | Styles: css/vigil/*.css .def-*, .sub-tab, .task-search-*
 Data: client-side fetch /api/v1/tasks/community/<kind>/ (GitHub-backed, server-cached
 per kind). Forking a playbook or an automation resolves its slug references against
 the operator's own library, which is why a fork can fail with a list of what to get

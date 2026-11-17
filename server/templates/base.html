@@ -19,9 +19,8 @@
 <link rel="stylesheet" href="{% static 'css/vendor/gridstack.min.css' %}">
 <script src="{% static 'js/vendor/gridstack-all.js' %}"></script>
 
-<!-- Styles: static/css/vigil.css — all design tokens, layout, and component styles -->
-<link rel="stylesheet" href="{% static 'css/tokens.css' %}">
-<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+<!-- Styles: static/css/tokens.css (design tokens) and static/css/vigil/*.css (layout and components) -->
+{% include "_stylesheets.html" %}
 <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}

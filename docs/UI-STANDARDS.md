@@ -1,7 +1,8 @@
 # Vigil UI standards
 
-Vigil's interface follows the SQSY design language. Its tokens live at the top
-of `server/static/css/vigil.css`, and the class names match the design
+Vigil's interface follows the SQSY design language. Its tokens live in
+`server/static/css/tokens.css`, the styles in the numbered parts under
+`server/static/css/vigil/`, and the class names match the design
 language, so markup copies straight across. This page covers what to reach
 for, and what not to do, when you add a page, dialog or widget.
 

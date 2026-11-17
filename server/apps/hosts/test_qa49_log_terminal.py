@@ -13,11 +13,12 @@ from unittest import skipUnless
 from django.test import SimpleTestCase
 
 from apps.reports.test_reports_ui import _code_only, _function, _node
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 UTILS = (ROOT / "static/js/vigil-utils.js").read_text()
 CONTAINERS = _code_only((ROOT / "static/js/vigil-containers.js").read_text())
-CSS = (ROOT / "static/css/vigil.css").read_text()
+CSS = design_css()
 
 TERM_FUNCS = ("termNewState", "_termSgr", "_termClasses", "_termOverwrite", "_termLineHtml",
               "termHtml", "termPlain", "escAttr")

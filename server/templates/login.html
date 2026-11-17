@@ -6,8 +6,7 @@
 <title>{% if branding.product_name %}{{ branding.product_name }}{% else %}Vigil{% endif %} — Sign In</title>
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
-<link rel="stylesheet" href="{% static 'css/tokens.css' %}">
-<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+{% include "_stylesheets.html" %}
 <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 </head>

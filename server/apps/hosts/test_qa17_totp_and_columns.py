@@ -11,6 +11,8 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static" / "js"
 TEMPLATES = ROOT / "templates"
@@ -87,7 +89,7 @@ class ContainersColumnTests(SimpleTestCase):
                     "ctr-c-cpu", "ctr-c-mem", "ctr-c-acts"):
             self.assertIn(f'col class="{cls}"', js)
 
-        css = _read(ROOT / "static" / "css" / "vigil.css")
+        css = design_css()
         self.assertRegex(
             css, r"\.ctr-table\s*\{[^}]*table-layout:\s*fixed",
             ".ctr-table never switches to fixed layout",

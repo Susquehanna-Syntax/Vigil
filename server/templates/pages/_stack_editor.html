@@ -1,5 +1,5 @@
 {# Stack editor page section — a full-screen compose editor: highlighted YAML with a line gutter, live validation, masked .env, revisions #}
-{# Logic: static/js/vigil-stacks.js (openStackEditor / saveStack / validateStack / deployStack / removeStack) | Styles: vigil.css .sted-* (+ .te-editor/.te-highlight/.te-yaml from the task editor) | Data: client-side fetch /api/v1/stacks/ (CRUD), /<id>/revisions/, /<id>/env/reveal/, /<id>/deploy/, /<id>/remove/ (TOTP), POST /api/v1/stacks/validate/ #}
+{# Logic: static/js/vigil-stacks.js (openStackEditor / saveStack / validateStack / deployStack / removeStack) | Styles: css/vigil/*.css .sted-* (+ .te-editor/.te-highlight/.te-yaml from the task editor) | Data: client-side fetch /api/v1/stacks/ (CRUD), /<id>/revisions/, /<id>/env/reveal/, /<id>/deploy/, /<id>/remove/ (TOTP), POST /api/v1/stacks/validate/ #}
     <section id="page-stack-editor" class="page sted">
 
       <div class="sted-bar">

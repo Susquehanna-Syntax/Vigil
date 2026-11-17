@@ -18,11 +18,11 @@ from django.test import SimpleTestCase, TestCase
 from apps.hosts.models import Host
 from apps.tasks.models import Task, TaskRun
 from apps.tasks.summary import run_summary
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 FLOW_JS = ROOT / "static/js/vigil-playbook-flow.js"
 PLAYBOOKS_JS = ROOT / "static/js/vigil-playbooks.js"
-CSS = ROOT / "static/css/vigil.css"
 
 _STUBS = ("global.escHtml = s => String(s == null ? '' : s).replace(/&/g,'&amp;')"
           ".replace(/</g,'&lt;').replace(/>/g,'&gt;');"
@@ -227,7 +227,7 @@ class SourceWiringTests(SimpleTestCase):
         self.assertNotIn("onclick=", flow)
 
     def test_css_appended(self):
-        css = CSS.read_text()
+        css = design_css()
         self.assertGreater(len(css.splitlines()), 4470)
         self.assertIn(".fcn-goto", css)
         self.assertIn(".fce-jump", css)

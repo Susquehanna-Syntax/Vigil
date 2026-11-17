@@ -18,11 +18,11 @@ from unittest import skipUnless
 from django.test import SimpleTestCase
 
 from apps.playbooks.flow import _check_condition
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 FLOW_JS = ROOT / "static/js/vigil-playbook-flow.js"
 PLAYBOOKS_JS = ROOT / "static/js/vigil-playbooks.js"
-CSS = ROOT / "static/css/vigil.css"
 
 def _function(src: str, name: str) -> str:
     start = src.index(f"function {name}(")
@@ -209,7 +209,7 @@ class ConditionRowSourceTests(SimpleTestCase):
         self.assertNotRegex(playbooks, r"\bon(click|change|input)\s*=\s*\"")
 
     def test_no_side_stripe(self):
-        css = CSS.read_text()
+        css = design_css()
         appended = css[css.index("/* QA-34:"):]
         self.assertIn(".fb-row", appended)
         self.assertNotIn("border-left", appended)

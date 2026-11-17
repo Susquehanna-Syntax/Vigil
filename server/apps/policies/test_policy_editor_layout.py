@@ -4,6 +4,8 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -11,7 +13,7 @@ class PolicyEditorLayoutTests(SimpleTestCase):
     def setUp(self):
         self.html = (ROOT / "templates/pages/_policies.html").read_text(encoding="utf-8")
         self.js = (ROOT / "static/js/vigil-policies.js").read_text(encoding="utf-8")
-        self.css = (ROOT / "static/css/vigil.css").read_text(encoding="utf-8")
+        self.css = design_css()
 
     def test_labels_are_short_and_hints_sit_below(self):
         self.assertIsNone(re.search(r'<label[^>]*>[^<]*<span class="pol-opt"', self.html))
@@ -22,7 +24,7 @@ class PolicyEditorLayoutTests(SimpleTestCase):
     def test_modal_is_wide_enough(self):
         self.assertIn('class="modal modal-wide pol-modal"', self.html)
         rule = re.search(r"\.modal\.pol-modal\s*\{[^}]*\}", self.css)
-        self.assertIsNotNone(rule, "no .modal.pol-modal rule in vigil.css")
+        self.assertIsNotNone(rule, "the stylesheets have no .modal.pol-modal rule")
         self.assertIn("760px", rule.group(0))
 
     def test_save_closes_the_editor(self):

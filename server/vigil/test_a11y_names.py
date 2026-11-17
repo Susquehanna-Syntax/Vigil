@@ -13,6 +13,8 @@ from pathlib import Path
 from django.conf import settings
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(settings.BASE_DIR).parent
 STATIC = ROOT / "server" / "static"
 TEMPLATES = ROOT / "server" / "templates"
@@ -92,7 +94,7 @@ class TabSemanticsTests(SimpleTestCase):
         self.assertRegex(self.nav, r"case ' ':")
 
     def test_the_focused_tab_gets_a_visible_ring(self):
-        css = (STATIC / "css" / "vigil.css").read_text()
+        css = design_css()
         self.assertIn(".tab:focus-visible", css)
 
 

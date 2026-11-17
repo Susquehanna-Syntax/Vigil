@@ -6,10 +6,11 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.reports.test_reports_ui import _code_only, _function
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = _code_only((ROOT / "static/js/vigil-inventory.js").read_text())
-CSS = (ROOT / "static/css/vigil.css").read_text()
+CSS = design_css()
 
 
 class InventorySelectTests(SimpleTestCase):

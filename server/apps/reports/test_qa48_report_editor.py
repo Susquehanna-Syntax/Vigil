@@ -13,11 +13,12 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 from .test_reports_ui import _code_only, _function, _node
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-reports.js"
-CSS = ROOT / "static/css/vigil.css"
 TEMPLATE = ROOT / "templates/pages/_reports.html"
 
 SRC = JS.read_text()
@@ -156,7 +157,7 @@ class ReportEditorMarkupTests(SimpleTestCase):
         self.assertIn('id="rpt-widgets"', html)
         self.assertIn('id="rpt-widget-add"', html)
         self.assertRegex(html, r'class="modal modal-wide rpt-editor-modal" id="rpt-editor-modal"')
-        css = CSS.read_text()
+        css = design_css()
         self.assertIn("QA-48: report editor", css)
         self.assertIn(".rpt-wcard", css)
         self.assertIn(".rpt-wprev", css)

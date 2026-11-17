@@ -10,10 +10,12 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 SERVER = Path(__file__).resolve().parents[2]
 JS = SERVER / "static" / "js"
 CSS = "\n".join(
-    (SERVER / "static" / "css" / name).read_text() for name in ("tokens.css", "vigil.css")
+    [(SERVER / "static" / "css" / "tokens.css").read_text(), design_css()]
 )
 
 

@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
+from vigil.css_text import design_css
 
 from .evidence import add_evidence
 from .models import EpssScore, KevEntry, VulnFinding
@@ -144,7 +145,7 @@ class VulnTabsTests(TestCase):
         root = Path(__file__).resolve().parents[2]
         self.html = (root / "templates/pages/_vulns.html").read_text(encoding="utf-8")
         self.js = (root / "static/js/vigil-vulns.js").read_text(encoding="utf-8")
-        self.css = (root / "static/css/vigil.css").read_text(encoding="utf-8")
+        self.css = design_css()
 
     def test_two_tabs(self):
         self.assertIn('data-tab="vulns-by-fix"', self.html)
