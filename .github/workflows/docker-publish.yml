@@ -266,6 +266,12 @@ jobs:
           python manage.py runserver localhost:8010 --insecure --noreload > ../e2e-server.log 2>&1 &
           for _ in $(seq 1 30); do curl -sf "$E2E_BASE/api/v1/health/" && break; sleep 2; done
           curl -sf "$E2E_BASE/api/v1/health/" || { cat ../e2e-server.log; exit 1; }
+      # axe-core for the accessibility ratchet (sprint M6), pinned by hash, not committed.
+      - name: Fetch axe-core
+        run: |
+          curl -sfL https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js -o "$RUNNER_TEMP/axe.min.js"
+          echo "b511cd9dec01c76f4b2ad1723b66b6db37d4c2eb4ed199076e1829d9ee7b75e3  $RUNNER_TEMP/axe.min.js" | sha256sum -c -
+          echo "E2E_AXE=$RUNNER_TEMP/axe.min.js" >> "$GITHUB_ENV"
       - name: Run the browser suite
         run: |
           set -o pipefail
