@@ -70,6 +70,8 @@
     "static/js/vigil-settings.js",
     "static/js/vigil-deploy.js",
     "static/js/vigil-host-cards.js",
-    "static/js/vigil-automations.js"
+    "static/js/vigil-automations.js",
+    "static/js/vigil-stacks.js",
+    "static/js/vigil-reprovision.js"
   ]
 }

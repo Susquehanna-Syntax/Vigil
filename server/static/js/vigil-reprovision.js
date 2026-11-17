@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-reprovision.js
 // Owns: host Rebuild ceremony + Settings → OS Images pane + the Reprovision
 //   page (image library, pull controls, install profiles, rebuild jobs).
@@ -105,13 +106,13 @@ async function openRebuildModal(hostId, hostname) {
       `<button class="btn btn-danger" id="rb-go" disabled>Rebuild this machine</button>` +
     `</div>`);
 
-  const imageSel = document.getElementById('rb-image');
-  const profileSel = document.getElementById('rb-profile');
+  const imageSel = /** @type {HTMLSelectElement} */ (document.getElementById('rb-image'));
+  const profileSel = /** @type {HTMLSelectElement} */ (document.getElementById('rb-profile'));
   const summary = document.getElementById('rb-summary');
-  const hostnameInput = document.getElementById('rb-hostname');
+  const hostnameInput = /** @type {HTMLInputElement} */ (document.getElementById('rb-hostname'));
   hostnameInput.placeholder = hostname;
-  const goBtn = document.getElementById('rb-go');
-  const ackBox = document.getElementById('rb-ack-plain');
+  const goBtn = /** @type {HTMLButtonElement} */ (document.getElementById('rb-go'));
+  const ackBox = /** @type {HTMLInputElement|null} */ (document.getElementById('rb-ack-plain'));
 
   function currentProfile() {
     return profiles.find((p) => p.id === profileSel.value);
@@ -171,7 +172,7 @@ async function openRebuildModal(hostId, hostname) {
           host: hostId,
           image: imageSel.value,
           profile: profileSel.value,
-          password: document.getElementById('rb-password').value,
+          password: /** @type {HTMLInputElement} */ (document.getElementById('rb-password')).value,
           totp,
           typed_hostname: hostnameInput.value,
           acknowledge_plaintext_transport: !!(ackBox && ackBox.checked),
@@ -244,7 +245,7 @@ function _showJobProgress(m, job, hostname) {
         `<button class="btn btn-outline" id="rb-close">Close</button>` +
       `</div>`);
     document.getElementById('rb-close').onclick = () => { stop(); m.close(); };
-    const abortBtn = document.getElementById('rb-abort');
+    const abortBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('rb-abort'));
     if (abortBtn) {
       abortBtn.onclick = async () => {
         abortBtn.disabled = true;
@@ -307,7 +308,7 @@ async function loadOSImages() {
         `</div>`;
       list.appendChild(row);
     });
-    list.querySelectorAll('.img-del').forEach((btn) => {
+    list.querySelectorAll('.img-del').forEach((/** @type {HTMLElement} */ btn) => {
       btn.onclick = async () => {
         if (!await confirmModal('Delete this image? Rebuilds using it will fail.')) return;
         try {
@@ -664,19 +665,19 @@ async function _reproPullFromCatalog(catalogId, btn) {
 // after the operator may have already picked a multi-gigabyte file, would
 // be worse than the button doing nothing.
 function _reproPresetFamily(family) {
-  const famSel = document.getElementById('repro-custom-family');
+  const famSel = /** @type {HTMLSelectElement|null} */ (document.getElementById('repro-custom-family'));
   if (famSel) famSel.value = family;
-  const fileInput = document.getElementById('repro-custom-file');
+  const fileInput = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-file'));
   if (fileInput) fileInput.focus();
 }
 
 function _reproRefreshCustomGate() {
-  const btn = document.getElementById('repro-custom-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-custom-submit'));
   if (!btn) return;
-  const ack = document.getElementById('repro-custom-ack');
-  const name = document.getElementById('repro-custom-name');
-  const url = document.getElementById('repro-custom-url');
-  const sha = document.getElementById('repro-custom-sha256');
+  const ack = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-ack'));
+  const name = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-name'));
+  const url = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-url'));
+  const sha = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-sha256'));
   btn.disabled = !(ack && ack.checked &&
     name && name.value.trim() &&
     url && url.value.trim() &&
@@ -684,14 +685,14 @@ function _reproRefreshCustomGate() {
 }
 
 async function _reproSubmitCustom() {
-  const btn = document.getElementById('repro-custom-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-custom-submit'));
   if (!btn) return;
-  const nameEl = document.getElementById('repro-custom-name');
-  const familyEl = document.getElementById('repro-custom-family');
-  const versionEl = document.getElementById('repro-custom-version');
-  const urlEl = document.getElementById('repro-custom-url');
-  const shaEl = document.getElementById('repro-custom-sha256');
-  const ackEl = document.getElementById('repro-custom-ack');
+  const nameEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-name'));
+  const familyEl = /** @type {HTMLSelectElement} */ (document.getElementById('repro-custom-family'));
+  const versionEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-version'));
+  const urlEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-url'));
+  const shaEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-sha256'));
+  const ackEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-ack'));
 
   btn.disabled = true;
   try {
@@ -727,24 +728,24 @@ async function _reproSubmitCustom() {
 // which is wrong for a file body, so this uses fetch directly and lets the
 // browser set the multipart boundary itself.
 function _reproRefreshUploadGate() {
-  const btn = document.getElementById('repro-upload-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-upload-submit'));
   if (!btn) return;
-  const name = document.getElementById('repro-custom-name');
-  const sha = document.getElementById('repro-custom-sha256');
-  const file = document.getElementById('repro-custom-file');
+  const name = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-name'));
+  const sha = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-sha256'));
+  const file = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-file'));
   btn.disabled = !(name && name.value.trim() &&
     sha && sha.value.trim() &&
     file && file.files && file.files.length > 0);
 }
 
 async function _reproSubmitUpload() {
-  const btn = document.getElementById('repro-upload-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-upload-submit'));
   if (!btn) return;
-  const nameEl = document.getElementById('repro-custom-name');
-  const familyEl = document.getElementById('repro-custom-family');
-  const versionEl = document.getElementById('repro-custom-version');
-  const shaEl = document.getElementById('repro-custom-sha256');
-  const fileEl = document.getElementById('repro-custom-file');
+  const nameEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-name'));
+  const familyEl = /** @type {HTMLSelectElement} */ (document.getElementById('repro-custom-family'));
+  const versionEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-version'));
+  const shaEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-sha256'));
+  const fileEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-file'));
   const file = fileEl && fileEl.files && fileEl.files[0];
   if (!file) return;
 
@@ -913,17 +914,26 @@ function _reproSetProfileOpen(open) {
   overlay.classList.toggle('open', open);
 }
 
+// The install-profile form's #repro-prof-* fields by id, all of them in
+// pages/_reprovision.html. Every one is an <input> or a <select> read or written
+// through .value; the only two <textarea>s it holds (#repro-prof-keys and
+// #repro-prof-raw) have that property too.
+/** @param {string} id @returns {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null} */
+function _profField(id) {
+  return /** @type {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null} */ (document.getElementById(id));
+}
+
 // Static/DHCP: the static fields are meaningless under DHCP, and the
 // serializer rejects static without an address and gateway.
 function _reproSyncProfileNetwork() {
-  const mode = document.getElementById('repro-prof-netmode')?.value;
-  for (const el of document.querySelectorAll('#repro-profile-modal .repro-prof-static')) {
+  const mode = _profField('repro-prof-netmode')?.value;
+  for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#repro-profile-modal .repro-prof-static'))) {
     el.style.display = mode === 'static' ? '' : 'none';
   }
 }
 
 function _reproFillProfileImages(selectedId) {
-  const sel = document.getElementById('repro-prof-image');
+  const sel = _profField('repro-prof-image');
   const hint = document.getElementById('repro-prof-image-hint');
   if (!sel) return;
   sel.replaceChildren();
@@ -952,9 +962,9 @@ function _reproOpenProfile(prof) {
   document.getElementById('repro-profile-title').textContent =
     editing ? 'Edit install profile' : 'New install profile';
 
-  const set = (id, value) => {
-    const el = document.getElementById(id);
-    if (el) el.value = value;
+  const set = (/** @type {string} */ id, /** @type {string|number|null|undefined} */ value) => {
+    const el = _profField(id);
+    if (el) el.value = String(value);
   };
   set('repro-prof-name', prof?.name || '');
   set('repro-prof-disk', prof?.disk_target || '');
@@ -986,11 +996,11 @@ function _reproOpenProfile(prof) {
       : 'A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with mkpasswd -m sha-512.';
   }
 
-  sitePickFill(document.getElementById('repro-prof-site'), document.getElementById('repro-prof-site-field'),
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('repro-prof-site')), /** @type {HTMLElement} */ (document.getElementById('repro-prof-site-field')),
     prof ? prof.site_id : null, { editing: !!editing });
   _reproFillProfileImages(prof?.image);
   _reproFillProfileAgentProfiles();
-  const agentProfile = document.getElementById('repro-prof-agentprofile');
+  const agentProfile = _profField('repro-prof-agentprofile');
   if (agentProfile) agentProfile.value = prof?.agent_profile ? String(prof.agent_profile) : '';
   _reproSyncProfileNetwork();
   _reproSetProfileOpen(true);
@@ -999,7 +1009,7 @@ function _reproOpenProfile(prof) {
 async function _reproSaveProfile() {
   const modal = _reproProfileModal();
   if (!modal) return;
-  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const val = (/** @type {string} */ id) => (_profField(id)?.value || '').trim();
   const editing = modal.dataset.editing;
 
   const body = {
@@ -1040,7 +1050,7 @@ async function _reproSaveProfile() {
   if (!body.disk_target) return showToast('Name the target disk', 'error');
   if (!body.admin_username) return showToast('Set an admin username', 'error');
 
-  const btn = document.getElementById('repro-profile-save');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-profile-save'));
   if (btn) btn.disabled = true;
   try {
     if (editing) {
@@ -1211,7 +1221,7 @@ for (const id of ['repro-custom-name', 'repro-custom-sha256', 'repro-custom-file
 // Auto-load the first time the Reprovision tab is opened, following the
 // wrap-navigateTo pattern documented atop vigil-nav.js.
 const _reproNavigateTo = navigateTo;
-navigateTo = function (page) {
+window.navigateTo = function (page) {
   _reproNavigateTo(page);
   if (page === 'reprovision') loadReprovisionPage();
 };

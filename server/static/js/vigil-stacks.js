@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-stacks.js
 // Owns: Vigil-managed compose stacks on the Containers page
 //   (M11) — the list, and the full-screen stack editor page
@@ -65,7 +66,7 @@ function managedStackEditButton(name) {
 }
 
 function _renderStackEnv() {
-  const wrap = document.getElementById('stack-env');
+  const wrap = /** @type {HTMLElement} */ (document.getElementById('stack-env'));
   // Values go in as .value after the markup is built: never interpolate one
   // into an attribute — a revealed secret must not become markup.
   wrap.innerHTML = stackEd.env.map((e, i) => `<div class="stack-env-row" data-env-row="${i}">
@@ -75,17 +76,47 @@ function _renderStackEnv() {
       <button class="btn btn-ghost btn-xs" type="button" data-env-remove="${i}" aria-label="Remove">Remove</button>
     </div>`).join('') || '<div class="apps-empty-state">No variables.</div>';
   // Show values only when there are saved values to show.
-  const reveal = document.querySelector('.sted [data-stack-env-reveal]');
+  const reveal = /** @type {HTMLElement} */ (document.querySelector('.sted [data-stack-env-reveal]'));
   if (reveal) reveal.hidden = !stackEd.env.some(e => e.stored && !e.revealed);
-  wrap.querySelectorAll('[data-env-row]').forEach((row) => {
+  wrap.querySelectorAll('[data-env-row]').forEach((/** @type {HTMLElement} */ row) => {
     const entry = stackEd.env[parseInt(row.dataset.envRow, 10)];
     if (!entry) return;
-    row.querySelector('[data-env-field="key"]').value = entry.key || '';
-    row.querySelector('[data-env-field="value"]').value = entry.value || '';
+    /** @type {HTMLInputElement} */ (row.querySelector('[data-env-field="key"]')).value = entry.key || '';
+    /** @type {HTMLInputElement} */ (row.querySelector('[data-env-field="value"]')).value = entry.value || '';
   });
 }
 
-function _stedEl(id) { return document.getElementById(id); }
+/** The editor's controls by id, all of them in templates/pages/_stack_editor.html.
+ *  tsc cannot tell which kind of control an id names, and a click handler hands
+ *  back an element rather than its kind: the four form controls are therefore
+ *  typed where they are looked up — the compose <textarea> (_composeArea),
+ *  #stack-name and the Git #sted-git-url/-branch/-pin/-path fields (_textField),
+ *  the #sted-git-cred credential <select> (_credSelect) — while everything else
+ *  this file reads is a div or span that only ever takes markup, text or .hidden
+ *  and stays HTMLElement. The New Git credential dialog's inputs, which no click
+ *  handler offers, are cast at their reads instead. */
+/** @param {string} id @returns {HTMLElement} */
+function _editorEl(id) { return /** @type {HTMLElement} */ (document.getElementById(id)); }
+
+/** @param {string} id @returns {HTMLTextAreaElement} */
+function _composeArea(id) { return /** @type {HTMLTextAreaElement} */ (document.getElementById(id)); }
+
+/** @param {string} id @returns {HTMLInputElement} */
+function _textField(id) { return /** @type {HTMLInputElement} */ (document.getElementById(id)); }
+
+/** @param {string} id @returns {HTMLSelectElement} */
+function _credSelect(id) { return /** @type {HTMLSelectElement} */ (document.getElementById(id)); }
+
+/** @typedef {{key: string, value?: string, stored?: boolean, revealed?: boolean}} StackEnvRow */
+/** The Git settings a save sends, and the `git` block of an API stack row. */
+/** @typedef {{url?: string, branch?: string, pin?: string, path?: string, credential_id?: string|null}} StackGitFields */
+/* One saved-stack request body: POSTed to create, PUT to change. Only
+   _newGitStackBody and _gitSettingsBody add `git`, only saveStack adds a `totp`
+   once the operator answers the 2FA prompt, and a stored secret nobody revealed
+   goes as `keep` instead of a value — so saveStack's one `body` variable needs
+   every shape it takes in reach. */
+/** @typedef {{host_id?: any, name?: string, compose_yaml?: string, note?: string, totp?: string,
+ *  env: StackEnvRow[], git?: StackGitFields}} StackSaveBody */
 
 function _stedHostLabel(stack) {
   if (stack && stack.hostname) return stack.hostname;
@@ -102,9 +133,9 @@ function _stedGutter(lines) {
 }
 
 function _syncStackEditor() {
-  const ta = _stedEl('stack-compose');
-  const hl = _stedEl('sted-hl');
-  const gutter = _stedEl('sted-gutter');
+  const ta = _composeArea('stack-compose');
+  const hl = _editorEl('sted-hl');
+  const gutter = _editorEl('sted-gutter');
   if (!ta || !hl || !gutter) return;
   hl.innerHTML = yamlToHtml(ta.value) + '\n';   // trailing NL keeps last line visible
   gutter.innerHTML = _stedGutter(ta.value.split('\n').length);
@@ -112,9 +143,9 @@ function _syncStackEditor() {
 }
 
 function _mirrorStackScroll() {
-  const ta = _stedEl('stack-compose');
-  const hl = _stedEl('sted-hl');
-  const gutter = _stedEl('sted-gutter');
+  const ta = _composeArea('stack-compose');
+  const hl = _editorEl('sted-hl');
+  const gutter = _editorEl('sted-gutter');
   if (!ta || !hl || !gutter) return;
   hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft;
   gutter.scrollTop = ta.scrollTop;
@@ -139,11 +170,12 @@ function _stackNameProblem(name) {
 }
 
 /** Live check of a new stack's name, as you type. ``force`` shows the
- *  problem even before the field was touched (a Save click). */
+ *  problem even before the field was touched (a Save click).
+ *  @param {boolean} force @returns {boolean} */
 function _checkStackName(force) {
-  const input = _stedEl('stack-name');
-  const out = _stedEl('stack-name-error');
-  const save = document.querySelector('.sted [data-stack-save]');
+  const input = _textField('stack-name');
+  const out = /** @type {HTMLElement} */ (_editorEl('stack-name-error'));
+  const save = /** @type {HTMLButtonElement} */ (document.querySelector('.sted [data-stack-save]'));
   if (stackEd.stack) {   // an existing stack's name is fixed
     input.classList.remove('is-invalid');
     out.textContent = '';
@@ -162,16 +194,16 @@ function _checkStackName(force) {
 
 function _stedButtons() {
   const editing = !!stackEd.stack;
-  document.querySelector('.sted [data-stack-deploy]').hidden = !editing;
-  document.querySelector('.sted [data-stack-remove]').hidden = !editing;
-  _stedEl('stack-revisions-field').hidden = !editing;
-  _stedEl('stack-name-field').hidden = editing;
+  /** @type {HTMLButtonElement} */ (document.querySelector('.sted [data-stack-deploy]')).hidden = !editing;
+  /** @type {HTMLButtonElement} */ (document.querySelector('.sted [data-stack-remove]')).hidden = !editing;
+  _editorEl('stack-revisions-field').hidden = !editing;
+  _editorEl('stack-name-field').hidden = editing;
   _checkStackName(false);
   _updateDeployButton();
 }
 
 function _updateDeployButton() {
-  const btn = document.querySelector('.sted [data-stack-deploy]');
+  const btn = /** @type {HTMLButtonElement} */ (document.querySelector('.sted [data-stack-deploy]'));
   if (!btn || btn.hidden) return;   // a new stack has no Deploy to disable
   btn.disabled = stackEd.dirty;
   btn.title = stackEd.dirty ? DEPLOY_SAVE_HINT : '';
@@ -196,18 +228,18 @@ async function openStackEditor(stackId) {
   stackEd.errorLine = null;
   stackEd.source = (stack && stack.git) ? 'git' : 'editor';
   _clearStackDirty();
-  _stedEl('sted-host').textContent = _stedHostLabel(stack);
-  _stedEl('sted-name-label').textContent = stack ? stack.name : 'New stack';
-  const name = _stedEl('stack-name');
+  _editorEl('sted-host').textContent = _stedHostLabel(stack);
+  _editorEl('sted-name-label').textContent = stack ? stack.name : 'New stack';
+  const name = _textField('stack-name');
   name.value = stack ? stack.name : '';
   name.disabled = !!stack;
   stackEd.nameTouched = false;
-  _stedEl('stack-compose').value = stack ? stack.compose_yaml : _NEW_COMPOSE;
+  _composeArea('stack-compose').value = stack ? stack.compose_yaml : _NEW_COMPOSE;
   _applyStackSource();
   // A new stack starts from blank Git fields, not the last stack opened.
   _fillGitFields((stack && stack.git) || {});
   if (!(stack && stack.git)) stackEd.gitSnapshot = null;
-  const err = _stedEl('stack-error');
+  const err = _editorEl('stack-error');
   err.textContent = '';
   err.classList.remove('show');
   const report = (stack && stack.adopt_report) || {};
@@ -223,7 +255,7 @@ async function openStackEditor(stackId) {
   _syncStackEditor();
   _setStackStatus(null);
   navigateTo('stack-editor');
-  (stack ? _stedEl('stack-compose') : name).focus();
+  (stack ? _composeArea('stack-compose') : name).focus();
   if (stack) _loadStackRevisions();
   _loadGitCredentials();   // fills #sted-git-cred; _renderGitCredentials() re-selects from gitSnapshot
   _validateStack();
@@ -242,7 +274,7 @@ async function closeStackEditor() {
 }
 
 function _stackError(message) {
-  const el = _stedEl('stack-error');
+  const el = _editorEl('stack-error');
   el.textContent = message;
   el.classList.add('show');
 }
@@ -254,7 +286,7 @@ function _scheduleStackCheck() {
 }
 
 function _setStackStatus(problems) {
-  const pill = _stedEl('sted-status');
+  const pill = _editorEl('sted-status');
   if (!pill) return;
   if (problems === null) {
     pill.className = 'sted-status';
@@ -266,7 +298,7 @@ function _setStackStatus(problems) {
 }
 
 function _renderStackCheck(r) {
-  const wrap = _stedEl('sted-check');
+  const wrap = _editorEl('sted-check');
   if (!wrap) return;
   const problems = (r.ok ? 0 : 1) + (r.missing_env || []).length;
   let html = '';
@@ -294,10 +326,10 @@ function _renderStackCheck(r) {
 
 async function _validateStack() {
   clearTimeout(_stackCheckTimer);
-  const ta = _stedEl('stack-compose');
+  const ta = _composeArea('stack-compose');
   if (!ta) return;
-  const pill = _stedEl('sted-status');
-  if (ta.closest('.sted-editor').hidden) {   // a new Git stack: nothing to check until it is fetched
+  const pill = _editorEl('sted-status');
+  if (/** @type {HTMLElement} */ (ta.closest('.sted-editor')).hidden) {   // a new Git stack: nothing to check until it is fetched
     ++_stackCheckSeq;
     if (pill) { pill.className = 'sted-status'; pill.textContent = ''; }
     return;
@@ -312,12 +344,12 @@ async function _validateStack() {
     });
   } catch { return; }
   if (seq !== _stackCheckSeq) return;                       // a newer keystroke already answered
-  if (!_stedEl('sted-check')) return;
+  if (!_editorEl('sted-check')) return;
   _renderStackCheck(r);
 }
 
 async function _loadStackRevisions() {
-  const wrap = _stedEl('stack-revisions');
+  const wrap = _editorEl('stack-revisions');
   if (!stackEd.stack) { wrap.innerHTML = ''; return; }   // saved-and-closed beats the in-flight fetch
   try {
     const revs = (await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/`)).results || [];
@@ -369,10 +401,11 @@ delegateClick('[data-stack-rev-prune]', () => pruneStackRevisions());
 
 /* ── Source: written here, or a Git repository ───────────────────────── */
 
-/* The five Git fields a save sends, read in the one place they are touched. */
+/* The five Git fields a save sends, read in the one place they are touched.
+   @returns {StackGitFields} */
 function _gitFields() {
-  const pick = (id) => _stedEl(id).value.trim();
-  const credential = _stedEl('sted-git-cred').value;
+  const pick = (/** @type {string} */ id) => _textField(id).value.trim();
+  const credential = _credSelect('sted-git-cred').value;
   return {
     url: pick('sted-git-url'),
     branch: pick('sted-git-branch') || 'main',
@@ -399,17 +432,17 @@ function _applyStackSource() {
   const git = stackEd.source === 'git';
   const stack = stackEd.stack;
   document.querySelectorAll('[data-sted-source]').forEach(
-    b => b.setAttribute('aria-checked', String(b.dataset.stedSource === stackEd.source)));
-  _stedEl('sted-source').hidden = !!stack;      // an existing stack's source is fixed
-  _stedEl('sted-git').hidden = !git;
+    (/** @type {HTMLElement} */ b) => b.setAttribute('aria-checked', String(b.dataset.stedSource === stackEd.source)));
+  _editorEl('sted-source').hidden = !!stack;      // an existing stack's source is fixed
+  _editorEl('sted-git').hidden = !git;
   // A Git stack shows the repository's compose file so its folders can be
   // understood here; a new one has no file to show until the first fetch.
   const showEditor = !git || !!stack;
-  const editor = _stedEl('stack-compose').closest('.sted-editor');
+  const editor = /** @type {HTMLElement} */ (_composeArea('stack-compose').closest('.sted-editor'));
   editor.hidden = !showEditor;
-  editor.previousElementSibling.hidden = !showEditor;
-  _stedEl('sted-check').hidden = !showEditor;
-  const ta = _stedEl('stack-compose');
+  /** @type {HTMLElement} */ (editor.previousElementSibling).hidden = !showEditor;
+  _editorEl('sted-check').hidden = !showEditor;
+  const ta = _composeArea('stack-compose');
   ta.readOnly = git;                            // the repository is the source of truth
   ta.classList.toggle('is-readonly', git);
   _renderGitState();
@@ -417,8 +450,8 @@ function _applyStackSource() {
 
 function _renderGitState() {
   const git = stackEd.stack && stackEd.stack.git;
-  const state = _stedEl('sted-git-state');
-  const pull = document.querySelector('.sted [data-sted-git-pull]');
+  const state = _editorEl('sted-git-state');
+  const pull = /** @type {HTMLButtonElement} */ (document.querySelector('.sted [data-sted-git-pull]'));
   state.hidden = pull.hidden = !git;
   if (!git) return;
   // "Commit abc123def456 · tracking main" / "· pinned to v1.2". The commit is
@@ -428,10 +461,10 @@ function _renderGitState() {
 }
 
 function _fillGitFields(git) {
-  _stedEl('sted-git-url').value = git.url || '';
-  _stedEl('sted-git-branch').value = git.branch || 'main';
-  _stedEl('sted-git-pin').value = git.pin || '';
-  _stedEl('sted-git-path').value = git.path || 'compose.yaml';
+  _textField('sted-git-url').value = git.url || '';
+  _textField('sted-git-branch').value = git.branch || 'main';
+  _textField('sted-git-pin').value = git.pin || '';
+  _textField('sted-git-path').value = git.path || 'compose.yaml';
   stackEd.gitSnapshot = { url: git.url || '', branch: git.branch || 'main', pin: git.pin || '',
                           path: git.path || 'compose.yaml', credential_id: git.credential_id || '' };
 }
@@ -462,7 +495,7 @@ async function _loadGitCredentials() {
 }
 
 function _renderGitCredentials() {
-  const sel = _stedEl('sted-git-cred');
+  const sel = _credSelect('sted-git-cred');
   const wanted = stackEd.gitSnapshot ? stackEd.gitSnapshot.credential_id : '';
   sel.innerHTML = '<option value="">None (public repo)</option>'
     + stackEd.gitCreds.map(c => `<option value="${escAttr(c.id)}">${escHtml(c.name)}</option>`).join('')
@@ -473,7 +506,7 @@ function _renderGitCredentials() {
 }
 
 function _pickGitCredential() {
-  const sel = _stedEl('sted-git-cred');
+  const sel = _credSelect('sted-git-cred');
   if (sel.value !== '__add__') return;
   sel.value = stackEd.gitSnapshot ? stackEd.gitSnapshot.credential_id || '' : '';
   addGitCredential();
@@ -485,13 +518,13 @@ function addGitCredential() {
 
   const close = () => {
     // The secret leaves the page on close, saved or not: it is only ever sent.
-    const field = m.modal.querySelector('#git-cred-secret');
+    const field = /** @type {HTMLInputElement|null} */ (m.modal.querySelector('#git-cred-secret'));
     if (field) field.value = '';      // the secret is only ever sent, never kept on screen
     m.close();
   };
 
   const save = async () => {
-    const pick = (id) => { const el = m.modal.querySelector(id); return el ? el.value : ''; };
+    const pick = (/** @type {string} */ id) => { const el = /** @type {HTMLInputElement|null} */ (m.modal.querySelector(id)); return el ? el.value : ''; };
     const name = pick('#git-cred-name').trim();
     const username = pick('#git-cred-user').trim();
     const pass = pick('#git-cred-secret');
@@ -517,7 +550,7 @@ function addGitCredential() {
       stackEd.gitCreds.push(created);
       _renderGitCredentials();
       stackEd.gitSnapshot = { ...(stackEd.gitSnapshot || {}), credential_id: created.id };
-      _stedEl('sted-git-cred').value = created.id;
+      _credSelect('sted-git-cred').value = created.id;
       showToast(`Added ${created.name}`, 'success');
     } catch (e) {
       _stackError(e.message);
@@ -527,7 +560,7 @@ function addGitCredential() {
 
   // The host the repository URL names, so the usual case needs no typing.
   const urlHost = (() => {
-    const url = _stedEl('sted-git-url').value.trim();
+    const url = _textField('sted-git-url').value.trim();
     const m2 = url.match(/^https:\/\/([^/:@]+)/i) || url.match(/^[^@\s]+@([^:/\s]+):/);
     return m2 ? m2[1].toLowerCase() : '';
   })();
@@ -594,18 +627,18 @@ function addGitCredential() {
         <button class="btn btn-mint btn-sm" data-cred-save>Save</button>
       </div>`);
     m.overlay.onclick = close;
-    m.modal.querySelectorAll('[data-cred-x]').forEach(b => { b.onclick = close; });
-    m.modal.querySelectorAll('[data-cred-kind]').forEach(b => {
+    m.modal.querySelectorAll('[data-cred-x]').forEach((/** @type {HTMLElement} */ b) => { b.onclick = close; });
+    m.modal.querySelectorAll('[data-cred-kind]').forEach((/** @type {HTMLElement} */ b) => {
       b.onclick = () => { if (kind === b.dataset.credKind) return; kind = b.dataset.credKind; render(); };
     });
-    m.modal.querySelector('[data-cred-save]').onclick = save;
-    m.modal.querySelector('#git-cred-name').value = keptName;
-    m.modal.querySelector('#git-cred-host').value = keptHost;
-    sitePickFill(m.modal.querySelector('#git-cred-site'), m.modal.querySelector('#git-cred-site-field'), keptSite);
+    /** @type {HTMLElement} */ (m.modal.querySelector('[data-cred-save]')).onclick = save;
+    /** @type {HTMLInputElement} */ (m.modal.querySelector('#git-cred-name')).value = keptName;
+    /** @type {HTMLInputElement} */ (m.modal.querySelector('#git-cred-host')).value = keptHost;
+    sitePickFill(/** @type {HTMLSelectElement} */ (m.modal.querySelector('#git-cred-site')), /** @type {HTMLElement} */ (m.modal.querySelector('#git-cred-site-field')), keptSite);
   };
 
   render();
-  requestAnimationFrame(() => { m.open(); m.modal.querySelector('#git-cred-name').focus(); });
+  requestAnimationFrame(() => { m.open(); /** @type {HTMLInputElement} */ (m.modal.querySelector('#git-cred-name')).focus(); });
 }
 
 async function pullStackFromGit() {
@@ -634,20 +667,21 @@ function _gitFetchedToast(saved) {
 async function saveStack() {
   const editing = stackEd.stack;
   if (!editing && !_checkStackName(true)) {
-    _stedEl('stack-name').focus();
+    _textField('stack-name').focus();
     return;
   }
   const gitStack = !!(editing && editing.git);
   const gitChanged = gitStack && _gitSettingsChanged();
   const env = stackEd.env.filter(e => e.key.trim()).map(e => (e.stored && !e.value && !e.revealed)
     ? { key: e.key.trim(), keep: true } : { key: e.key.trim(), value: e.value || '' });
+  /** @type {StackSaveBody} */
   let body;
   if (gitStack && gitChanged) body = _gitSettingsBody(env);
   else if (gitStack) body = { env, note: 'edited' };   // the compose file comes from Git, not from here
-  else if (stackEd.source === 'git') body = _newGitStackBody(_stedEl('stack-name').value.trim(), env);
-  else if (editing) body = { compose_yaml: _stedEl('stack-compose').value, env, note: 'edited' };
-  else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),
-                compose_yaml: _stedEl('stack-compose').value, env };
+  else if (stackEd.source === 'git') body = _newGitStackBody(_textField('stack-name').value.trim(), env);
+  else if (editing) body = { compose_yaml: _composeArea('stack-compose').value, env, note: 'edited' };
+  else body = { host_id: stackEd.hostId, name: _textField('stack-name').value.trim(),
+                compose_yaml: _composeArea('stack-compose').value, env };
   const wasNew = !editing;
   if (body.git && body.git.credential_id) {
     // Using a credential decides which server a secret goes to: the server asks for TOTP.
@@ -794,37 +828,37 @@ delegateClick('[data-sted-add-env]', (el) => {
 delegateClick('[data-stack-load-rev]', (el) => {
   const rev = (stackEd.revisions || []).find(r => r.number === parseInt(el.dataset.stackLoadRev, 10));
   if (!rev) return;
-  _stedEl('stack-compose').value = rev.compose_yaml;
+  _composeArea('stack-compose').value = rev.compose_yaml;
   _syncStackEditor();
   _markStackDirty();
   _scheduleStackCheck();
   showToast(`Loaded r${rev.number}'s compose file — Save makes it the next revision`, 'success');
 });
 document.addEventListener('input', (ev) => {
-  const row = ev.target.closest && ev.target.closest('[data-env-row]');
+  const row = /** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-env-row]');
   if (row) {
-    const entry = stackEd.env[parseInt(row.dataset.envRow, 10)];
+    const entry = stackEd.env[parseInt(/** @type {HTMLElement} */ (row).dataset.envRow, 10)];
     if (!entry) return;
-    entry[ev.target.dataset.envField] = ev.target.value;
+    entry[/** @type {HTMLInputElement} */ (ev.target).dataset.envField] = /** @type {HTMLInputElement} */ (ev.target).value;
     _markStackDirty();
-    if (ev.target.dataset.envField === 'key') _scheduleStackCheck();
+    if (/** @type {HTMLInputElement} */ (ev.target).dataset.envField === 'key') _scheduleStackCheck();
     return;
   }
-  if (ev.target.id === 'stack-compose') {
+  if (/** @type {HTMLElement} */ (ev.target).id === 'stack-compose') {
     _syncStackEditor();
     _markStackDirty();
     _scheduleStackCheck();
-  } else if (ev.target.id === 'stack-name') {
+  } else if (/** @type {HTMLElement} */ (ev.target).id === 'stack-name') {
     stackEd.nameTouched = true;
     _checkStackName(false);
     _markStackDirty();
   }
 });
 document.addEventListener('scroll', (ev) => {
-  if (ev.target && ev.target.id === 'stack-compose') _mirrorStackScroll();
+  if (ev.target && /** @type {HTMLElement} */ (ev.target).id === 'stack-compose') _mirrorStackScroll();
 }, true);
 document.addEventListener('keydown', (ev) => {
-  const ta = _stedEl('stack-compose');
+  const ta = _composeArea('stack-compose');
   const inEditor = ev.target === ta;
   if ((ev.metaKey || ev.ctrlKey) && inEditor && ev.key.toLowerCase() === 's') {
     ev.preventDefault();
@@ -865,7 +899,7 @@ document.addEventListener('keydown', (ev) => {
    can select an option too, which is why the handler stops at the sentinel. */
 (function () {
   const wire = () => {
-    const sel = _stedEl('sted-git-cred');
+    const sel = _credSelect('sted-git-cred');
     if (sel) sel.addEventListener('change', () => _pickGitCredential());
   };
   document.addEventListener('DOMContentLoaded', wire);
