@@ -495,6 +495,50 @@ def _community_field(check: dict) -> str:
     return value
 
 
+def _secret_field(check: dict, key: str, missing: str) -> str:
+    """One of the SNMPv3 secrets handed inside the signed check list. Never logged."""
+    value = check.get(key)
+    if not isinstance(value, str) or not value:
+        raise _CheckError(missing)
+    return value
+
+
+def _snmp_client(check: dict, host: str, port: int, timeout: float):
+    """The client for this check: v3 when its params say so, v2c otherwise."""
+    version = check.get("version", 2)
+    if version == 3:
+        return _snmp_v3_client(check, host, port, timeout)
+    if version != 2:
+        raise _CheckError("SNMP version must be 2 or 3")
+    return snmp.V2cClient(
+        host, community=_community_field(check), port=port, timeout=timeout, retries=1
+    )
+
+
+def _snmp_v3_client(check: dict, host: str, port: int, timeout: float):
+    """A v3 client from the user, protocol and secrets inside the signed list."""
+    auth = check.get("auth")
+    if not isinstance(auth, str) or auth not in snmp.AUTH_PROTOCOLS:
+        raise _CheckError("SNMPv3 auth must be sha or sha256")
+    user = check.get("user")
+    if not isinstance(user, str) or not user:
+        raise _CheckError("no SNMPv3 user")
+
+    priv = check.get("priv_password")
+    return snmp.V3Client(
+        host,
+        user=user,
+        auth_protocol=auth,
+        auth_password=_secret_field(check, "auth_password", "no SNMPv3 auth password"),
+        priv_password=None if priv is None else _secret_field(
+            check, "priv_password", "invalid SNMPv3 privacy password"
+        ),
+        port=port,
+        timeout=timeout,
+        retries=1,
+    )
+
+
 def _snmp_oids(check: dict) -> list[tuple[str, str]]:
     raw = check.get("oids", [])
     if not isinstance(raw, list):
@@ -600,10 +644,9 @@ def _snmp(check: dict, timeout: float) -> dict:
     if not _valid_host(host):
         raise _CheckError("invalid host")
     port = 161 if check.get("port") is None else _port_field(check)
-    community = _community_field(check)
     labelled = _snmp_oids(check)
     oids = [SYSNAME_OID, SYSUPTIME_OID] + [oid for oid, _label in labelled]
-    client = snmp.V2cClient(host, community=community, port=port, timeout=timeout, retries=1)
+    client = _snmp_client(check, host, port, timeout)
     start = time.monotonic()
     try:
         values = client.get(oids)

@@ -327,6 +327,16 @@ class MalformedInput(unittest.TestCase):
     def test_indefinite_length(self):
         self._assert_malformed(bytes([SEQUENCE, 0x80, 0x00, 0x00]))
 
+    def test_a_one_byte_long_form_inside_a_large_packet_decodes(self):
+        # A 200-byte string (length 0x81 0xC8) inside a message over 255 bytes:
+        # the length field is narrower than the packet's own size, which must not
+        # matter (a real GetBulk reply looks like this).
+        inner = encode_octets(b"x" * 200)
+        packet = encode_sequence(inner, encode_octets(b"y" * 200))
+        tag, children, end = decode(packet)
+        self.assertEqual((tag, end), (SEQUENCE, len(packet)))
+        self.assertEqual(children[0], (OCTET_STRING, b"x" * 200))
+
     def test_deep_nesting(self):
         packet = b""
         for _ in range(snmp.MAX_DECODE_DEPTH + 4):
