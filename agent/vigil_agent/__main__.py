@@ -19,6 +19,7 @@ from pathlib import Path
 from . import (
     client,
     collector,
+    discovery,
     failover,
     netmap,
     sessions,
@@ -794,6 +795,10 @@ def run_agent() -> None:
     if config.poller:
         poller.start(lambda: _shutdown)
 
+    # Discovery scans (S9). One scan at a time on its own thread; learn()
+    # ignores every scan this agent is not configured or unable to verify.
+    scanner = discovery.Scanner(config)
+
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour
     # rather than on every checkin to avoid wasting cycles on dmidecode.
@@ -896,6 +901,7 @@ def run_agent() -> None:
             # it before the loop re-binds — but defaults say it out loud.
             update_report = probation.report()
             check_results = poller.take_results()
+            scan_result = scanner.take_result()
             try:
                 response = failover.checkin(
                     endpoints,
@@ -904,7 +910,8 @@ def run_agent() -> None:
                            updates=windows_updates, software=software_payload,
                            update_list=update_list, engines=engines,
                            network=network_payload, agent_update=update_report,
-                           check_results=check_results: client.checkin(
+                           check_results=check_results,
+                           scan_result=scan_result: client.checkin(
                         config, metrics,
                         inventory=inventory,
                         docker_containers=containers,
@@ -917,10 +924,13 @@ def run_agent() -> None:
                         network=network,
                         agent_update=agent_update,
                         check_results=check_results,
+                        scan_result=scan_result,
                     ),
                 )
             except Exception:
                 poller.restore_results(check_results)
+                if scan_result is not None:
+                    scanner.restore_result(scan_result)
                 windows_update.restore_update_list(update_list)
                 # The list never reached the server. Put it back so the next
                 # pass retries it — unless a newer collection already landed
@@ -961,6 +971,7 @@ def run_agent() -> None:
             # Fallback addresses, accepted only if signed for this agent
             endpoints.learn(response, verify_key)
             poller.learn(response, verify_key)
+            scanner.learn(response, verify_key)
 
             # Process tasks
             tasks = response.get("tasks", [])

@@ -21,14 +21,23 @@ can fail the scan.
 
 from __future__ import annotations
 
+import base64
 import concurrent.futures
 import ipaddress
+import logging
 import math
 import socket
+import threading
 import time
 
+from nacl.exceptions import BadSignatureError
+
 from vigil_agent import netcheck
+from vigil_agent.failover import _canonical
 from vigil_agent.snmp import SnmpError, V2cClient
+from vigil_agent.verify import agent_fingerprint
+
+logger = logging.getLogger("vigil.discovery")
 
 MAX_ADDRESSES = 1024  # a /22; a larger network is refused, not cut
 DEFAULT_PORTS = (22, 23, 80, 443, 445, 3389, 8080, 8443)
@@ -229,3 +238,191 @@ def _text(varbind: tuple[int, object] | None) -> str:
 
 def _clean(text: str) -> str:
     return "".join(c for c in text if c.isprintable())[:MAX_TEXT]
+
+
+# ---------------------------------------------------------------- the scanner
+
+MAX_DONE = 32  # answered ids remembered against a resend
+_MAX_LOGGED = 1000  # the once-only log keys are forgotten past this many
+
+
+def _start_thread(fn) -> None:
+    threading.Thread(target=fn, name="vigil-discovery", daemon=True).start()
+
+
+def _default_scan(cidr, ports=None, community=None):
+    """``scan`` looked up per call, so patching the module reaches a Scanner."""
+    return scan(cidr, ports=ports, community=community)
+
+
+class Scanner:
+    """Runs the discovery scan the dashboard signed for this agent.
+
+    ``learn`` adopts a scan exactly as :class:`vigil_agent.poller.Poller` adopts
+    a check list — only when its signature verifies against this agent's own
+    fingerprint, and never an issue older than the one already taken. The scan
+    runs on a thread of its own so the check-in loop is never blocked, one at a
+    time; its answer waits in :meth:`take_result` for the next check-in and goes
+    back to :meth:`restore_result` when that check-in fails. The server keeps
+    handing out the same scan until its answer arrives, so an id already running,
+    waiting to be sent or already sent is never run twice.
+    """
+
+    def __init__(self, config, *, run_scan=None, start_thread=None):
+        self._config = config
+        # Late module lookup so a Scanner built at startup still honours a
+        # scan() patched later, as the rest of the agent's fakes do.
+        self._run_scan = _default_scan if run_scan is None else run_scan
+        self._start_thread = _start_thread if start_thread is None else start_thread
+        self._lock = threading.Lock()
+        self._running: str | None = None    # id of the scan being run
+        self._result: dict | None = None    # the answer waiting to be sent
+        self._done: list[str] = []          # ids already answered, newest last
+        self._issued: int | None = None     # newest accepted issue time
+        self._logged: set = set()           # log keys already written once
+
+    # ── the scan ─────────────────────────────────────────────────────────
+
+    def learn(self, response: dict, verify_key) -> None:
+        """Start the scan the dashboard signed for this agent, if it verifies."""
+        if not self._config.poller or verify_key is None or not isinstance(response, dict):
+            return
+        if not {"scan", "scan_issued", "scan_sig"} <= set(response):
+            return
+        entry, issued, signature = (response["scan"], response["scan_issued"],
+                                    response["scan_sig"])
+        if not isinstance(entry, dict) or not isinstance(issued, int) \
+                or isinstance(issued, bool) or not isinstance(signature, str):
+            self._warn_once(("malformed", None), "ignored a malformed scan")
+            return
+        payload = {
+            "v": 1,
+            "type": "discovery-scan",
+            "agent": agent_fingerprint(self._config.agent_token),
+            "issued": issued,
+            "scan": entry,
+        }
+        try:
+            verify_key.verify(_canonical(payload), base64.b64decode(signature))
+        except (BadSignatureError, ValueError, TypeError):
+            self._warn_once(("unsigned", issued), "ignored a scan that does not verify")
+            return
+        # A genuine issue older than the one in use is a replay: a scan that was
+        # cancelled could otherwise start again.
+        with self._lock:
+            if self._issued is not None and issued < self._issued:
+                logger.warning("ignored a scan older than the one in use")
+                return
+            self._issued = issued
+
+        entry = _clean_entry(entry)
+        if entry is None:
+            self._warn_once(("malformed", issued), "ignored a malformed scan")
+            return
+        scan_id = entry["id"]
+        with self._lock:
+            # Re-check under the lock: a newer issue may have landed meanwhile.
+            if self._issued is not None and issued < self._issued:
+                return
+            if scan_id == self._running or scan_id == self._answer_id() \
+                    or scan_id in self._done:
+                return
+            if self._running is not None:
+                return
+            self._running = scan_id
+        self._start_thread(lambda: self._run(entry))
+
+    def _answer_id(self) -> str | None:
+        """The id of the answer waiting to be sent, callers holding the lock."""
+        answer = self._result
+        return answer.get("id") if isinstance(answer, dict) else None
+
+    # ── the thread ───────────────────────────────────────────────────────
+
+    def _run(self, entry: dict) -> None:
+        cidr = entry["cidr"]
+        try:
+            result = self._run_scan(cidr, ports=entry["ports"],
+                                    community=entry.get("community"))
+            answer = {"id": entry["id"], **result}
+        except DiscoveryError as exc:
+            answer = {"id": entry["id"], "error": str(exc)}
+        except Exception:  # the answer must never carry a traceback
+            logger.exception("discovery scan of %s failed", cidr)
+            answer = {"id": entry["id"], "error": "the scan failed on the agent"}
+        if "error" in answer:
+            logger.info("discovery scan of %s failed: %s", cidr, answer["error"])
+        else:
+            logger.info("discovery scan of %s finished: %s found of %s",
+                        cidr, _count(answer.get("found")), _count(answer.get("scanned")))
+        with self._lock:
+            # Published only while this is still the running scan: an answer
+            # that arrived after its check-in had already given up on it would
+            # otherwise be sent twice, and the next scan could never start.
+            if self._running == entry["id"]:
+                self._result = answer
+                self._running = None
+
+    # ── the answer ───────────────────────────────────────────────────────
+
+    def take_result(self) -> dict | None:
+        """The scan result waiting for the next check-in, once."""
+        with self._lock:
+            answer = self._result
+            if answer is None:
+                return None
+            self._result = None
+            self._remember(answer)
+            return answer
+
+    def restore_result(self, answer: dict) -> None:
+        """A check-in failed: put this answer back so the next one retries it."""
+        if not isinstance(answer, dict):
+            return
+        with self._lock:
+            if self._result is not None:
+                return
+            self._result = answer
+            scan_id = answer.get("id")
+            if isinstance(scan_id, str) and scan_id in self._done:
+                self._done.remove(scan_id)
+
+    # ── logging ──────────────────────────────────────────────────────────
+
+    def _remember(self, answer: dict) -> None:
+        scan_id = answer.get("id")
+        if not isinstance(scan_id, str):
+            return
+        if scan_id in self._done:
+            self._done.remove(scan_id)
+        self._done.append(scan_id)
+        del self._done[:-MAX_DONE]
+
+    def _warn_once(self, key, message: str) -> None:
+        with self._lock:
+            if key in self._logged:
+                return
+            if len(self._logged) >= _MAX_LOGGED:
+                self._logged.clear()
+            self._logged.add(key)
+        logger.warning(message)
+
+
+def _count(value: object) -> object:
+    return len(value) if isinstance(value, list) else value
+
+
+def _clean_entry(entry: dict) -> dict | None:
+    """The scan entry to run, None for anything malformed."""
+    scan_id, cidr = entry.get("id"), entry.get("cidr")
+    ports, community = entry.get("ports"), entry.get("community")
+    if not isinstance(scan_id, str) or not scan_id:
+        return None
+    if not isinstance(cidr, str) or not isinstance(ports, list):
+        return None
+    if community is not None and not isinstance(community, str):
+        return None
+    clean = {"id": scan_id, "cidr": cidr, "ports": ports}
+    if community is not None:
+        clean["community"] = community
+    return clean

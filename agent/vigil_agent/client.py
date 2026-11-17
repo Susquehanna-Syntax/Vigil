@@ -65,6 +65,7 @@ def checkin(
     agent_update: dict | None = None,
     poller: bool | None = None,
     check_results: list[dict] | None = None,
+    scan_result: dict | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -145,6 +146,8 @@ def checkin(
     # key means "nothing to store" just like the other optional payloads.
     if check_results:
         payload["check_results"] = check_results
+    if scan_result is not None:
+        payload["scan_result"] = scan_result
     url =f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()
