@@ -298,3 +298,17 @@
   color: var(--text-3); font-size: 13px;
 }
 
+/* Page header's control row, the search box, and the column editor's anchor. */
+.inv-toolbar { display: flex; gap: 8px; align-items: center; }
+.inv-search { width: 240px; font-size: 13px; }
+.inv-col-editor-wrap { position: relative; display: inline-block; }
+
+/* The table's first paint, before /api/v1/hosts/inventory/ resolves. */
+.inv-loading {
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 40px; text-align: center;
+  color: var(--text-3); font-size: 13px;
+}
+/* The unmanaged-devices heading carries its Add Device button on the right. */
+.inv-devices-label { display: flex; align-items: center; justify-content: space-between; }
+

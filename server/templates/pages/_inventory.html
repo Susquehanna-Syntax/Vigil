@@ -6,9 +6,9 @@
           <div class="page-title">Inventory<span>.</span></div>
           <div class="page-sub">Hardware snapshot of every enrolled host</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="text" class="form-control" id="inv-search" placeholder="Search inventory…" data-input="renderInventory" style="width:240px;font-size:13px;">
-          <div style="position:relative;display:inline-block;" id="inv-col-editor-wrap">
+        <div class="inv-toolbar">
+          <input type="text" class="form-control inv-search" id="inv-search" placeholder="Search inventory…" data-input="renderInventory">
+          <div class="inv-col-editor-wrap" id="inv-col-editor-wrap">
             <button class="btn btn-outline btn-sm" data-act="toggleInvColEditor" id="inv-col-editor-btn">
               <svg viewBox="0 0 24 24" width="14" height="14"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               Columns
@@ -27,13 +27,13 @@
       </div>
 
       <div id="inv-content">
-        <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="inv-loading">
+        <div class="inv-loading" id="inv-loading">
           Loading inventory…
         </div>
       </div>
 
       <!-- Unmanaged devices — manual registry of things that don't run an agent -->
-      <div class="section-label" style="margin-top:40px;display:flex;align-items:center;justify-content:space-between;">
+      <div class="section-label inv-devices-label">
         <span>Unmanaged Devices<span class="section-count" id="dev-count"></span></span>
         <button class="btn btn-outline btn-sm" data-act="openDeviceModal">
           <svg viewBox="0 0 24 24" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

@@ -61,6 +61,24 @@
   font-size: 12px; color: var(--text-3);
 }
 
+/* The mint full stop in the wordmark. */
+.auth-wordmark-dot { color: var(--mint-ink); }
+
+/* Full-width submit button under a form's last field. */
+.auth-submit,
+.auth-submit-center { width: 100%; margin-top: 8px; }
+.auth-submit-center { justify-content: center; }
+
+/* A secondary action below the form — Civil sign-in, Start over. */
+.auth-alt {
+  width: 100%; margin-top: 10px;
+  justify-content: center; box-sizing: border-box;
+}
+
+/* Breathing room above a code field that follows something else. */
+.auth-group-gap { margin-top: 20px; }
+.auth-group-gap-sm { margin-top: 12px; }
+
 /* ═══════════════════════════════════════════
    ACCESSIBILITY — cohesive across every page
    ═══════════════════════════════════════════ */

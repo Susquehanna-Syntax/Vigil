@@ -13,7 +13,7 @@
 <body class="auth-page">
 <div class="auth-wrap">
   <div class="auth-card">
-    <div class="auth-wordmark">Vigil<span style="color:var(--mint-ink);">.</span></div>
+    <div class="auth-wordmark">Vigil<span class="auth-wordmark-dot">.</span></div>
 
     {% if enrol %}
     {# ── No second factor yet: enrol TOTP before the dashboard opens ──── #}
@@ -32,11 +32,11 @@
 
     <form method="post" action="{% url 'login-verify' %}">
       {% csrf_token %}
-      <div class="form-group" style="margin-top:20px;">
+      <div class="form-group auth-group-gap">
         <label class="form-label" for="code">Verification code</label>
         <input type="text" id="code" name="code" class="form-control mono" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" autofocus required>
       </div>
-      <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;justify-content:center;">Verify and sign in</button>
+      <button type="submit" class="btn btn-mint auth-submit-center">Verify and sign in</button>
     </form>
 
     {% else %}
@@ -57,11 +57,11 @@
     {% if has_totp %}
     <form method="post" action="{% url 'login-verify' %}">
       {% csrf_token %}
-      <div class="form-group"{% if keys %} style="margin-top:12px;"{% endif %}>
+      <div class="form-group{% if keys %} auth-group-gap-sm{% endif %}">
         <label class="form-label" for="code">{% if keys %}Or enter the 6-digit code{% else %}6-digit code from your authenticator{% endif %}</label>
         <input type="text" id="code" name="code" class="form-control mono" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" {% if not keys %}autofocus {% endif %}required>
       </div>
-      <button type="submit" class="btn {% if keys %}btn-outline{% else %}btn-mint{% endif %}" style="width:100%;margin-top:8px;justify-content:center;">Verify and sign in</button>
+      <button type="submit" class="btn {% if keys %}btn-outline{% else %}btn-mint{% endif %} auth-submit-center">Verify and sign in</button>
     </form>
     {% elif not keys %}
     <div class="auth-error">Your security keys need this page on HTTPS at the address in VIGIL_PUBLIC_URL. Open Vigil there, or ask an admin to run <code>manage.py reset_2fa {{ username }}</code> so you can set up a code instead.</div>
@@ -70,9 +70,7 @@
     {% endif %}
     {% endif %}
 
-    <a class="btn btn-ghost" style="width:100%;margin-top:10px;justify-content:center;box-sizing:border-box;" href="{% url 'login' %}">Start over</a>
-  </div>
-  <div class="auth-footer">Vigil &mdash; A Susquehanna Syntax product</div>
+    <a class="btn btn-ghost auth-alt" href="{% url 'login' %}">Start over</a>
 </div>
 {% if keys %}<script src="{% static 'js/vigil-login-verify.js' %}"></script>{% endif %}
 </body>

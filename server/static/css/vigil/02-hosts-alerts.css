@@ -82,9 +82,14 @@
   border-radius: 2px; overflow: hidden;
 }
 .host-metric-fill {
-  height: 100%; border-radius: 2px;
+  height: 100%; border-radius: 2px; width: 0%;
   transition: width 0.8s var(--ease-out-expo);
 }
+.host-metric-fill-sky { background: var(--sky); }
+.host-metric-fill-lavender { background: var(--lavender); }
+.host-metric-fill-mint { background: var(--mint); }
+.host-metric-fill-peach { background: var(--peach); }
+.host-metric-fill-lemon { background: var(--lemon); }
 
 .host-card-actions {
   display: flex; flex-direction: column; gap: 6px; align-items: stretch;
@@ -205,3 +210,7 @@
 .ack-menu-item:hover { background: var(--s3); }
 .ack-menu-divider { height: 1px; background: var(--s3); margin: 6px 4px; }
 
+/* The muted running counts in the Firing / Acknowledged tab labels. */
+.alerts-tab-count { opacity: 0.6; }
+/* Smaller than .btn svg's default, for the chevron on an ack-menu button. */
+.alerts-chevron { width: 11px; height: 11px; }

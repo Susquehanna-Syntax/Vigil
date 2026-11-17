@@ -107,6 +107,10 @@ Leaving is 0.7× as long as arriving.
 - **Event handlers:** no inline handlers. Use `data-act="fnName"` (with
   `data-a1` … for arguments) or `addEventListener`, so the CSP never needs
   `'unsafe-inline'`.
+- **Inline styles:** no new `style="..."` in templates or generated markup;
+  `vigil/test_inline_styles.py` holds every file to its current count. Put the
+  look in a class in `static/css/vigil/`; set `element.style` from a script for
+  a value that changes per render.
 
 ## Checking a change
 

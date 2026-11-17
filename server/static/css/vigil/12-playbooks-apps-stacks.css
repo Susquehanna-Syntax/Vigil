@@ -206,6 +206,15 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .donut-mini { display: inline-flex; vertical-align: middle; }
 .def-card-run { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
 
+/* Community page's provenance notice, under the title row. */
+.community-notice {
+  background: rgba(var(--rgb-lavender), var(--tint-a));
+  border: 1px solid rgba(var(--rgb-lavender), var(--tint-a-line));
+  border-radius: var(--r-sm);
+  padding: 14px 18px; margin-bottom: 18px;
+  font-size: 12px; color: var(--text-2); line-height: 1.6;
+}
+.community-notice-link { color: var(--sky-ink); }
 /* ── Apps (M7 05) ────────────────────────────────────────────────────── */
 /* Chips carry all the colour here; no row or card gets a stripe. */
 .apps-table td.num { text-align: right; font-family: var(--font-mono); }

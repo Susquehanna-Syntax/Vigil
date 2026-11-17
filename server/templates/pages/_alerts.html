@@ -10,8 +10,8 @@
       </div>
 
       <div class="tab-bar" data-tab-group="alerts">
-        <div class="tab t-rose active" data-tab="alerts-firing">Firing <span style="opacity:.6" id="alerts-count-firing"></span></div>
-        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged <span style="opacity:.6" id="alerts-count-ack"></span></div>
+        <div class="tab t-rose active" data-tab="alerts-firing">Firing <span class="alerts-tab-count" id="alerts-count-firing"></span></div>
+        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged <span class="alerts-tab-count" id="alerts-count-ack"></span></div>
         <div class="tab t-mint" data-tab="alerts-resolved">Resolved</div>
       </div>
 
@@ -22,7 +22,7 @@
           <div class="ack-menu-wrap">
             <button class="btn btn-sm btn-peach" data-act="toggleAckMenu" data-a1="$event" data-a2="bulk">
               Ack selected
-              <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="alerts-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="ack-menu" id="ack-menu-bulk">
               <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="3600">For 1 hour</div>

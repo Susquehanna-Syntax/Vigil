@@ -1,17 +1,17 @@
 """A Content-Security-Policy header, staged honestly.
 
-`base.html` has carried a note for a while saying CSP was intended and would
-need a server-side nonce. Phases 07a's three injection findings are all
-contained by one, so it is worth having now rather than after the inline
-handlers are gone.
+`base.html` carried a note for a while saying CSP was intended and would need a
+server-side nonce. Phases 07a's three injection findings are all contained by
+one, so it is worth having now rather than after the last rough edge is gone.
 
 What this policy does NOT do, stated plainly: it keeps `'unsafe-inline'` for
-scripts. Thirty inline `onclick` attributes remain in JavaScript-generated
-markup — alerts, rollouts, tasks, tags, waves, community, devices — every one
-built from a server-generated UUID, so none is injectable today, but a strict
-`script-src 'self'` would break all of them at once. Shipping a policy that
-breaks the product is not hardening, and neither is shipping one that claims
-more than it delivers.
+styles. Templates and JavaScript-generated markup still carry inline `style`
+attributes, and a strict `style-src 'self'` would flatten every page that uses
+one. `vigil/test_inline_styles.py` ratchets that count down batch by batch, so
+the number can only fall; when the last one is gone the directive can go too.
+Setting `element.style` from a script is not governed by `style-src` and stays
+the right way to express a value that changes per render — the metric bars and
+gauges keep doing exactly that.
 
 What it does do is real: an injected `<script src>` pointing anywhere off-site
 is blocked, `object-src 'none'` kills plugin vectors, `base-uri 'self'` stops a
@@ -19,12 +19,10 @@ is blocked, `object-src 'none'` kills plugin vectors, `base-uri 'self'` stops a
 stops clickjacking, and `form-action 'self'` stops an injected form posting
 credentials elsewhere.
 
-Removing `'unsafe-inline'` is the follow-up: convert the remaining inline
-handlers to delegated listeners the way the pin bar and host cards now are,
-then drop it here and add a nonce to the one inline block in `base.html`.
+For scripts there is no `'unsafe-inline'` to remove: the inline handlers are
+gone (`apps/hosts/test_inline_handlers.py` keeps them gone) and the inline
+blocks in `base.html` carry a per-request nonce.
 """
-
-from __future__ import annotations
 
 import secrets
 
