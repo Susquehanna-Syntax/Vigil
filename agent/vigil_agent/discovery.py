@@ -8,8 +8,9 @@ sysName and sysDescr.
 Two limits keep an agent from becoming an internet scanner. The network must
 be a *private* IPv4 network, and it must be at most ``MAX_ADDRESSES`` (1024, a
 /22) addresses; a larger network is refused before anything is sent, never cut
-down to fit. A scan also stops at a deadline: addresses past it are simply not
-probed and the result says ``truncated: True``.
+down to fit. A scan also stops at a deadline: each worker checks it before it
+probes an address, so addresses past it are not probed and the result says
+``truncated: True``.
 
 Nothing here sends anything but: an ICMP echo (through netcheck's own ping), a
 TCP connect to each listed port, one SNMP GET per answering host when a
@@ -74,21 +75,16 @@ def scan(
     truncated = False
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        futures: list[concurrent.futures.Future] = []
-        for address in hosts:
-            if time.monotonic() >= limit:
-                truncated = True
-                break
-            futures.append(pool.submit(_probe, address, probe_ports, timeout))
-        scanned = len(futures)
+        futures = [pool.submit(_probe, address, probe_ports, timeout, community, limit)
+                   for address in hosts]
         for future in concurrent.futures.as_completed(futures):
-            host = future.result()
+            probed, host = future.result()
+            if not probed:
+                truncated = True
+                continue
+            scanned += 1
             if host is not None:
                 found.append(host)
-
-    if community:
-        for host in found:
-            _fill_snmp(host, community, timeout)
 
     found.sort(key=lambda host: ipaddress.ip_address(host["ip"]))
     return {
@@ -146,12 +142,19 @@ def _clamp(value: object, low: float, high: float, fallback: float) -> float:
 # ---------------------------------------------------------------- the probes
 
 
-def _probe(address: str, ports: tuple[int, ...], timeout: float) -> dict | None:
-    """One address. None when nothing answered; never raises."""
+def _probe(address: str, ports: tuple[int, ...], timeout: float,
+           community: str | None, limit: float) -> tuple[bool, dict | None]:
+    """One address: (probed, host). Not probed once the deadline has passed;
+    host is None when nothing answered. Never raises."""
+    if time.monotonic() >= limit:
+        return False, None
     try:
-        return _probe_host(address, ports, timeout)
+        host = _probe_host(address, ports, timeout)
+        if host is not None and community:
+            _fill_snmp(host, community, timeout)
+        return True, host
     except Exception:  # noqa: BLE001 - one odd host must never fail the whole scan
-        return None
+        return True, None
 
 
 def _probe_host(address: str, ports: tuple[int, ...], timeout: float) -> dict | None:

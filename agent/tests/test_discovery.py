@@ -6,6 +6,7 @@ socket.gethostbyaddr and V2cClient are all patched.
 """
 
 import ipaddress
+import itertools
 import sys
 import unittest
 from pathlib import Path
@@ -266,9 +267,11 @@ class SnmpTests(unittest.TestCase):
 class LimitTests(unittest.TestCase):
     def test_the_deadline_stops_the_sweep(self):
         fakes = Fakes(self).__enter__()
-        stamps = [0.0, 0.0, 0.0, 1e6, 1e6]
+        # The scan's start, then each worker's check before it probes: the
+        # first two addresses are probed, the clock then jumps past the deadline.
+        stamps = itertools.chain([0.0, 0.0, 0.0], itertools.repeat(1e6))
 
-        with mock.patch("vigil_agent.discovery.time.monotonic", side_effect=stamps):
+        with mock.patch("vigil_agent.discovery.time.monotonic", side_effect=lambda: next(stamps)):
             result = scan("10.0.0.0/29", workers=1)
 
         hosts = list(ipaddress.ip_network("10.0.0.0/29").hosts())
