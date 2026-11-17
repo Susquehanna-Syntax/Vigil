@@ -512,7 +512,11 @@ def device_check_interfaces(request, device_id, check_id):
         # other kind has no interfaces to answer with.
         return Response([])
     since = now() - timedelta(hours=hours)
-    rows = list(check.interface_samples.filter(time__gte=since).order_by("if_index", "time"))
+    # Only the two newest runs matter here: the newest sample and the one behind
+    # it. Reading the whole window would be up to 720 h x 64 interfaces of rows.
+    runs = list(check.interface_samples.filter(time__gte=since).order_by("-time")
+                .values_list("time", flat=True).distinct()[:2])
+    rows = list(check.interface_samples.filter(time__in=runs).order_by("if_index", "time"))
     newest: dict[int, list] = {}
     for row in rows:
         newest.setdefault(row.if_index, []).append(row)

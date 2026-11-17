@@ -165,9 +165,13 @@ class InterfaceApiTests(TestCase):
 
     def _sample(self, index, seconds_ago, name="eth2", up=True, speed_mbps=1000, check=None,
                 **counters):
-        """A sample carrying both counters unless a test names one differently."""
+        """A sample carrying both counters unless a test names one differently. One
+        clock for the whole test, as ingest gives every interface of a run its
+        result's time."""
+        if not hasattr(self, "_now"):
+            self._now = timezone.now()
         return InterfaceSample.objects.create(
-            device_check=check or self.check, time=timezone.now() - timedelta(seconds=seconds_ago),
+            device_check=check or self.check, time=self._now - timedelta(seconds=seconds_ago),
             if_index=index, name=name, up=up, speed_mbps=speed_mbps,
             in_octets=counters.get("in_octets", _OCTETS),
             out_octets=counters.get("out_octets", _OCTETS))
@@ -190,6 +194,17 @@ class InterfaceApiTests(TestCase):
         self.assertIsNone(rows[1]["out_bps"])
         self.assertFalse(rows[1]["up"])
         self.assertIsNone(rows[1]["speed_mbps"])
+
+    def test_the_table_reads_only_the_two_newest_runs(self):
+        # An interface the device stopped reporting three runs ago is not part of
+        # "what is it doing now", and the read stays two runs deep however long
+        # the window is.
+        self._sample(9, 900, name="gone")
+        self._sample(2, 300, in_octets=1_000_000)
+        self._sample(2, 0, in_octets=4_000_000)
+        rows = self.client.get(self.url + "?hours=720").json()
+        self.assertEqual([r["index"] for r in rows], [2])
+        self.assertEqual(rows[0]["in_bps"], 80_000)
 
     def test_a_counter_that_went_backwards_or_is_missing_has_no_rate(self):
         # in_octets went down: a reboot reset the counter. out_octets is None
