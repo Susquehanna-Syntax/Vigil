@@ -25,7 +25,7 @@
   --border: #3a3a43;
   --text-1: #eae8e4;
   --text-2: #a09ca6;
-  --text-3: #6e6b76;
+  --text-3: #938f9a;
 
   --rose: #f2a0b8;
   --lavender: #baa8e8;
@@ -147,15 +147,15 @@
   --border: #d3cd99;
   --text-1: #23211a;
   --text-2: #575340;
-  --text-3: #7c775a;
+  --text-3: #67624b;
 
-  --rose-ink: #c0587a;
-  --lavender-ink: #7a62c4;
-  --mint-ink: #23845f;
-  --peach-ink: #b8733a;
-  --sky-ink: #3a86bd;
-  --lemon-ink: #8f7d14;
-  --coral-ink: #c2564a;
+  --rose-ink: #8c4059;
+  --lavender-ink: #5f4c99;
+  --mint-ink: #1b6448;
+  --peach-ink: #7d4e27;
+  --sky-ink: #285c82;
+  --lemon-ink: #66590e;
+  --coral-ink: #924038;
 
   --rgb-grey: 124,119,90;
   --tint-a: 0.30;
@@ -192,7 +192,7 @@
   --border: #2e2c2a;
   --text-1: #ece8e2;
   --text-2: #a29d97;
-  --text-3: #6f6a65;
+  --text-3: #8b8680;
   --rgb-grey: 111,106,101;
   --tint-a: 0.13;
   --tint-a-line: 0.30;
@@ -215,7 +215,7 @@
   --border: #2f3b52;
   --text-1: #e8ecf3;
   --text-2: #9ba6b9;
-  --text-3: #6c788d;
+  --text-3: #8894a7;
   --rgb-grey: 108,120,141;
   --glass: rgba(20, 28, 43, 0.8);
   --glass-edge: rgba(255, 255, 255, 0.05);
