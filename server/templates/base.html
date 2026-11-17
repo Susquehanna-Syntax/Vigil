@@ -703,6 +703,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <input class="form-control" id="device-check-port" type="number" min="1" max="65535" placeholder="Port" hidden aria-label="Port">
       <input class="form-control" id="device-check-community" type="password" autocomplete="off" placeholder="Community" aria-label="SNMP community" hidden>
       <textarea class="form-control device-check-oids" id="device-check-oids" rows="3" placeholder="Optional, one per line: label = OID, for example if_in = 1.3.6.1.2.1.2.2.1.10.1" aria-label="SNMP values to read" hidden></textarea>
+      <label class="device-check-walk" id="device-check-walk" hidden><input type="checkbox" id="device-check-interfaces"> Read the interface table</label>
       <select class="form-control" id="device-check-interval" aria-label="How often">
         <option value="60">Every minute</option><option value="300">Every 5 minutes</option>
         <option value="900">Every 15 minutes</option><option value="3600">Every hour</option>

@@ -2274,6 +2274,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .device-check-values { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 12px; }
 .device-check-values dt { color: var(--text-2); }
 .device-check-values dd { margin: 0; font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; }
+.device-check-walk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); flex-basis: 100%; }
+.device-check-ifaces { width: 100%; margin: 12px 0 0; border-collapse: collapse; font-size: 12px; }
+.device-check-ifaces th { text-align: left; font-weight: 500; color: var(--text-2); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.device-check-ifaces td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; }
+.device-check-ifaces tbody tr { cursor: pointer; }
+.device-check-ifaces tbody tr:hover, .device-check-ifaces tbody tr.selected { background: var(--s2); }
+.device-check-if-state.up { color: var(--mint-ink); }
+.device-check-if-state.down { color: var(--rose-ink); }
+.device-check-if-chart { height: 140px; margin-top: 8px; }
 
 /* SSH command modal */
 .ssh-cmd-row { display: flex; align-items: center; gap: 10px; }

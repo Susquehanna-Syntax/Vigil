@@ -111,6 +111,11 @@ let _chartHost = null;
 // check to know its kind and its latest result's values.
 const _loadedChecks = new Map();
 let _checkValues = null;
+// An SNMP check that walks IF-MIB shows its interface table under the values,
+// and one interface's traffic under that table. `_checkInterfaces` is the one
+// element holding both (or the note said instead), so a collapse takes it whole.
+let _checkInterfaces = null;
+let _interfaceChart = null;
 
 function _deviceEl(id) {
   return document.getElementById(id);
@@ -315,6 +320,10 @@ function collapseDeviceCheckChart() {
   // An SNMP row's values are drawn under the chart, in the same container, so
   // they go whenever the chart goes.
   if (_checkValues) { _checkValues.remove(); _checkValues = null; }
+  // The interface table, and any traffic chart under it, go the same way. The
+  // chart is destroyed before its canvas leaves the page.
+  if (_interfaceChart) { _interfaceChart.destroy(); _interfaceChart = null; }
+  if (_checkInterfaces) { _checkInterfaces.remove(); _checkInterfaces = null; }
   // The host we last rendered into, tracked here rather than queried: the rows
   // are replaced on every reload and there is exactly one list in the modal.
   if (_chartHost) {
@@ -368,11 +377,18 @@ async function toggleDeviceCheckChart(row) {
   // uptime and whatever OIDs the operator asked for, from the newest result.
   const check = _loadedChecks.get(String(checkId));
   const extra = check && check.latest ? check.latest.extra : null;
+  let anchor = holder;
   if (check && check.kind === 'snmp' && extra && Object.keys(extra).length) {
     // Straight after the chart host: the host is a fixed-height box Chart.js
     // sizes itself to, and the rows share one list, so the values follow it.
     _checkValues = _snmpValuesList(extra);
     holder.after(_checkValues);
+    anchor = _checkValues;
+  }
+  // A stale answer is dropped by _loadCheckInterfaces' own guard, so it runs
+  // unawaited: awaiting would hold the chart up behind a second request.
+  if (check && check.kind === 'snmp' && check.params && check.params.interfaces === true) {
+    void _loadCheckInterfaces(checkId, anchor);
   }
   _checkChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -398,6 +414,160 @@ async function toggleDeviceCheckChart(row) {
   });
 }
 
+/** Bits per second, at the largest unit that still leaves a number ≥ 1. A null
+ *  rate — no walk yet, or an interface added between two of them — is a dash. */
+function _fmtBps(value) {
+  if (value === null || value === undefined) return '-';
+  const units = ['Gb/s', 'Mb/s', 'kb/s', 'b/s'];
+  for (let i = 0; i < units.length; i++) {
+    const scale = Math.pow(1000, units.length - 1 - i);
+    if (Math.abs(value) >= scale || i === units.length - 1) {
+      return `${+((value / scale).toFixed(1))} ${units[i]}`;
+    }
+  }
+  return '-';
+}
+
+/** An interface's link speed. The walk reports megabits per second, so a
+ *  thousand of them is the round Gb/s reading an operator expects. */
+function _fmtSpeed(mbps) {
+  if (mbps === null || mbps === undefined) return '-';
+  if (mbps < 1000) return `${mbps} Mb/s`;
+  return `${+(mbps / 1000).toFixed(1)} Gb/s`;
+}
+
+/** A note in place of the table or a chart: no data yet, or a failed request. */
+function _interfaceNote(message) {
+  const note = document.createElement('div');
+  note.className = 'device-check-note';
+  note.textContent = message;
+  return note;
+}
+
+function _interfaceTable(rows) {
+  const table = document.createElement('table');
+  table.className = 'device-check-ifaces';
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const title of ['Interface', 'State', 'Speed', 'In', 'Out']) {
+    const cell = document.createElement('th');
+    cell.textContent = title;
+    headRow.appendChild(cell);
+  }
+  head.appendChild(headRow);
+  table.appendChild(head);
+
+  const body = document.createElement('tbody');
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    // The interface's own number, as the detail endpoint wants it back.
+    tr.dataset.ifIndex = String(row.index);
+    const state = row.up === true ? 'Up' : row.up === false ? 'Down' : '-';
+    // The state's colour class hangs on a span so the td stays plain. Names
+    // come back off the device, so every cell here is a text node.
+    tr.appendChild(_ifaceCell('', row.name || `if${row.index}`));
+    tr.appendChild(_ifaceCell(`device-check-if-state${row.up === true ? ' up' : row.up === false ? ' down' : ''}`, state));
+    tr.appendChild(_ifaceCell('', _fmtSpeed(row.speed_mbps)));
+    tr.appendChild(_ifaceCell('', _fmtBps(row.in_bps)));
+    tr.appendChild(_ifaceCell('', _fmtBps(row.out_bps)));
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  return table;
+}
+
+function _ifaceCell(className, text) {
+  const td = document.createElement('td');
+  if (!className) {
+    td.textContent = text;
+    return td;
+  }
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  td.appendChild(span);
+  return td;
+}
+
+/** The interface walk's answer, placed right after `anchor` (the values list,
+ *  or the chart host when there is none). An answer that lands after the row
+ *  closed, or after another row opened, is dropped. */
+async function _loadCheckInterfaces(checkId, anchor) {
+  let rows;
+  let failed = '';
+  try {
+    const answer = await apiJson(`${_checkPath(checkId)}interfaces/`);
+    rows = Array.isArray(answer) ? answer : [];
+  } catch (err) {
+    failed = err.message;
+  }
+  if (_openCheckId !== checkId || !anchor.parentElement) return;
+  const box = document.createElement('div');
+  box.className = 'device-check-if-box';
+  box.appendChild(rows && rows.length ? _interfaceTable(rows) : _interfaceNote(failed || 'No interface data yet'));
+  _checkInterfaces = box;
+  anchor.after(box);
+}
+
+/** In/out bits per second for one interface over the last day, drawn under the
+ *  table. A second click on the selected row closes it; a null rate is a gap. */
+async function _selectInterface(table, tr) {
+  const checkId = _openCheckId;
+  const index = tr.dataset.ifIndex;
+  const box = table.parentElement;
+  if (!checkId || !index || !box) return;
+  const wasSelected = tr.classList.contains('selected');
+  for (const row of table.querySelectorAll('tr[data-if-index]')) row.classList.remove('selected');
+  if (_interfaceChart) { _interfaceChart.destroy(); _interfaceChart = null; }
+  // Whatever sits under the table (a chart or a note) belongs to the last pick.
+  for (const el of [...box.children]) if (el !== table) el.remove();
+  if (wasSelected) return;
+  tr.classList.add('selected');
+
+  let answer;
+  try {
+    answer = await apiJson(`${_checkPath(checkId)}interfaces/${encodeURIComponent(index)}/?hours=24`);
+  } catch (err) {
+    if (_openCheckId === checkId && tr.classList.contains('selected')) box.appendChild(_interfaceNote(err.message));
+    return;
+  }
+  // Collapsed, another row opened, or another interface picked meanwhile.
+  if (_openCheckId !== checkId || !tr.classList.contains('selected')) return;
+  const series = answer && Array.isArray(answer.series) ? answer.series : [];
+  const host = document.createElement('div');
+  host.className = 'device-check-chart device-check-if-chart';
+  // The canvas goes in with the host already placed: Chart.js sizes itself to
+  // a box it can measure.
+  host.appendChild(document.createElement('canvas'));
+  box.appendChild(host);
+  _interfaceChart = new Chart(host.children[0].getContext('2d'), {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'In', data: series.map((p) => ({ x: new Date(p.time).getTime(), y: p.in_bps ?? null })), borderColor: tok('--sky'), backgroundColor: 'transparent', tension: 0.2, borderWidth: 1.6, pointRadius: 0, spanGaps: false },
+        { label: 'Out', data: series.map((p) => ({ x: new Date(p.time).getTime(), y: p.out_bps ?? null })), borderColor: tok('--lavender'), backgroundColor: 'transparent', tension: 0.2, borderWidth: 1.6, pointRadius: 0, spanGaps: false },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { boxWidth: 10, font: { size: 11 } } },
+        tooltip: { backgroundColor: tok('--s1'), borderColor: tok('--border'), borderWidth: 1, callbacks: { label: (item) => ` ${item.dataset.label}: ${_fmtBps(item.parsed.y)}` } },
+      },
+      scales: {
+        x: { type: 'time', grid: { color: tok('--s3'), drawTicks: false }, border: { color: tok('--s3') }, ticks: { maxTicksLimit: 6, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
+        y: {
+          min: 0,
+          grid: { color: tok('--s3'), drawTicks: false }, border: { color: tok('--s3') },
+          // The same units as the table's In and Out columns, not raw bits.
+          ticks: { maxTicksLimit: 4, font: { family: "'IBM Plex Mono', monospace", size: 10 }, callback: (v) => _fmtBps(v) },
+        },
+      },
+    },
+  });
+}
+
 function setDeviceCheckKind(select) {
   const kind = select && 'value' in select ? select.value : (select || 'icmp');
   const port = _deviceEl('device-check-port');
@@ -409,6 +579,8 @@ function setDeviceCheckKind(select) {
   if (community) community.hidden = kind !== 'snmp';
   const oids = _deviceEl('device-check-oids');
   if (oids) oids.hidden = kind !== 'snmp';
+  const walk = _deviceEl('device-check-walk');
+  if (walk) walk.hidden = kind !== 'snmp';
 }
 
 async function addDeviceCheck() {
@@ -418,6 +590,7 @@ async function addDeviceCheck() {
   const portRaw = _deviceEl('device-check-port').value.trim();
   const communityBox = _deviceEl('device-check-community');
   const oidsBox = _deviceEl('device-check-oids');
+  const walkBox = _deviceEl('device-check-interfaces');
   const interval = parseInt(_deviceEl('device-check-interval').value, 10);
 
   let params;
@@ -433,6 +606,7 @@ async function addDeviceCheck() {
     // A malformed line is ours to catch: nothing goes out until it reads.
     if (parsed.error) { showToast(parsed.error, 'error'); return; }
     if (parsed.oids.length) params.oids = parsed.oids;
+    if (walkBox && walkBox.checked) params.interfaces = true;
     // Untrimmed: a community's spaces are the operator's, not ours to drop.
     if (communityBox.value) body.community = communityBox.value;
   }
@@ -447,6 +621,7 @@ async function addDeviceCheck() {
     _deviceEl('device-check-port').value = '';
     communityBox.value = '';
     oidsBox.value = '';
+    if (walkBox) walkBox.checked = false;
     loadDeviceChecks(_checkDeviceId);
   } catch (e) {
     // The server refuses a bad target with one sentence in `error`.
@@ -564,4 +739,8 @@ delegateClick('[data-device-edit]', (el) => openDeviceModal(el.dataset.deviceEdi
 delegateClick('.device-check-row', (el, ev) => {
   if (ev.target.closest('[data-act]')) return;
   toggleDeviceCheckChart(el);
+});
+// An interface row's traffic chart: one delegated listener for every table.
+delegateClick('.device-check-ifaces tr[data-if-index]', (el) => {
+  void _selectInterface(el.closest('table'), el);
 });

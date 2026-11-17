@@ -55,6 +55,12 @@ class DeviceChecksMarkupTests(SimpleTestCase):
             with self.subTest(element_id=element_id):
                 self.assertIn(f'id="{element_id}"', self.modal)
 
+    def test_the_walk_checkbox_sits_in_a_hidden_label(self):
+        label = re.search(r'<label[^>]*id="device-check-walk"[^>]*>.*?</label>', self.modal)
+        self.assertIsNotNone(label, "no #device-check-walk label in the device modal")
+        self.assertRegex(label.group(0), r'<label[^>]*\bhidden\b')
+        self.assertIn('<input type="checkbox" id="device-check-interfaces">', label.group(0))
+
     def test_the_section_starts_hidden_and_ports_are_admin_wired(self):
         # A new device has no id to hang a check on, so the section is hidden
         # until the modal opens on an existing one.
@@ -134,7 +140,9 @@ class DeviceChecksScriptTests(SimpleTestCase):
                     if b.split("(")[0].startswith(("_checkRow", "_checkLabel", "loadDeviceChecks",
                                                    "toggleDeviceCheckChart", "openDeviceChecks",
                                                    "_deviceEl", "_ms", "collapseDeviceCheckChart",
-                                                   "_snmpValuesList"))]
+                                                   "_snmpValuesList", "_interfaceTable",
+                                                   "_ifaceCell", "_interfaceNote",
+                                                   "_loadCheckInterfaces", "_selectInterface"))]
         self.assertTrue(len(relevant) >= 5, "the check renderer is missing from vigil-devices.js")
         for body in relevant:
             name = body.split("(")[0]
@@ -152,6 +160,17 @@ class DeviceChecksScriptTests(SimpleTestCase):
         for literal in ("'sys_name'", "'uptime_s'", "'Name'", "'Uptime'",
                         "'device-check-values'", "'kind'", "'target'", "textContent"):
             self.assertIn(literal, body)
+
+    def test_the_interface_rows_are_one_delegated_click(self):
+        # Rows are drawn per expansion, so one page-level listener answers for
+        # all of them; the JS tests call _selectInterface directly.
+        self.assertIn("delegateClick('.device-check-ifaces tr[data-if-index]'", self.js)
+        self.assertRegex(self.js, r"_selectInterface\(el\.closest\('table'\), el\)")
+
+    def test_the_interface_chart_is_destroyed_when_it_goes_away(self):
+        body = re.search(r"function collapseDeviceCheckChart\(\)[\s\S]*?\n}", self.js).group(0)
+        self.assertIn("_interfaceChart.destroy()", body)
+        self.assertIn("_checkInterfaces.remove()", body)
 
     def test_the_latency_chart_is_destroyed_when_it_goes_away(self):
         # Two Chart.js instances on one canvas leak the first; collapse is the

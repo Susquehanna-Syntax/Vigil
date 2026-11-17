@@ -26,8 +26,11 @@ class StubElement {
     this._parent = null;
     this.classList = { _set: new Set(), add(c) { this._set.add(c); }, remove(c) { this._set.delete(c); },
       toggle(c, on) { (on ?? !this._set.has(c)) ? this._set.add(c) : this._set.delete(c); },
-      contains(c) { return this._set.has(c); } };
+      contains(c) { return this._set.has(c); }, [Symbol.iterator]() { return this._set.values(); } };
   }
+  // className and classList are one store, as in a browser.
+  set className(v) { this.classList._set = new Set(String(v).split(/\s+/).filter(Boolean)); }
+  get className() { return [...this.classList._set].join(' '); }
   // textContent -> innerHTML escapes exactly what a browser's serialiser does
   // for text: & < > (and no quotes).
   set textContent(v) { this._text = String(v ?? ''); this._html = this._text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -45,6 +48,12 @@ class StubElement {
   // its way from a node to its container or takes one of its own children away
   // has to mean the same thing here as in a browser.
   get parentElement() { return this._parent || null; }
+  // The element after this one in its container, as a live tree reads it.
+  get nextElementSibling() {
+    const sibs = this._parent ? this._parent.children : [];
+    const i = sibs.indexOf(this);
+    return i < 0 ? null : sibs[i + 1] || null;
+  }
   remove() { if (this._parent) this._parent.removeChild(this); }
   after(n) {
     const parent = this._parent;
@@ -60,15 +69,19 @@ class StubElement {
     }
     return out;
   }
+  // Simple selectors only: an optional tag, an optional class, an optional
+  // [data-x] or [data-x="v"], comma-separated alternatives.
   _matches(sel) {
     return sel.split(',').some((part) => {
-      const s = part.trim();
-      const cls = s.match(/^\.([A-Za-z0-9_-]+)$/);
-      if (cls) return this.classList.contains(cls[1]);
-      const attr = s.match(/^\[data-([a-z-]+)(?:="([^"]*)")?\]$/);
-      if (!attr) return false;
-      const key = attr[1].replace(/-(\w)/g, (_, c) => c.toUpperCase());
-      return attr[2] === undefined ? this.dataset[key] !== undefined : this.dataset[key] === attr[2];
+      const m = part.trim().match(/^([a-z]+)?(?:\.([A-Za-z0-9_-]+))?(?:\[data-([a-z-]+)(?:="([^"]*)")?\])?$/);
+      if (!m || !(m[1] || m[2] || m[3])) return false;
+      if (m[1] && this.tagName !== m[1].toUpperCase()) return false;
+      if (m[2] && !this.classList.contains(m[2])) return false;
+      if (m[3]) {
+        const key = m[3].replace(/-(\w)/g, (_, c) => c.toUpperCase());
+        if (m[4] === undefined ? this.dataset[key] === undefined : this.dataset[key] !== m[4]) return false;
+      }
+      return true;
     });
   }
   querySelector(sel) { return this._walk((n) => n._matches(sel))[0] || null; }
