@@ -535,6 +535,78 @@ class InterfaceSample(models.Model):
         return f"if{self.if_index} of check {self.device_check_id} @ {self.time:%Y-%m-%d %H:%M}"
 
 
+class DiscoveryScan(models.Model):
+    """A network discovery scan one poller is asked to run (S9 06b).
+
+    The server hands the oldest queued or sent scan of a poller to it inside
+    that poller's check-in response, signed like the device-check list
+    (discovery.py). The answer comes back in a later check-in and becomes
+    DiscoveredHost rows. A ``sent`` scan nobody answers fails on its own time-
+    out — nothing but a check-in drives this state machine.
+    """
+
+    objects = SiteScopedManager(field="site_id", app="devices")
+
+    class State(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        SENT = "sent", "Sent"
+        DONE = "done", "Done"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    poller = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="discovery_scans")
+    #: The poller's site when the scan was made (null: global), so a scan and
+    #: its results are scoped like a device of that site. A plain UUID for the
+    #: same reason UnmanagedDevice.site_id is one: Free never joins a Business
+    #: table (see apps/statuspage/models.py).
+    site_id = models.UUIDField(null=True, blank=True)
+    cidr = models.CharField(max_length=43)
+    ports = models.JSONField(default=list)
+    # Fernet ciphertext (crypto.encrypt_secret) of the SNMP community; never in an API answer or a log line.
+    secret = models.BinaryField(blank=True, default=b"", editable=False)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+    state = models.CharField(max_length=8, choices=State.choices, default=State.QUEUED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    error = models.CharField(max_length=200, blank=True, default="")
+    scanned = models.PositiveIntegerField(default=0)
+    truncated = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["poller", "state", "created_at"])]
+
+    def __str__(self):
+        return f"discovery of {self.cidr} by poller {self.poller_id} ({self.state})"
+
+
+class DiscoveredHost(models.Model):
+    """One host a discovery scan answered with (S9 06b). Rows of a finished scan."""
+
+    objects = SiteScopedManager(field="scan__site_id", app="devices")
+
+    id = models.BigAutoField(primary_key=True)
+    scan = models.ForeignKey(DiscoveryScan, on_delete=models.CASCADE, related_name="hosts")
+    ip = models.GenericIPAddressField(protocol="IPv4")
+    #: How the poller saw it: "ping" for an ICMP reply, "tcp" for a connection.
+    alive_by = models.CharField(max_length=4)
+    latency_ms = models.FloatField(null=True, blank=True)
+    open_ports = models.JSONField(default=list)
+    name = models.CharField(max_length=100, blank=True, default="")
+    sys_name = models.CharField(max_length=100, blank=True, default="")
+    sys_descr = models.CharField(max_length=100, blank=True, default="")
+
+    class Meta:
+        ordering = ["scan", "id"]
+        constraints = [models.UniqueConstraint(fields=["scan", "ip"],
+                                               name="discovered_host_once_per_scan")]
+
+    def __str__(self):
+        return f"{self.ip} from scan {self.scan_id}"
+
+
 class HostFirewall(models.Model):
     """The last firewall snapshot read from a host.
 

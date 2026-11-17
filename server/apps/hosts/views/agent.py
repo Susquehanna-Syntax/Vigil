@@ -9,6 +9,7 @@ from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
                           HostsRegisterResponseSerializer, HostsRegisterSerializer,
                           HostsTransportAckBodySerializer, HostsTransportAckSerializer)
 from ..device_checks import signed_check_list, store_check_results
+from ..discovery import signed_scan, store_scan_result
 from ._common import *  # noqa: F401,F403
 
 
@@ -336,6 +337,9 @@ def checkin(request):
     # (which may have brought the host back online), so the assignment sees it as online.
     if host.status not in (Host.Status.PENDING, Host.Status.REJECTED):
         store_check_results(host, data.get("check_results"))
+        # S9 06b: this poller's answer to the discovery scan it was handed.
+        if host.agent_poller:
+            store_scan_result(host, data.get("scan_result"))
 
     # A rebuilt host's first check-in closes out its rebuild job: operator
     # tag applied, maintenance window cleared, playbook dispatched. No-op for
@@ -616,6 +620,8 @@ def checkin(request):
             **signed_relay_list(host.token_fingerprint),
             # S9: the device checks this poller is handed, signed for this agent.
             **(signed_check_list(host) if host.agent_poller else {}),
+            # S9 06b: the discovery scan this poller is handed, signed for it.
+            **(signed_scan(host) if host.agent_poller else {}),
             # The agent resends its software list when this differs from its
             # own digest. "" when the server holds nothing for this host.
             "software_digest": snapshot.digest if snapshot else "",
