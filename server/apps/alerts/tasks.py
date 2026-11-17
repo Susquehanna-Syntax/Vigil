@@ -270,6 +270,22 @@ def _mark_stale_hosts_offline():
     return f"{count} hosts marked offline"
 
 
+def _metricpoint_has_retention_policy() -> bool:
+    """True when a TimescaleDB retention policy owns metrics_metricpoint's
+    expiry. False on an Apache-licensed build, which has no policies."""
+    from django.db import connection
+
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM timescaledb_information.jobs "
+                "WHERE proc_name = 'policy_retention' AND hypertable_name = 'metrics_metricpoint'"
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        return False
+
+
 def _metricpoint_is_hypertable() -> bool:
     """True when metrics_metricpoint has been converted to a TimescaleDB
     hypertable (migration 0002). On a hypertable, retention is owned by a
@@ -299,9 +315,19 @@ def prune_old_metric_points():
     Fallback path only. When the table is a TimescaleDB hypertable the native
     retention policy handles expiry (and frees disk per chunk), so this no-ops.
     """
-    if _metricpoint_is_hypertable():
-        return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     retention_days = getattr(settings, "VIGIL_METRIC_RETENTION_DAYS", 30)
+    if _metricpoint_is_hypertable():
+        if _metricpoint_has_retention_policy():
+            return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
+        # An Apache-licensed TimescaleDB has hypertables but no retention
+        # policies (migration 0002 stops before them). drop_chunks itself is in
+        # that build, and frees disk per chunk as the policy would.
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("SELECT drop_chunks('metrics_metricpoint', older_than => %s)",
+                        [timedelta(days=retention_days)])
+            dropped = len(cur.fetchall())
+        return f"Dropped {dropped} metric chunks older than {retention_days} days"
     cutoff = now() - timedelta(days=retention_days)
     deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()
     if deleted:
