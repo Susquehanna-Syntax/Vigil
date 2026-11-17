@@ -213,4 +213,4 @@
 /* The muted running counts in the Firing / Acknowledged tab labels. */
 .alerts-tab-count { opacity: 0.6; }
 /* Smaller than .btn svg's default, for the chevron on an ack-menu button. */
-.alerts-chevron { width: 11px; height: 11px; }
+.btn .alerts-chevron { width: 11px; height: 11px; }
