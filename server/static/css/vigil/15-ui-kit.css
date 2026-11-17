@@ -8,6 +8,7 @@
 }
 
 .ui-kit h1 { font-size: 30px; font-weight: 600; line-height: 1.1; }
+.ui-kit .page-sub { margin-bottom: 16px; }
 
 .kit-section { margin-top: 44px; }
 .kit-section h2 {
