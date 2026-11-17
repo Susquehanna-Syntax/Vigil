@@ -174,12 +174,37 @@ declare function inputsFormMount(container: HTMLElement, inputs: any[], values?:
 /** Defined in server/static/js/vigil-pickers.js: read + validate that form. */
 declare function inputsFormRead(container: HTMLElement): { values: Record<string, any>, error: string };
 
+/** Defined in server/static/js/vigil-reprovision.js (loads the Settings → OS
+ *  Images list; vigil-settings.js calls it behind a typeof guard). */
+declare function loadOSImages(): Promise<void>;
+
+/** Defined in server/static/js/vigil-instance-settings.js (the Settings →
+ *  Instance group list; called behind a typeof guard). `quiet` skips the
+ *  success toast on a manual refresh. */
+declare function loadInstanceSettings(force?: boolean, quiet?: boolean): Promise<void>;
+
+/** Defined in server/static/js/vigil-instance-settings.js (Settings → Jackil
+ *  tickets pane; called behind a typeof guard). */
+declare function loadJackilTickets(): Promise<void>;
+
+/** Defined in server/static/js/vigil-instance-settings.js (Settings → Jackil
+ *  keys pane; called behind a typeof guard). */
+declare function loadJackilKeys(): Promise<void>;
+
+/** Defined in server/static/js/vigil-api-keys.js (the Settings → API pane's
+ *  keys and webhooks; called behind a typeof guard). */
+declare function loadApiPane(): Promise<void>;
+
 /** Set by the inline config script in templates/base.html. `__pendingCommunityYaml`
  *  is the YAML vigil-tasks.js hands to the community-submit dialog, so its Copy
  *  button can copy what the GitHub link opened. */
 interface Window {
   VIGIL_CONFIG: { timezone: string, timeFormat: string, username: string };
   __pendingCommunityYaml?: string;
+  /** The host to preselect when the deploy modal opens. vigil-deploy.js
+   *  publishes it from openDeployForHost and clears it in renderDpHostList;
+   *  a template placeholder may seed it too. */
+  _pendingDeployPreselectHost?: string|null;
 }
 
 /** The vendored GridStack (static/js/vendor/gridstack-all.js), a third-party library. */

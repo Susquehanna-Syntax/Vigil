@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-settings.js
 // Owns: Settings page — TOTP enrollment / disable, agent binary upload.
 //   (AD config lives in vigil-inventory.js since it imports Hosts.)
@@ -8,15 +9,19 @@
 
 /* ── TOTP enrollment ── */
 async function refreshTotpStatus() {
-  const status = document.getElementById('totp-status-line');
+  const status = /** @type {HTMLElement} */ (document.getElementById('totp-status-line'));
   if (!status) return;
   // The security keys card sits right under this one and opens with it.
   loadSecurityKeys();
   try {
     const data = await apiJson('/api/v1/accounts/totp/');
+    /** @type {HTMLElement} */
     const sub = document.getElementById('totp-sub-line');
+    /** @type {HTMLElement} */
     const startBtn = document.getElementById('totp-start-btn');
+    /** @type {HTMLElement} */
     const disableBtn = document.getElementById('totp-disable-btn');
+    /** @type {HTMLElement} */
     const enrollView = document.getElementById('totp-enroll-view');
     if (data.enrolled) {
       status.textContent = 'TOTP enabled';
@@ -45,11 +50,11 @@ async function refreshTotpStatus() {
 async function totpStart() {
   try {
     const data = await apiJson('/api/v1/accounts/totp/enroll/', { method: 'POST' });
-    document.getElementById('totp-secret-text').textContent = data.secret;
-    document.getElementById('totp-uri-text').textContent = data.otpauth_uri;
-    document.getElementById('totp-enroll-view').style.display = 'block';
-    document.getElementById('totp-verify-code').value = '';
-    document.getElementById('totp-verify-code').focus();
+    /** @type {HTMLElement} */ (document.getElementById('totp-secret-text')).textContent = data.secret;
+    /** @type {HTMLElement} */ (document.getElementById('totp-uri-text')).textContent = data.otpauth_uri;
+    /** @type {HTMLElement} */ (document.getElementById('totp-enroll-view')).style.display = 'block';
+    /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).focus();
     refreshTotpStatus();
   } catch (e) {
     showToast('TOTP enroll failed: ' + e.message, 'error');
@@ -57,7 +62,7 @@ async function totpStart() {
 }
 
 async function totpConfirm() {
-  const code = document.getElementById('totp-verify-code').value.trim();
+  const code = /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).value.trim();
   if (!/^\d{6}$/.test(code)) {
     showToast('Enter a 6-digit code', 'error');
     return;
@@ -90,13 +95,16 @@ async function totpDisablePrompt() {
 
 /* ── Agent binary distribution ── */
 
+/* A row of GET /agent/info/. */
+/** @typedef {{platform_label: string, version?: string, sha256: string}} AgentBinary */
 async function loadAgentInfo() {
-  const el = document.getElementById('agent-versions');
+  const el = /** @type {HTMLElement} */ (document.getElementById('agent-versions'));
   if (!el) return;
   try {
     const data = await apiJson('/agent/info/');
     el.textContent = '';
     if (!data.length) { el.textContent = 'No binaries uploaded yet.'; return; }
+    /** @param {AgentBinary} b @param {number} i @returns {void} */
     data.forEach((b, i) => {
       if (i > 0) el.appendChild(document.createTextNode('  ·  '));
       const label = document.createElement('span');
@@ -131,9 +139,9 @@ function copyInstallCmdPs1() {
 }
 
 async function uploadAgentBinary() {
-  const platform = document.getElementById('upload-platform').value;
-  const version = (document.getElementById('upload-version').value || '').trim();
-  const fileInput = document.getElementById('upload-binary');
+  const platform = /** @type {HTMLSelectElement} */ (document.getElementById('upload-platform')).value;
+  const version = (/** @type {HTMLInputElement} */ (document.getElementById('upload-version')).value || '').trim();
+  const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('upload-binary'));
   const file = fileInput.files[0];
   if (!file) { showToast('Select a binary file first', 'error'); return; }
 
@@ -158,16 +166,15 @@ async function uploadAgentBinary() {
 }
 
 
-
 /* ── Civil SSO settings ──────────────────────────────────────────────── */
 async function loadCivilSettings() {
-  const card = document.getElementById('civil-settings-card');
+  const card = /** @type {HTMLElement} */ (document.getElementById('civil-settings-card'));
   if (!card) return;
   try {
     const d = await apiJson('/api/v1/civil/settings/');
-    document.getElementById('civil-url').value = d.url || '';
-    document.getElementById('civil-slug').value = d.app_slug || '';
-    document.getElementById('civil-enabled').checked = !!d.enabled;
+    /** @type {HTMLInputElement} */ (document.getElementById('civil-url')).value = d.url || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('civil-slug')).value = d.app_slug || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('civil-enabled')).checked = !!d.enabled;
     document.getElementById('civil-env-note').hidden = !d.env_override;
     _renderCivilState(d);
   } catch (e) { /* leave blank */ }
@@ -182,9 +189,9 @@ function _renderCivilState(d) {
 
 async function saveCivilSettings(opts) {
   const body = {
-    url: document.getElementById('civil-url').value.trim(),
-    app_slug: document.getElementById('civil-slug').value.trim(),
-    enabled: document.getElementById('civil-enabled').checked,
+    url: /** @type {HTMLInputElement} */ (document.getElementById('civil-url')).value.trim(),
+    app_slug: /** @type {HTMLInputElement} */ (document.getElementById('civil-slug')).value.trim(),
+    enabled: /** @type {HTMLInputElement} */ (document.getElementById('civil-enabled')).checked,
     ...(opts || {}),
   };
   try {
@@ -284,10 +291,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (ct) ct.addEventListener('click', () => saveCivilSettings({ test: true, refresh_key: true }));
 
   // Settings sub-nav: switch which pane is visible.
-  document.querySelectorAll('#settings-nav .settings-nav-item').forEach(item => {
+  document.querySelectorAll('#settings-nav .settings-nav-item').forEach((/** @type {HTMLElement} */ item) => {
     item.addEventListener('click', () => {
-      document.querySelectorAll('#settings-nav .settings-nav-item').forEach(i => i.classList.remove('active'));
-      document.querySelectorAll('#page-settings .settings-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('#settings-nav .settings-nav-item').forEach((/** @type {HTMLElement} */ i) => i.classList.remove('active'));
+      document.querySelectorAll('#page-settings .settings-pane').forEach((/** @type {HTMLElement} */ p) => p.classList.remove('active'));
       item.classList.add('active');
       const pane = document.querySelector(`#page-settings .settings-pane[data-pane="${item.dataset.pane}"]`);
       if (pane) pane.classList.add('active');
@@ -333,7 +340,9 @@ document.addEventListener('DOMContentLoaded', () => {
          allowance answers 402 with an upgrade body rather than data.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** @type {ReturnType<typeof pollingInterval>|null} */
 let _relayPoll = null;
+/** @type {Record<string, {id: string|number, name?: string, location?: string, url?: string, priority?: number|null}>} */
 let _relaysById = {};
 
 /* The installer URLs, as text with braces rather than a template literal: the
@@ -358,7 +367,7 @@ function _relayWindowsCmd(origin, token, config) {
 
 function _relayField(id) {
   const el = document.getElementById(id);
-  return el ? el.value.trim() : '';
+  return el ? /** @type {HTMLInputElement} */ (el).value.trim() : '';
 }
 
 function _relayIsBuiltin(r) {
@@ -499,10 +508,10 @@ async function addRelay() {
     const created = await apiJson('/api/v1/relays/', { method: 'POST', body: JSON.stringify(body) });
     ['relay-name', 'relay-location', 'relay-url'].forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.value = '';
+      if (el) /** @type {HTMLInputElement} */ (el).value = '';
     });
     const prio = document.getElementById('relay-priority');
-    if (prio) prio.value = '100';
+    if (prio) /** @type {HTMLInputElement} */ (prio).value = '100';
     _openRelayKeyDialog(created.name, created.key, created.key_sha256);
     loadRelays();
   } catch (e) {
@@ -538,7 +547,7 @@ function _relayCopyBtn(id) {
 }
 
 function _wireRelayCopy(m, id, text) {
-  const btn = m.modal.querySelector('#' + id);
+  const btn = /** @type {HTMLElement} */ (m.modal.querySelector('#' + id));
   if (btn) btn.onclick = () => copyText(text).then((ok) => showToast(
     ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'));
 }
@@ -570,8 +579,8 @@ function _openRelayKeyDialog(name, key, keySha) {
   _wireRelayCopy(m, 'rk-copy-compose', snippet);
   _wireRelayCopy(m, 'rk-copy-key', key || '');
   const close = () => m.close();
-  m.modal.querySelector('#rk-x').onclick = close;
-  m.modal.querySelector('#rk-done').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rk-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rk-done')).onclick = close;
   requestAnimationFrame(m.open);
 }
 
@@ -619,17 +628,17 @@ function editRelay(id) {
       <button class="btn btn-outline btn-sm" id="re-cancel">Cancel</button>
       <button class="btn btn-mint btn-sm" id="re-save">Save</button>
     </div>`);
-  m.modal.querySelector('#re-name').value = relay.name || '';
-  m.modal.querySelector('#re-location').value = relay.location || '';
-  m.modal.querySelector('#re-url').value = relay.url || '';
-  m.modal.querySelector('#re-priority').value = String(relay.priority == null ? 100 : relay.priority);
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-name')).value = relay.name || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-location')).value = relay.location || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-url')).value = relay.url || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-priority')).value = String(relay.priority == null ? 100 : relay.priority);
   const note = () => m.modal.querySelector('#re-note');
 
-  m.modal.querySelector('#re-save').onclick = async () => {
-    const name = m.modal.querySelector('#re-name').value.trim();
-    const location = m.modal.querySelector('#re-location').value.trim();
-    const url = m.modal.querySelector('#re-url').value.trim();
-    const priority = Number(m.modal.querySelector('#re-priority').value || 0);
+  /** @type {HTMLElement} */ (m.modal.querySelector('#re-save')).onclick = async () => {
+    const name = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-name')).value.trim();
+    const location = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-location')).value.trim();
+    const url = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-url')).value.trim();
+    const priority = Number(/** @type {HTMLInputElement} */ (m.modal.querySelector('#re-priority')).value || 0);
     if (!name) { note().textContent = 'Name is required.'; return; }
     if (!url.startsWith('https://')) {
       note().textContent = 'The address must start with https://';
@@ -655,8 +664,8 @@ function editRelay(id) {
     }
   };
   const close = () => m.close();
-  m.modal.querySelector('#re-x').onclick = close;
-  m.modal.querySelector('#re-cancel').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#re-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#re-cancel')).onclick = close;
   requestAnimationFrame(m.open);
 }
 
@@ -720,7 +729,7 @@ async function relayInstall(id) {
       <div class="sk-line"></div><div class="sk-line"></div><div class="sk-line sk-w80"></div>
     </div>`);
   m.modal.querySelector('.modal-title span').textContent = title;
-  m.modal.querySelector('#ri-x').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ri-x')).onclick = () => m.close();
   requestAnimationFrame(m.open);
 
   let config;
@@ -762,8 +771,8 @@ async function relayInstall(id) {
   _wireRelayCopy(m, 'ri-copy-linux', linux);
   _wireRelayCopy(m, 'ri-copy-windows', windows);
   const close = () => m.close();
-  m.modal.querySelector('#ri-x').onclick = close;
-  m.modal.querySelector('#ri-close').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ri-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ri-close')).onclick = close;
 }
 
 /* Choosing any other pane means the relays list is off-screen. */
@@ -796,7 +805,7 @@ async function loadSecurityKeys() {
     return;
   }
   const note = document.getElementById('security-keys-note');
-  const addBtn = document.getElementById('security-keys-add-btn');
+  const addBtn = /** @type {HTMLButtonElement} */ (document.getElementById('security-keys-add-btn'));
   const insecure = !!status && !status.keys_possible;
   if (note) {
     note.textContent = insecure ? (status.keys_reason || 'Security keys need HTTPS.') : '';
@@ -884,8 +893,8 @@ async function _createSecurityKey(name, totp) {
     authenticatorSelection: opts.authenticatorSelection || { userVerification: 'preferred' },
     attestation: opts.attestation || 'none',
   };
-  const cred = await navigator.credentials.create({ publicKey });
-  const r = cred.response;
+  const cred = /** @type {PublicKeyCredential} */ (await navigator.credentials.create({ publicKey }));
+  const r = /** @type {AuthenticatorAttestationResponse} */ (cred.response);
   const credential = {
     id: cred.id || bytesToB64url(cred.rawId),
     rawId: bytesToB64url(cred.rawId),

@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-deploy.js
 // Owns: Full deploy modal (templates/base.html) — YAML preview, options,
 //   schedule/retry/success-criteria policy editors, host & tag pickers,
@@ -12,11 +13,23 @@
 //   GET /api/v1/tasks/definitions/{id}/, POST .../deploy/,
 //   POST .../{publish,unpublish}/
 
+/** The deploy modal's per-definition state, reset by openDeployModal. `spec` is
+ *  the definition's parsed spec (apps/tasks/api_schema.py
+ *  TasksParsedSpecSerializer): `actions` and `inputs` are what this file
+ *  renders, so they are typed, and everything else a spec may carry — flow,
+ *  uses, schedule — rides on the index signature. */
+/** One flattened action of `parsed_spec.actions`. */
+/** @typedef {{type?: string, label?: string, name?: string, risk?: string, when?: string, outputs?: string[]}} DeployAction */
+/** One input declaration of `parsed_spec.inputs` — _renderDeployInputs branches on `type`. */
+/** @typedef {{id: string, type?: string, label?: string, description?: string, required?: boolean, default?: any, choices?: {value: string, label?: string}[]}} DeployInput */
+/** @typedef {{name?: string, declared_risk?: string, actions?: DeployAction[], inputs?: DeployInput[], [k: string]: any}} DeploySpec */
 let deployState = {
   definitionId: null,
+  /** @type {DeploySpec|null} */
   spec: null,
   availableHosts: [],
   selectedHosts: new Set(),
+  /** @type {'hosts'|'tags'} */
   targetMode: 'hosts',          // 'hosts' or 'tags'
   availableTags: [],
   selectedTags: new Set(),
@@ -112,17 +125,17 @@ const VIGIL_TIMEZONE = window.VIGIL_CONFIG.timezone;
 /* ── Tabs, target mode, policy editors, host/tag pickers, submit ────── */
 function setDeployTab(tab) {
   for (const t of document.querySelectorAll('.deploy-tab[data-tab]')) {
-    t.classList.toggle('active', t.dataset.tab === tab);
+    /** @type {HTMLElement} */ (t).classList.toggle('active', /** @type {HTMLElement} */ (t).dataset.tab === tab);
   }
   for (const p of document.querySelectorAll('.deploy-panel')) {
-    p.classList.toggle('active', p.dataset.panel === tab);
+    /** @type {HTMLElement} */ (p).classList.toggle('active', /** @type {HTMLElement} */ (p).dataset.panel === tab);
   }
 }
 
 function setDeployTargetMode(mode) {
   deployState.targetMode = (mode === 'tags') ? 'tags' : 'hosts';
   for (const t of document.querySelectorAll('.deploy-tab[data-target-mode]')) {
-    t.classList.toggle('active', t.dataset.targetMode === deployState.targetMode);
+    /** @type {HTMLElement} */ (t).classList.toggle('active', /** @type {HTMLElement} */ (t).dataset.targetMode === deployState.targetMode);
   }
   document.getElementById('deploy-target-hosts').style.display =
     deployState.targetMode === 'hosts' ? '' : 'none';
@@ -167,6 +180,7 @@ function _renderDeployTagChips() {
   }
 }
 
+/** @param {number[]|null|undefined} activeDays @returns {void} */
 function _populateDeployDayChips(activeDays) {
   const wrap = document.getElementById('deploy-day-chips');
   if (!wrap) return;
@@ -185,7 +199,7 @@ function _populateDeployDayChips(activeDays) {
 function _readDeployDays() {
   const out = [];
   for (const chip of document.querySelectorAll('#deploy-day-chips .deploy-day-chip.on')) {
-    out.push(Number(chip.dataset.day));
+    out.push(Number(/** @type {HTMLElement} */ (chip).dataset.day));
   }
   return out.sort((a,b) => a-b);
 }
@@ -197,19 +211,32 @@ function _toTimeValue(hour, minute) {
 function _onRunNowToggle() {
   // Grey out the start/end/day inputs when "Run now" is checked so the form
   // can't visually suggest a window that won't actually be sent.
-  const runNow = document.getElementById('deploy-schedule-run-now');
+  const runNow = /** @type {HTMLInputElement} */ (document.getElementById('deploy-schedule-run-now'));
   const fields = document.getElementById('deploy-schedule-fields');
   const start  = document.getElementById('deploy-schedule-start');
   const end    = document.getElementById('deploy-schedule-end');
   const chips  = document.getElementById('deploy-day-chips');
   const disabled = !!(runNow && runNow.checked);
-  if (start) start.disabled = disabled;
-  if (end)   end.disabled   = disabled;
+  if (start) /** @type {HTMLInputElement} */ (start).disabled = disabled;
+  if (end)   /** @type {HTMLInputElement} */ (end).disabled   = disabled;
   if (fields) fields.style.opacity = disabled ? '0.4' : '1';
   if (chips)  chips.style.pointerEvents = disabled ? 'none' : 'auto';
 }
 window._onRunNowToggle = _onRunNowToggle;
 
+/** The policy objects _readDeployPolicy reads off the form and submitDeploy
+ *  sends. `schedule` is null for a "run now" task, which the server stores as
+ *  an empty schedule — always eligible; the other two are null when unset. */
+/** @typedef {{window?: {start_hour: number, start_minute: number, end_hour: number, end_minute: number, days: number[]}}|null} DeploySchedule */
+/** @typedef {{retry?: {attempts: number, delay_seconds: number}}|null} DeployOnFailure */
+/** @typedef {{exit_code: number, output_contains?: string, output_regex?: string}} DeployCriteria */
+
+/* ── The deploy modal's DOM, as templates/base.html ships it ───────────────
+ * Every lookup below is a static id in that markup or an element this file
+ * builds itself, so each cast names what the untyped code already assumed: a
+ * missing element throws on the property access exactly as it did before tsc. */
+
+/** @param {DeploySpec|undefined|null} spec @returns {void} */
 function _populateDeployPolicy(spec) {
   // Schedule defaults from spec; otherwise "Run now" — no window at all.
   // The Run now checkbox is the source of truth: when checked, _readDeployPolicy
@@ -218,11 +245,11 @@ function _populateDeployPolicy(spec) {
   const sched = (spec && spec.schedule && spec.schedule.window) || null;
   const runNow = document.getElementById('deploy-schedule-run-now');
   if (runNow) {
-    runNow.checked = !sched;
+    /** @type {HTMLInputElement} */ (runNow).checked = !sched;
   }
-  document.getElementById('deploy-schedule-start').value = sched
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-schedule-start')).value = sched
     ? _toTimeValue(sched.start_hour, sched.start_minute) : '08:00';
-  document.getElementById('deploy-schedule-end').value = sched
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-schedule-end')).value = sched
     ? _toTimeValue(sched.end_hour, sched.end_minute) : '17:00';
   const tzLabel = document.getElementById('deploy-tz-label');
   if (tzLabel) tzLabel.textContent = VIGIL_TIMEZONE;
@@ -231,18 +258,19 @@ function _populateDeployPolicy(spec) {
 
   // Retry defaults
   const retry = (spec && spec.on_failure && spec.on_failure.retry) || null;
-  document.getElementById('deploy-retry-attempts').value = retry ? retry.attempts ?? 0 : 0;
-  document.getElementById('deploy-retry-delay').value    = retry ? retry.delay_seconds ?? 30 : 30;
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-retry-attempts')).value = retry ? retry.attempts ?? 0 : 0;
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-retry-delay')).value    = retry ? retry.delay_seconds ?? 30 : 30;
 
   // Success criteria defaults
   const crit = (spec && spec.success_criteria) || null;
-  document.getElementById('deploy-criteria-exit').value     = crit && crit.exit_code !== undefined ? crit.exit_code : 0;
-  document.getElementById('deploy-criteria-contains').value = (crit && crit.output_contains) || '';
-  document.getElementById('deploy-criteria-regex').value    = (crit && crit.output_regex) || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-criteria-exit')).value     = crit && crit.exit_code !== undefined ? crit.exit_code : 0;
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-criteria-contains')).value = (crit && crit.output_contains) || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-criteria-regex')).value    = (crit && crit.output_regex) || '';
 }
 
+/** @param {string} id @param {number} defaultHour @param {number} [defaultMinute] @returns {[number, number]} */
 function _parseTimeInput(id, defaultHour, defaultMinute = 0) {
-  const val = (document.getElementById(id)?.value || '').trim();
+  const val = ((/** @type {HTMLInputElement|null} */ (document.getElementById(id)))?.value || '').trim();
   if (!val) return [defaultHour, defaultMinute];
   const [hStr, mStr] = val.split(':');
   return [parseInt(hStr, 10) || 0, parseInt(mStr, 10) || 0];
@@ -252,7 +280,7 @@ function _readDeployPolicy() {
   // "Run now" wins over the form fields. Returning schedule=null here makes
   // the deploy endpoint store schedule={} on the Task row, which is what
   // schedule_window_active() treats as "always eligible".
-  const runNow = document.getElementById('deploy-schedule-run-now');
+  const runNow = /** @type {HTMLInputElement|null} */ (document.getElementById('deploy-schedule-run-now'));
   let schedule = null;
   if (!runNow || !runNow.checked) {
     const [startH, startM] = _parseTimeInput('deploy-schedule-start', 8, 0);
@@ -265,13 +293,13 @@ function _readDeployPolicy() {
     } };
   }
 
-  const attempts = Number(document.getElementById('deploy-retry-attempts').value || 0);
-  const delay    = Number(document.getElementById('deploy-retry-delay').value || 0);
+  const attempts = Number(/** @type {HTMLInputElement} */ (document.getElementById('deploy-retry-attempts')).value || 0);
+  const delay    = Number(/** @type {HTMLInputElement} */ (document.getElementById('deploy-retry-delay')).value || 0);
   const on_failure = attempts > 0 ? { retry: { attempts, delay_seconds: delay } } : null;
 
-  const exit_code = Number(document.getElementById('deploy-criteria-exit').value || 0);
-  const contains  = document.getElementById('deploy-criteria-contains').value.trim();
-  const regex     = document.getElementById('deploy-criteria-regex').value.trim();
+  const exit_code = Number(/** @type {HTMLInputElement} */ (document.getElementById('deploy-criteria-exit')).value || 0);
+  const contains  = /** @type {HTMLInputElement} */ (document.getElementById('deploy-criteria-contains')).value.trim();
+  const regex     = /** @type {HTMLInputElement} */ (document.getElementById('deploy-criteria-regex')).value.trim();
   const success_criteria = { exit_code };
   if (contains) success_criteria.output_contains = contains;
   if (regex)    success_criteria.output_regex = regex;
@@ -308,6 +336,7 @@ function _renderDeployInputs(inputs) {
       label.appendChild(req);
     }
 
+    /** @type {HTMLSelectElement|HTMLInputElement} */
     let control;
     if (inp.type === 'choice') {
       control = document.createElement('select');
@@ -355,12 +384,17 @@ function _renderDeployInputs(inputs) {
   }
 }
 
+/* A `.deploy-input-row`: the row _renderDeployInputs builds, and its control —
+ * an <input class="form-control deploy-input-control"> or a <select> carrying
+ * the same two classes. The boolean rows read `checked`, the number rows
+ * `checkValidity()`, the rest `value`. */
+/** @typedef {(HTMLInputElement|HTMLSelectElement|null)} DeployInputControl */
 function _firstInvalidDeployInput() {
   for (const row of document.querySelectorAll('#deploy-inputs .deploy-input-row')) {
-    const ctrl = row.querySelector('.deploy-input-control');
+    const ctrl = /** @type {DeployInputControl} */ (row.querySelector('.deploy-input-control'));
     if (!ctrl) continue;
-    const name = (row.querySelector('.deploy-input-label')?.firstChild?.textContent || row.dataset.inputId).trim();
-    if (row.dataset.inputType === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
+    const name = (/** @type {HTMLElement} */ (row.querySelector('.deploy-input-label'))?.firstChild?.textContent || /** @type {HTMLElement} */ (row).dataset.inputId).trim();
+    if (/** @type {HTMLElement} */ (row).dataset.inputType === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
       return { control: ctrl, message: `${name}: enter a number` };
     }
     if (ctrl.required && !ctrl.value.trim()) {
@@ -373,11 +407,11 @@ function _firstInvalidDeployInput() {
 function _readDeployInputs() {
   const out = {};
   for (const row of document.querySelectorAll('#deploy-inputs .deploy-input-row')) {
-    const id = row.dataset.inputId;
-    const type = row.dataset.inputType;
-    const ctrl = row.querySelector('.deploy-input-control');
+    const id = /** @type {HTMLElement} */ (row).dataset.inputId;
+    const type = /** @type {HTMLElement} */ (row).dataset.inputType;
+    const ctrl = /** @type {DeployInputControl} */ (row.querySelector('.deploy-input-control'));
     if (!ctrl) continue;
-    if (type === 'boolean') out[id] = !!ctrl.checked;
+    if (type === 'boolean') out[id] = !!(/** @type {HTMLInputElement} */ (ctrl)).checked;
     else if (type === 'number') out[id] = ctrl.value === '' ? null : Number(ctrl.value);
     else out[id] = ctrl.value;
   }
@@ -387,7 +421,7 @@ function _readDeployInputs() {
 function _renderDeployHostRows() {
   const rowsEl = document.getElementById('deploy-host-rows');
   const all = deployState.availableHosts || [];
-  const q = (document.getElementById('deploy-host-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('deploy-host-search'))?.value || '').trim().toLowerCase();
   let visible = all;
   if (q) {
     visible = all.filter(h =>
@@ -461,7 +495,7 @@ function _renderDeployHostRows() {
 
 function _syncSelectAllCheckbox() {
   const all = deployState.availableHosts || [];
-  const checkbox = document.getElementById('deploy-host-all');
+  const checkbox = /** @type {HTMLInputElement} */ (document.getElementById('deploy-host-all'));
   if (!checkbox) return;
   if (!all.length) { checkbox.checked = false; checkbox.indeterminate = false; return; }
   const selected = all.filter(h => deployState.selectedHosts.has(h.id)).length;
@@ -481,7 +515,9 @@ function filterDeployHosts() { _renderDeployHostRows(); }
 
 // Cached fleet data — refreshed lazily (max once per 60s) so the deploy
 // modal opens instantly on repeat uses without waiting for API round-trips.
+/** @type {any[]|null} */
 let _deployHostCache = null;
+/** @type {{tag: string, host_count?: number}[]|null} */
 let _deployTagCache  = null;
 let _deployFleetFetchedAt = 0;
 
@@ -510,12 +546,12 @@ async function openDeployModal(definitionId, prefill) {
   document.getElementById('deploy-modal-title').textContent = 'Loading…';
   document.getElementById('deploy-risk-label').innerHTML = '';
   document.getElementById('deploy-yaml-view').innerHTML = '';
-  document.getElementById('deploy-host-search').value = '';
+  /** @type {HTMLInputElement} */ (document.getElementById('deploy-host-search')).value = '';
   deployState.definitionId = definitionId;
   deployState.selectedHosts = new Set();
   deployState.refusals = {};
   const sendRefusing = document.getElementById('deploy-send-refusing');
-  if (sendRefusing) sendRefusing.checked = false;
+  if (sendRefusing) /** @type {HTMLInputElement} */ (sendRefusing).checked = false;
   const refusalBox = document.getElementById('deploy-refusals');
   if (refusalBox) refusalBox.hidden = true;
   deployState.selectedTags = new Set();
@@ -546,7 +582,7 @@ async function openDeployModal(definitionId, prefill) {
     for (const [id, value] of Object.entries(prefill.inputs || {})) {
       const row = document.querySelector(`#deploy-inputs .deploy-input-row[data-input-id="${CSS.escape(id)}"]`);
       const ctrl = row && row.querySelector('.deploy-input-control');
-      if (ctrl) ctrl.value = value;
+      if (ctrl) /** @type {DeployInputControl} */ (ctrl).value = value;
     }
     _populateDeployPolicy(def.parsed_spec || {});
 
@@ -673,6 +709,7 @@ function updateDeployHostSummary() {
   summary.textContent = `${count} host${count === 1 ? '' : 's'} selected · ${totalSteps} step${totalSteps === 1 ? '' : 's'} will run in order`;
 }
 
+/** @param {Event} event @returns {Promise<void>} */
 async function submitDeploy(event) {
   event.preventDefault();
 
@@ -704,7 +741,7 @@ async function submitDeploy(event) {
     body.host_ids = host_ids;
   }
 
-  body.send_to_refusing = !!document.getElementById('deploy-send-refusing')?.checked;
+  body.send_to_refusing = !!(/** @type {HTMLInputElement|null} */ (document.getElementById('deploy-send-refusing')))?.checked;
 
   const target = body.tags
     ? `every host tagged ${body.tags.join(', ')}`
@@ -713,7 +750,7 @@ async function submitDeploy(event) {
   if (!totp) return;
   body.totp = totp;
 
-  const btn = document.getElementById('deploy-submit-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('deploy-submit-btn'));
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
     const run = await apiJson(`/api/v1/tasks/definitions/${deployState.definitionId}/deploy/`, {
