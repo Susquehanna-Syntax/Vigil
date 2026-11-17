@@ -694,13 +694,16 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <label class="form-label">Checks</label>
     <div id="device-checks-list" class="device-checks-list"></div>
     <div class="device-check-add" id="device-check-add" hidden>
-      <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind" data-a1="$el">
+      <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind" data-a1="$el" aria-label="Check kind">
         <option value="icmp">Ping</option><option value="tcp">TCP port</option>
         <option value="http">HTTP(S)</option><option value="dns">DNS</option>
+        <option value="snmp">SNMP</option>
       </select>
-      <input class="form-control" id="device-check-target" placeholder="Address, URL or name">
-      <input class="form-control" id="device-check-port" type="number" min="1" max="65535" placeholder="Port" hidden>
-      <select class="form-control" id="device-check-interval">
+      <input class="form-control" id="device-check-target" placeholder="Address, URL or name" aria-label="Check target">
+      <input class="form-control" id="device-check-port" type="number" min="1" max="65535" placeholder="Port" hidden aria-label="Port">
+      <input class="form-control" id="device-check-community" type="password" autocomplete="off" placeholder="Community" aria-label="SNMP community" hidden>
+      <textarea class="form-control device-check-oids" id="device-check-oids" rows="3" placeholder="Optional, one per line: label = OID, for example if_in = 1.3.6.1.2.1.2.2.1.10.1" aria-label="SNMP values to read" hidden></textarea>
+      <select class="form-control" id="device-check-interval" aria-label="How often">
         <option value="60">Every minute</option><option value="300">Every 5 minutes</option>
         <option value="900">Every 15 minutes</option><option value="3600">Every hour</option>
       </select>

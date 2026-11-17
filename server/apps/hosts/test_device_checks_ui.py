@@ -25,6 +25,8 @@ MODAL_IDS = (
     "device-check-kind",
     "device-check-target",
     "device-check-port",
+    "device-check-community",
+    "device-check-oids",
     "device-check-interval",
 )
 
@@ -34,6 +36,13 @@ def _device_modal(html: str) -> str:
     start = html.index('<div class="modal" id="device-modal">')
     end = html.index('<script', start)
     return html[start:end]
+
+
+def _tag(html: str, needle: str) -> str:
+    """The start tag of the element carrying ``needle`` — attribute order in a
+    template is not something a test should have to repeat."""
+    cut = html.index(needle)
+    return html[html.rindex("<", 0, cut):html.index(">", cut)]
 
 
 class DeviceChecksMarkupTests(SimpleTestCase):
@@ -52,9 +61,19 @@ class DeviceChecksMarkupTests(SimpleTestCase):
         self.assertIn('id="device-checks" hidden', self.modal)
         self.assertIn('data-act="addDeviceCheck"', self.modal)
 
-    def test_the_kind_options_are_the_four_a_poller_runs(self):
-        for kind in ("icmp", "tcp", "http", "dns"):
+    def test_the_kind_options_are_the_five_a_poller_runs(self):
+        for kind in ("icmp", "tcp", "http", "dns", "snmp"):
             self.assertIn(f'value="{kind}"', self.modal)
+
+    def test_the_community_box_is_neither_shown_nor_autofilled(self):
+        # It holds an SNMP community: masked, and no browser offers to fill it.
+        tag = _tag(self.modal, 'id="device-check-community"')
+        self.assertIn('type="password"', tag)
+        self.assertIn('autocomplete="off"', tag)
+
+    def test_the_oids_box_is_a_plain_textarea_the_operator_can_read_back(self):
+        # The OIDs list is configuration, not a secret: a text control.
+        self.assertIn('<textarea', _tag(self.modal, 'id="device-check-oids"'))
 
     def test_the_list_carries_the_two_new_fields_to_the_page(self):
         """check_state and can_edit_checks are named in the script that reads them.
@@ -114,12 +133,25 @@ class DeviceChecksScriptTests(SimpleTestCase):
         relevant = [b for b in bodies
                     if b.split("(")[0].startswith(("_checkRow", "_checkLabel", "loadDeviceChecks",
                                                    "toggleDeviceCheckChart", "openDeviceChecks",
-                                                   "_deviceEl", "_ms", "collapseDeviceCheckChart"))]
+                                                   "_deviceEl", "_ms", "collapseDeviceCheckChart",
+                                                   "_snmpValuesList"))]
         self.assertTrue(len(relevant) >= 5, "the check renderer is missing from vigil-devices.js")
         for body in relevant:
             name = body.split("(")[0]
             with self.subTest(function=name):
                 self.assertNotIn("innerHTML", body)
+
+    def test_the_values_list_is_built_from_text_never_markup(self):
+        """An SNMP result's values come back from a device, verbatim: the one
+        function that places them names Name and Uptime first, drops what the
+        row already says, and builds every value with textContent."""
+        body = next((b for b in re.split(r"\n(?:async )?function ", self.js)
+                     if b.split("(")[0] == "_snmpValuesList"), None)
+        self.assertIsNotNone(body, "vigil-devices.js has no _snmpValuesList")
+        self.assertNotIn("innerHTML", body)
+        for literal in ("'sys_name'", "'uptime_s'", "'Name'", "'Uptime'",
+                        "'device-check-values'", "'kind'", "'target'", "textContent"):
+            self.assertIn(literal, body)
 
     def test_the_latency_chart_is_destroyed_when_it_goes_away(self):
         # Two Chart.js instances on one canvas leak the first; collapse is the

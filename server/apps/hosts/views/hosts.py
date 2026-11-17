@@ -265,7 +265,8 @@ def _check_out(check) -> dict:
         "poller": str(check.poller_id) if check.poller_id else None,
         "created_at": check.created_at,
         "latest": ({"ok": latest.ok, "latency_ms": latest.latency_ms,
-                    "detail": latest.detail, "time": latest.time} if latest else None),
+                    "detail": latest.detail, "time": latest.time,
+                    "extra": latest.extra} if latest else None),
     }
 
 

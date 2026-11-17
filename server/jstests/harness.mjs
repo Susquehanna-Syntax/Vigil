@@ -21,6 +21,9 @@ class StubElement {
     this.value = '';
     this._text = '';
     this._html = '';
+    // Set by appendChild and by _walk: the container the node was last placed
+    // in, which is what remove() takes itself out of.
+    this._parent = null;
     this.classList = { _set: new Set(), add(c) { this._set.add(c); }, remove(c) { this._set.delete(c); },
       toggle(c, on) { (on ?? !this._set.has(c)) ? this._set.add(c) : this._set.delete(c); },
       contains(c) { return this._set.has(c); } };
@@ -34,16 +37,43 @@ class StubElement {
   setAttribute(k, v) { this.attributes[k] = String(v); }
   getAttribute(k) { return this.attributes[k] ?? null; }
   removeAttribute(k) { delete this.attributes[k]; }
-  appendChild(c) { this.children.push(c); return c; }
+  appendChild(c) { this.children.push(c); c._parent = this; return c; }
+  // A chart is the only canvas Vigil draws on and Chart.js itself stays out of
+  // these tests, so a context object is enough for the script to hand over.
+  getContext() { return { canvas: this }; }
+  // Minimal tree helpers, in terms of the one child store: a script that reads
+  // its way from a node to its container or takes one of its own children away
+  // has to mean the same thing here as in a browser.
+  get parentElement() { return this._parent || null; }
+  remove() { if (this._parent) this._parent.removeChild(this); }
+  _walk(fn) {
+    const out = [];
+    for (const child of this.children) {
+      if (fn(child)) out.push(child);
+      out.push(...child._walk(fn));
+    }
+    return out;
+  }
+  _matches(sel) {
+    return sel.split(',').some((part) => {
+      const s = part.trim();
+      const cls = s.match(/^\.([A-Za-z0-9_-]+)$/);
+      if (cls) return this.classList.contains(cls[1]);
+      const attr = s.match(/^\[data-([a-z-]+)(?:="([^"]*)")?\]$/);
+      if (!attr) return false;
+      const key = attr[1].replace(/-(\w)/g, (_, c) => c.toUpperCase());
+      return attr[2] === undefined ? this.dataset[key] !== undefined : this.dataset[key] === attr[2];
+    });
+  }
+  querySelector(sel) { return this._walk((n) => n._matches(sel))[0] || null; }
+  querySelectorAll(sel) { return this._walk((n) => n._matches(sel)); }
   // The DOM methods Vigil's renderers use on a host, in terms of the one child
   // store. clear() only empties: children and text are separate stores here, so
   // dropping text as a side effect would wipe what an earlier test put there.
   replaceChildren(...nodes) { this.children = [...nodes]; }
-  removeChild(c) { this.children = this.children.filter((x) => x !== c); return c; }
+  removeChild(c) { this.children = this.children.filter((x) => x !== c); c._parent = null; return c; }
   addEventListener() {}
-  querySelector() { return null; }
-  querySelectorAll() { return []; }
-  closest() { return null; }
+  closest(sel) { return this._parent && this._parent._matches(sel) ? this._parent : null; }
 }
 
 export function load(...files) {

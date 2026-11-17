@@ -98,7 +98,7 @@ function closeDeviceModal() {
 
 /* ── Checks: what a poller reports about this device (S9) ─────────────────── */
 
-const DEVICE_CHECK_KINDS = { icmp: 'Ping', tcp: 'TCP', http: 'HTTP', dns: 'DNS' };
+const DEVICE_CHECK_KINDS = { icmp: 'Ping', tcp: 'TCP', http: 'HTTP', dns: 'DNS', snmp: 'SNMP' };
 const NO_POLLER_HINT = 'No results yet: is a poller assigned? See Settings > Agents for hosts with poller: true';
 
 let _checkDeviceId = null;
@@ -107,6 +107,10 @@ let _openCheckId = null;
 let _checkChart = null;
 // The element the rows and their chart hosts live under — #device-checks-list.
 let _chartHost = null;
+// The checks the last loadDeviceChecks drew, by id: an expanded row needs its
+// check to know its kind and its latest result's values.
+const _loadedChecks = new Map();
+let _checkValues = null;
 
 function _deviceEl(id) {
   return document.getElementById(id);
@@ -141,6 +145,9 @@ function _checkLabel(check) {
   if (check.kind === 'tcp') target = [p.host, p.port].filter(x => x !== undefined && x !== null && x !== '').join(':');
   else if (check.kind === 'http') target = p.url || '';
   else if (check.kind === 'dns') target = p.name || '';
+  // SNMP defaults to 161 and the server stores no port for it, so a stored port
+  // is the exception worth naming.
+  else if (check.kind === 'snmp') target = [p.host, p.port].filter(x => x !== undefined && x !== null && x !== '').join(':');
   else target = p.host || '';
   return `${DEVICE_CHECK_KINDS[check.kind] || check.kind}${target ? ` ${target}` : ''}`;
 }
@@ -217,6 +224,57 @@ function _checkRow(check) {
   return { row, chart };
 }
 
+/** Line-oriented "label = OID" editor for an SNMP check. The server validates
+ *  labels and OIDs and answers with one sentence of its own, so this only splits. */
+function parseSnmpOids(text) {
+  const oids = [];
+  const lines = String(text || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith('#')) continue;
+    const at = line.indexOf('=');
+    // Only the first '=' splits; anything after it belongs to the OID.
+    if (at < 0) return { oids: [], error: `Line ${i + 1}: write label = OID` };
+    oids.push({ label: line.slice(0, at).trim(), oid: line.slice(at + 1).trim() });
+  }
+  return { oids, error: null };
+}
+
+function _snmpUptime(seconds) {
+  const s = Number(seconds);
+  if (!Number.isFinite(s) || s < 0) return '-';
+  const parts = [Math.floor(s / 86400), Math.floor(s / 3600) % 24, Math.floor(s / 60) % 60];
+  const units = ['d', 'h', 'm'];
+  const firstKept = parts.findIndex((n) => n > 0);
+  if (firstKept < 0) return '0m';
+  // "3d 4h 5m", then whatever the largest non-zero unit leaves: 5m, not 0d 0h 5m.
+  const kept = parts.slice(firstKept, firstKept + 2);
+  return kept.map((n, i) => `${n}${units[firstKept + i]}`).join(' ');
+}
+
+/** One <dt>/<dd> pair per value of an SNMP result, Name and Uptime first. Only
+ *  ever with textContent: every one of these values comes back from a device. */
+function _snmpValuesList(extra) {
+  const ORDER = ['sys_name', 'uptime_s'];
+  const NAMES = { sys_name: 'Name', uptime_s: 'Uptime' };
+  // 'kind' and 'target' repeat what the row itself already says.
+  const keys = Object.keys(extra || {}).filter((k) => k !== 'kind' && k !== 'target');
+  const ordered = ORDER.filter((k) => keys.includes(k)).concat(keys.filter((k) => !ORDER.includes(k)));
+  const dl = document.createElement('dl');
+  dl.className = 'device-check-values';
+  for (const key of ordered) {
+    const value = extra[key];
+    const dt = document.createElement('dt');
+    dt.textContent = NAMES[key] || key;
+    const dd = document.createElement('dd');
+    dd.textContent = key === 'uptime_s' ? _snmpUptime(value)
+      : (value === null || value === undefined ? '-' : String(value));
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+  }
+  return dl;
+}
+
 async function loadDeviceChecks(deviceId) {
   const list = _deviceEl('device-checks-list');
   if (!list) return;
@@ -246,13 +304,22 @@ async function loadDeviceChecks(deviceId) {
     list.appendChild(built.row);
     list.appendChild(built.chart);
   }
+  // The checks this answer drew, by id: an expanded row reads its own back out
+  // to know its kind and the values of its newest result.
+  _loadedChecks.clear();
+  for (const check of checks) _loadedChecks.set(String(check.id), check);
 }
 
 function collapseDeviceCheckChart() {
   if (_checkChart) { _checkChart.destroy(); _checkChart = null; }
+  // An SNMP row's values are drawn under the chart, in the same container, so
+  // they go whenever the chart goes.
+  if (_checkValues) { _checkValues.remove(); _checkValues = null; }
   // The host we last rendered into, tracked here rather than queried: the rows
   // are replaced on every reload and there is exactly one list in the modal.
   if (_chartHost) {
+    // Emptied on the way out: one expansion at a time, and its canvas is not
+    // ours to keep — Chart.js would meet a busy canvas on the next one.
     for (const holder of _chartHost.querySelectorAll('.device-check-chart')) {
       holder.replaceChildren();
       holder.hidden = true;
@@ -277,7 +344,9 @@ async function toggleDeviceCheckChart(row) {
   collapseDeviceCheckChart();
   _openCheckId = checkId;
   holder.hidden = false;
-  holder.replaceChildren();
+  // The container the chart lives in: an expanded row hangs its values list
+  // under the chart, in this same element.
+  const expanded = holder.parentElement || holder;
 
   let results = [];
   try {
@@ -296,9 +365,16 @@ async function toggleDeviceCheckChart(row) {
     holder.appendChild(note);
     return;
   }
-
   const canvas = document.createElement('canvas');
   holder.appendChild(canvas);
+  // An SNMP check has values to show beside the line: its device's name and
+  // uptime and whatever OIDs the operator asked for, from the newest result.
+  const check = _loadedChecks.get(String(checkId));
+  const extra = check && check.latest ? check.latest.extra : null;
+  if (check && check.kind === 'snmp' && extra && Object.keys(extra).length) {
+    _checkValues = _snmpValuesList(extra);
+    expanded.appendChild(_checkValues);
+  }
   _checkChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
@@ -324,10 +400,16 @@ async function toggleDeviceCheckChart(row) {
 }
 
 function setDeviceCheckKind(select) {
-  const port = _deviceEl('device-check-port');
-  if (!port) return;
   const kind = select && 'value' in select ? select.value : (select || 'icmp');
-  port.hidden = kind !== 'tcp';
+  const port = _deviceEl('device-check-port');
+  if (port) {
+    port.hidden = kind !== 'tcp' && kind !== 'snmp';
+    port.placeholder = kind === 'snmp' ? 'Port (161)' : 'Port';
+  }
+  const community = _deviceEl('device-check-community');
+  if (community) community.hidden = kind !== 'snmp';
+  const oids = _deviceEl('device-check-oids');
+  if (oids) oids.hidden = kind !== 'snmp';
 }
 
 async function addDeviceCheck() {
@@ -335,6 +417,8 @@ async function addDeviceCheck() {
   const kind = _deviceEl('device-check-kind').value;
   const target = _deviceEl('device-check-target').value.trim();
   const portRaw = _deviceEl('device-check-port').value.trim();
+  const communityBox = _deviceEl('device-check-community');
+  const oidsBox = _deviceEl('device-check-oids');
   const interval = parseInt(_deviceEl('device-check-interval').value, 10);
 
   let params;
@@ -343,14 +427,27 @@ async function addDeviceCheck() {
   else if (kind === 'tcp') params = { host: target, port: parseInt(portRaw, 10) };
   else params = { host: target };
 
+  const body = { kind, params, interval_seconds: interval };
+  if (kind === 'snmp') {
+    if (portRaw) params.port = parseInt(portRaw, 10);
+    const parsed = parseSnmpOids(oidsBox.value);
+    // A malformed line is ours to catch: nothing goes out until it reads.
+    if (parsed.error) { showToast(parsed.error, 'error'); return; }
+    if (parsed.oids.length) params.oids = parsed.oids;
+    // Untrimmed: a community's spaces are the operator's, not ours to drop.
+    if (communityBox.value) body.community = communityBox.value;
+  }
+
   try {
     await apiJson(`/api/v1/hosts/devices/${_checkDeviceId}/checks/`, {
       method: 'POST',
-      body: JSON.stringify({ kind, params, interval_seconds: interval }),
+      body: JSON.stringify(body),
     });
     showToast('Check added', 'success');
     _deviceEl('device-check-target').value = '';
     _deviceEl('device-check-port').value = '';
+    communityBox.value = '';
+    oidsBox.value = '';
     loadDeviceChecks(_checkDeviceId);
   } catch (e) {
     // The server refuses a bad target with one sentence in `error`.

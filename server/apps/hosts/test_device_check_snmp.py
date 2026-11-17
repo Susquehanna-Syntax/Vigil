@@ -190,6 +190,54 @@ class SnmpCommunityApiTests(TestCase):
         self.assertNotIn(COMMUNITY.encode(), created.content)
 
 
+class SnmpLatestValuesTests(TestCase):
+    """The editor reads an SNMP check's values out of the list answer — there is
+    no second endpoint for them — so ``latest.extra`` has to carry them, and the
+    community must still be nowhere in what comes back."""
+
+    def setUp(self):
+        from django.utils import timezone
+
+        admin = get_user_model().objects.create_user(username="admin-" + uuid4().hex[:8])
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        self.client = APIClient()
+        self.client.force_authenticate(admin)
+        self.device = UnmanagedDevice.objects.create(name="sw-01", device_type="switch")
+        self.url = f"/api/v1/hosts/devices/{self.device.id}/checks/"
+        self.check = DeviceCheck.objects.create(
+            device=self.device, kind=DeviceCheck.Kind.SNMP,
+            params=_snmp_params(oids=[{"oid": "1.3.6.1.2.1.2.2.1.10.1", "label": "if_in"}]),
+            secret=encrypt_secret(COMMUNITY))
+        self.timezone = timezone
+
+    def _store(self, extra):
+        from apps.hosts.models import CheckResult
+
+        return CheckResult.objects.create(device_check=self.check, time=self.timezone.now(),
+                                          ok=True, latency_ms=4.0, detail="up", extra=extra)
+
+    def test_the_newest_results_values_come_back_with_the_check(self):
+        listed = self.client.get(self.url)
+        self.assertIsNone(listed.data[0]["latest"])
+
+        self._store({"kind": "snmp", "target": "10.0.0.5", "sys_name": "sw-01",
+                     "uptime_s": 3600, "if_in": 91234})
+        latest = self.client.get(self.url).data[0]["latest"]
+        self.assertEqual(latest["extra"], {"kind": "snmp", "target": "10.0.0.5",
+                                           "sys_name": "sw-01", "uptime_s": 3600,
+                                           "if_in": 91234})
+
+    def test_the_community_is_still_nowhere_in_the_answer(self):
+        # A stored result is the only new thing in the answer, and it never
+        # holds a community: an agent never puts one in a result.
+        self._store({"sys_name": "sw-01", "uptime_s": 3600})
+        listed = self.client.get(self.url)
+        self.assertEqual(listed.status_code, 200)
+        self.assertTrue(listed.data[0]["has_community"])
+        self.assertNotIn(COMMUNITY.encode(), listed.content)
+        self.assertNotIn(b'"community"', listed.content)
+
+
 class SnmpSignedListTests(TestCase):
     def setUp(self):
         self.poller = make_host("p1", "tok-p1-" + "b" * 32, poller=True)

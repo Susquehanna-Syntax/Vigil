@@ -706,6 +706,7 @@ class HostsDeviceCheckLatestSerializer(serializers.Serializer):
     latency_ms = serializers.FloatField(allow_null=True)
     detail = serializers.CharField()
     time = serializers.DateTimeField()
+    extra = serializers.DictField(help_text="Kind-specific values of the newest result, for example an SNMP check's labelled OIDs.")
 
 
 class HostsDeviceCheckSerializer(serializers.Serializer):
