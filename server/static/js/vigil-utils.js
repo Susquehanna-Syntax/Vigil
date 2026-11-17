@@ -54,6 +54,48 @@ function showToast(message, type) {
   setTimeout(() => toast.remove(), 4000);
 }
 
+/**
+ * Draw a failed load in place of the content: what could not be loaded, the
+ * error's own message, and a Try again button that reruns the load.
+ * @param {HTMLElement | null} container
+ * @param {string} what   e.g. 'alerts', 'the task library'
+ * @param {unknown} err
+ * @param {(() => unknown) | null} [retry]
+ */
+function showLoadFailure(container, what, err, retry) {
+  if (!container) return;
+  const block = document.createElement('div');
+  block.className = 'load-failed';
+  block.setAttribute('role', 'alert');
+
+  const title = document.createElement('div');
+  title.className = 'load-failed-title';
+  title.textContent = `Could not load ${what}`;
+  block.appendChild(title);
+
+  const raw = err && typeof /** @type {{message?: unknown}} */ (err).message === 'string'
+    ? /** @type {{message: string}} */ (err).message
+    : String(err);
+  const message = raw.trim();
+  if (message) {
+    const desc = document.createElement('div');
+    desc.className = 'load-failed-desc';
+    desc.textContent = message;
+    block.appendChild(desc);
+  }
+
+  if (typeof retry === 'function') {
+    const button = document.createElement('button');
+    button.setAttribute('type', 'button');
+    button.className = 'btn btn-outline btn-sm';
+    button.textContent = 'Try again';
+    button.addEventListener('click', () => { retry(); });
+    block.appendChild(button);
+  }
+
+  container.replaceChildren(block);
+}
+
 async function apiPost(url) {
   const resp = await fetch(url, {
     method: 'POST',

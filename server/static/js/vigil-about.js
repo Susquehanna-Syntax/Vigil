@@ -23,14 +23,7 @@ async function refreshAbout() {
     _renderHealth();
   } catch (e) {
     // 401 only happens if a logged-out client somehow hits this; show a hint.
-    const wrap = document.getElementById('about-scanners');
-    if (wrap) {
-      wrap.replaceChildren();
-      const err = document.createElement('div');
-      err.style.color = 'var(--text-3)';
-      err.textContent = 'Failed to load: ' + e.message;
-      wrap.appendChild(err);
-    }
+    showLoadFailure(document.getElementById('about-scanners'), 'the instance details', e, () => refreshAbout());
   } finally {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }

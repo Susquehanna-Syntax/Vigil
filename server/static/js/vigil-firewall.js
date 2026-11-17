@@ -119,7 +119,11 @@ async function loadFirewallSnapshot(hostId) {
   try {
     data = await apiJson(`/api/v1/hosts/${hostId}/firewall/`);
   } catch (e) {
-    showToast('Failed to load firewall state: ' + e.message, 'error');
+    const stateEl = document.getElementById('firewall-state');
+    stateEl.style.display = '';
+    document.getElementById('firewall-rules').style.display = 'none';
+    document.getElementById('firewall-empty').style.display = 'none';
+    showLoadFailure(stateEl, 'the firewall state', e, () => loadFirewallSnapshot(hostId));
     return;
   }
   _fwRender(hostId, data);

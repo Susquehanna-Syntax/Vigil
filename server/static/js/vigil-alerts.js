@@ -180,7 +180,7 @@ async function refreshAlerts() {
     _renderAlertCounts();
     _updateBulkBar();
   } catch (e) {
-    showToast('Failed to load alerts: ' + e.message, 'error');
+    showLoadFailure(document.getElementById('alerts-list-firing'), 'alerts', e, () => refreshAlerts());
   }
 }
 

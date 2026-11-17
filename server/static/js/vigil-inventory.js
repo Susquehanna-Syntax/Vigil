@@ -187,11 +187,7 @@ async function refreshInventory() {
     inventoryState.customColumns = data.custom_columns || [];
     renderInventory();
   } catch (e) {
-    const content = document.getElementById('inv-content');
-    const msg = document.createElement('div');
-    msg.className = 'inv-empty';
-    msg.textContent = 'Failed to load inventory: ' + e.message;
-    content.replaceChildren(msg);
+    showLoadFailure(document.getElementById('inv-content'), 'the inventory', e, () => refreshInventory());
   }
 }
 

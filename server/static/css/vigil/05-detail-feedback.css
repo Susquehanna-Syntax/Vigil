@@ -111,6 +111,10 @@
   max-width: 400px; margin: 0 auto 24px; line-height: 1.6;
 }
 
+.load-failed { text-align: center; padding: 32px 16px; }
+.load-failed-title { font-size: 14px; font-weight: 500; color: var(--text-1); }
+.load-failed-desc { font-size: 13px; color: var(--text-2); margin: 6px auto 14px; max-width: 480px; overflow-wrap: anywhere; }
+
 .code-block {
   background: var(--s1); border-radius: var(--r-md);
   padding: 18px;

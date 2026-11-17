@@ -171,7 +171,7 @@ async function refreshRollouts() {
     _rolloutState.items = items;
     _renderRollouts();
   } catch (e) {
-    box.innerHTML = `<div class="empty-state" style="padding:28px;"><div class="empty-state-title">Failed to load rollouts: ${escHtml(e.message)}</div></div>`;
+    showLoadFailure(box, 'rollouts', e, () => refreshRollouts());
   }
   _scheduleRolloutPolling();
 }

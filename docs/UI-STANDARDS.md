@@ -99,6 +99,9 @@ Leaving is 0.7× as long as arriving.
   (`role="switch"`, `aria-checked`).
 - **Empty states:** use muted `--text-3` text in the space the content would
   fill, and name the next step.
+- **Load failures:** call `showLoadFailure(container, what, err, retry)` in the
+  `catch` of a page's main load, so the failure sits where the content would
+  and offers Try again. A toast is for a failed action, not a failed load.
 - **Polling:** use `pollingInterval()` and `clearPollingInterval()`, never
   bare `setInterval`. A test enforces this.
 - **Event handlers:** no inline handlers. Use `data-act="fnName"` (with

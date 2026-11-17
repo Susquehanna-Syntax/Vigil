@@ -234,7 +234,7 @@ async function refreshTaskLibrary(archived) {
       '/api/v1/tasks/definitions/?scope=mine' + (archived ? '&archived=1' : ''));
     _renderTaskGrid('library');
   } catch (e) {
-    showToast('Failed to load library: ' + e.message, 'error');
+    showLoadFailure(document.getElementById('task-library-grid'), 'the task library', e, () => refreshTaskLibrary(archived));
   }
 }
 

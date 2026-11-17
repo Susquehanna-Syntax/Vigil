@@ -56,6 +56,12 @@ class StubElement {
     const at = list.indexOf(fn);
     if (at >= 0) list.splice(at, 1);
   }
+  // replaceChildren() detaches, as the DOM's: a detached node hears no events.
+  replaceChildren(...kids) {
+    for (const c of this.children) c.parent = null;
+    this.children = [];
+    for (const k of kids) this.appendChild(k);
+  }
   // capture → target → bubble, as the DOM's.
   dispatchEvent(ev) {
     if (ev.target === null || ev.target === undefined) ev.target = this;

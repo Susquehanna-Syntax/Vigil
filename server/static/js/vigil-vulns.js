@@ -460,12 +460,7 @@ async function _loadFindingsInto(container, summary) {
   try {
     findings = await apiJson(`/api/v1/vulns/findings/?host=${summary.host}&state=open`);
   } catch (e) {
-    container.replaceChildren();
-    const err = document.createElement('div');
-    err.style.color = 'var(--text-3)';
-    err.style.fontSize = '12px';
-    err.textContent = 'Failed to load findings: ' + e.message;
-    container.appendChild(err);
+    showLoadFailure(container, 'the findings', e, () => _loadFindingsInto(container, summary));
     return;
   }
 
