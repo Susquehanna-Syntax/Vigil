@@ -135,6 +135,7 @@ ALLOWLIST = {
     "login/verify/key/options/": "sign-in flow",
     "login/verify/key/": "sign-in flow",
     "logout/": "sign-in flow",
+    "ui-kit/": "component gallery, admins only; it renders no rows at all",
     "accounts/civil/login/": "sign-in flow",
     "accounts/civil/callback": "sign-in flow",
     "api/v1/register": "agent-token auth",

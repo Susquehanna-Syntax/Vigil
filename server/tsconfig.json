@@ -25,6 +25,7 @@
     "static/js/vigil-about.js",
     "static/js/vigil-terminal.js",
     "static/js/vigil-nav.js",
+    "static/js/vigil-ui-kit.js",
     "static/js/vigil-settings-access.js",
     "static/js/vigil-statuspages.js",
     "static/js/vigil-sitepick.js",

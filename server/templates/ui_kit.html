@@ -1,0 +1,226 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI kit</title>
+{# SQSY typefaces, self-hosted — see static/css/fonts.css #}
+<link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+{% include "_stylesheets.html" %}
+<link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
+<link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
+</head>
+<body class="ui-kit">
+
+<section class="kit-section" id="kit-header">
+  <h1>UI kit</h1>
+  <p class="page-sub">Every shared component, with the live stylesheets. Admins only.</p>
+  <div class="kit-row">
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="dark">Dark</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="light">Light</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="ink">Ink</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="river">River</button>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-colours">
+  <h2>Colours</h2>
+  <div class="kit-swatches" id="kit-swatches"></div>
+</section>
+
+<section class="kit-section" id="kit-buttons">
+  <h2>Buttons</h2>
+  <div class="kit-row">
+    <button type="button" class="btn btn-mint">btn-mint</button>
+    <button type="button" class="btn btn-rose">btn-rose</button>
+    <button type="button" class="btn btn-sky">btn-sky</button>
+    <button type="button" class="btn btn-lav">btn-lav</button>
+    <button type="button" class="btn btn-peach">btn-peach</button>
+    <button type="button" class="btn btn-lemon">btn-lemon</button>
+    <button type="button" class="btn btn-outline">btn-outline</button>
+    <button type="button" class="btn btn-ghost">btn-ghost</button>
+  </div>
+  <div class="kit-row">
+    <button type="button" class="btn btn-mint btn-sm">btn-mint btn-sm</button>
+    <button type="button" class="btn btn-rose btn-sm">btn-rose btn-sm</button>
+    <button type="button" class="btn btn-sky btn-sm">btn-sky btn-sm</button>
+    <button type="button" class="btn btn-lav btn-sm">btn-lav btn-sm</button>
+    <button type="button" class="btn btn-peach btn-sm">btn-peach btn-sm</button>
+    <button type="button" class="btn btn-lemon btn-sm">btn-lemon btn-sm</button>
+    <button type="button" class="btn btn-outline btn-sm">btn-outline btn-sm</button>
+    <button type="button" class="btn btn-ghost btn-sm">btn-ghost btn-sm</button>
+  </div>
+  <div class="kit-row">
+    <button type="button" class="btn btn-mint btn-xs">btn-mint btn-xs</button>
+    <button type="button" class="btn btn-rose btn-xs">btn-rose btn-xs</button>
+    <button type="button" class="btn btn-sky btn-xs">btn-sky btn-xs</button>
+    <button type="button" class="btn btn-lav btn-xs">btn-lav btn-xs</button>
+    <button type="button" class="btn btn-peach btn-xs">btn-peach btn-xs</button>
+    <button type="button" class="btn btn-lemon btn-xs">btn-lemon btn-xs</button>
+    <button type="button" class="btn btn-outline btn-xs">btn-outline btn-xs</button>
+    <button type="button" class="btn btn-ghost btn-xs">btn-ghost btn-xs</button>
+  </div>
+  <div class="kit-row">
+    <button type="button" class="btn btn-mint" disabled>btn-mint</button>
+    <button type="button" class="btn btn-rose" disabled>btn-rose</button>
+    <button type="button" class="btn btn-sky" disabled>btn-sky</button>
+    <button type="button" class="btn btn-lav" disabled>btn-lav</button>
+    <button type="button" class="btn btn-peach" disabled>btn-peach</button>
+    <button type="button" class="btn btn-lemon" disabled>btn-lemon</button>
+    <button type="button" class="btn btn-outline" disabled>btn-outline</button>
+    <button type="button" class="btn btn-ghost" disabled>btn-ghost</button>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-chips">
+  <h2>Chips</h2>
+  <div class="kit-row">
+    <span class="chip">chip</span>
+    <span class="chip chip-mint">chip-mint</span>
+    <span class="chip chip-lemon">chip-lemon</span>
+    <span class="chip chip-rose">chip-rose</span>
+    <span class="chip chip-muted">chip-muted</span>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-tabs">
+  <h2>Tabs</h2>
+  <div class="page active">
+    <div class="tab-bar" data-tab-group="kit" role="tablist">
+      <button type="button" class="tab active" data-tab="kit-tab-a">First</button>
+      <button type="button" class="tab" data-tab="kit-tab-b">Second</button>
+      <button type="button" class="tab" data-tab="kit-tab-c">Third</button>
+    </div>
+    <div class="tab-content active" id="kit-tab-a"><p>The first panel. A tab bar switches these panels.</p></div>
+    <div class="tab-content" id="kit-tab-b"><p>The second panel, reached by a click or an arrow key.</p></div>
+    <div class="tab-content" id="kit-tab-c"><p>The third panel. The bar scrolls sideways on a phone.</p></div>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-forms">
+  <h2>Forms</h2>
+  <div class="form-group">
+    <label class="form-label" for="kit-text">Text</label>
+    <input class="form-control" type="text" id="kit-text" placeholder="Type something">
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="kit-select">Choice</label>
+    <select class="form-control" id="kit-select">
+      <option>First option</option>
+      <option>Second option</option>
+      <option>Third option</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="kit-textarea">Long text</label>
+    <textarea class="form-control" id="kit-textarea" rows="3" placeholder="A few lines"></textarea>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="kit-number">Number</label>
+    <input class="form-control" type="number" id="kit-number" min="0" max="10" value="3">
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="kit-check">Checkbox</label>
+    <input id="kit-check" type="checkbox">
+  </div>
+</section>
+
+<section class="kit-section" id="kit-settings-rows">
+  <h2>Settings rows</h2>
+  <div class="set-row">
+    <div><b>Notify on critical alerts</b><small>Email the on-call address when an alert is rose</small></div>
+    <button type="button" class="toggle" role="switch" aria-checked="true" tabindex="0" aria-label="Notify on critical alerts"></button>
+  </div>
+  <div class="set-row">
+    <div><b>Mute weekend patches</b><small>Keep the patch window on weekdays only</small></div>
+    <button type="button" class="toggle" role="switch" aria-checked="false" tabindex="0" aria-label="Mute weekend patches"></button>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-tables">
+  <h2>Tables</h2>
+  <div class="table-wrap">
+    <table class="hunt-table">
+      <thead>
+        <tr><th>Host</th><th>Finding</th><th class="num">Count</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>matrix-db-01</td><td>openssl 1.1.1 outdated</td><td class="num">14</td></tr>
+        <tr><td>atlas-edge-02</td><td>ssh permits root login</td><td class="num">2</td></tr>
+        <tr><td>ledger-web-03</td><td>certificate expires in 9 days</td><td class="num">1</td></tr>
+        <tr><td>quay-build-04</td><td>kernel 5.15 needs a reboot</td><td class="num">7</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-empty-state">
+  <h2>Empty state</h2>
+  <div class="empty-state">
+    <div class="empty-state-icon">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    </div>
+    <div class="empty-state-title">Nothing to see yet</div>
+    <p class="empty-state-desc">No alerts match this filter. Add a host, or clear the filters above.</p>
+  </div>
+</section>
+
+<section class="kit-section" id="kit-dialogs">
+  <h2>Dialogs</h2>
+  <div class="kit-row">
+    <button type="button" class="btn btn-sky btn-sm" data-act="kitRise">Open a Rise dialog</button>
+    <button type="button" class="btn btn-lav btn-sm" data-act="kitPop">Open a Pop dialog</button>
+    <button type="button" class="btn btn-peach btn-sm" data-act="kitSheet">Open a sheet</button>
+    <button type="button" class="btn btn-mint btn-sm" data-act="kitConfirm">Open a confirm</button>
+    <button type="button" class="btn btn-rose btn-sm" data-act="kitShake">Shake the text field</button>
+  </div>
+</section>
+
+<div class="modal-overlay" id="kit-rise-overlay">
+  <div class="modal" id="kit-rise-modal" role="dialog" aria-modal="true" aria-label="Rise dialog">
+    <div class="modal-title"><span>Rise — the default dialog</span></div>
+    <p>The plain <code>.modal</code>, for forms, editors and read-mostly detail. Esc closes this one only.</p>
+    <div class="kit-row">
+      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitRise">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="kit-pop-overlay">
+  <div class="modal m-pop" id="kit-pop-modal" role="dialog" aria-modal="true" aria-label="Pop dialog">
+    <div class="modal-title"><span>Pop — small quick decisions</span></div>
+    <p><code>.m-pop</code>, for confirms, prompts and one-line choices.</p>
+    <div class="kit-row">
+      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitPop">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="kit-sheet-overlay">
+  <div class="modal m-pop m-sheet-sm" id="kit-sheet-modal" role="dialog" aria-modal="true" aria-label="Sheet dialog">
+    <div class="modal-title"><span>Sheet — a picker on a phone</span></div>
+    <p><code>.m-pop .m-sheet-sm</code>: a pop on a desktop, a bottom sheet under 600 pixels.</p>
+    <div class="kit-row">
+      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitSheet">Close</button>
+    </div>
+  </div>
+</div>
+
+<section class="kit-section" id="kit-toasts">
+  <h2>Toasts</h2>
+  <div class="kit-row">
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="success">Success</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="error">Error</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="info">Info</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="warn">Warning</button>
+  </div>
+</section>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="{% static 'js/vigil-utils.js' %}"></script>
+<script src="{% static 'js/vigil-modal.js' %}"></script>
+<script src="{% static 'js/vigil-nav.js' %}"></script>
+<script src="{% static 'js/vigil-ui-kit.js' %}"></script>
+</body>
+</html>
