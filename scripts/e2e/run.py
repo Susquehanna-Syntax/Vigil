@@ -176,7 +176,7 @@ def axe_findings(s: Session, source: str) -> tuple[list[tuple[str, str]], list[d
     # page.evaluate runs outside the content Security-Policy; a script tag would be blocked.
     s.page.evaluate(source)
     violations = s.page.evaluate(
-        """([tags]) => axe.run(document, {
+        """tags => axe.run(document, {
              runOnly: {type: "tag", values: tags},
              resultTypes: ["violations"]
            }).then(r => r.violations)""",
@@ -206,7 +206,9 @@ def axe_pages(s: Session):
         return
     found: list[str] = []
     report: dict[str, list] = {}
-    for name in ["events", "projects", "alerts", "servers", "audit", "users", "settings"]:
+    pages = s.page.eval_on_selector_all(".sidebar-icon[data-page]", "els => els.map(e => e.dataset.page)")
+    assert len(pages) > 10, pages
+    for name in pages:
         s.go(name)
         for theme in ("dark", "light"):
             s.page.evaluate("t => setTheme(t)", theme)
@@ -233,7 +235,6 @@ def axe_pages(s: Session):
     assert errors == [], errors
 
 
-@flow("approve a pending host with a TOTP code")
 @flow("approve a pending host with a TOTP code")
 def approve_host(s: Session):
     pending = [h for h in s.api("/api/v1/hosts/") if h["hostname"] == "e2e-pending-1"]

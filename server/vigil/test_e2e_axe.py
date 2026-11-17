@@ -47,6 +47,15 @@ class AxeSuiteTests(SimpleTestCase):
         main = RUN_PY.read_text().split("def main()")[1]
         self.assertLess(main.index("every_page(admin)"), main.index("axe_pages(admin)"))
 
+    def test_axe_reads_the_pages_from_the_sidebar(self):
+        # A hand-written list goes stale as pages are added; the sidebar is the truth.
+        flow = RUN_PY.read_text().split("def axe_pages(")[1].split("\n@flow(")[0]
+        self.assertIn('.sidebar-icon[data-page]', flow)
+
+    def test_no_flow_is_decorated_twice(self):
+        # A doubled @flow wraps the flow's own catch, so a failure reads as a pass.
+        self.assertNotRegex(RUN_PY.read_text(), r"(?m)^@flow\(.*\)\n@flow\(")
+
     def test_axe_is_injected_with_evaluate_not_a_script_tag(self):
         # a page-level script tag is rejected by the content Security-Policy
         # headers; page.evaluate runs outside them.
