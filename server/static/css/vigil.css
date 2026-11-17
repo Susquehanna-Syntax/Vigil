@@ -2161,7 +2161,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .dev-state-dot--down { background: var(--rose); }
 
 /* Checks inside the device editor (S9). A row is a compact grid: dot, label,
-   latency, detail, age, actions. Colour comes from the tokens only, and the
+   latency, age, actions, with the latest detail on a second line under the
+   label (the modal is too narrow for it to share the first). Colour comes from the tokens only, and the
    state is carried by the dot — never a coloured line down one side. */
 .device-checks-list {
   display: flex;
@@ -2171,9 +2172,11 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .device-check-row {
   display: grid;
-  grid-template-columns: 10px minmax(120px, 1.3fr) auto minmax(0, 2fr) auto auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto auto;
+  grid-template-areas: "dot label latency age actions" ". detail detail detail detail";
   align-items: center;
-  gap: 10px;
+  column-gap: 10px;
+  row-gap: 2px;
   background: var(--s1);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
@@ -2184,31 +2187,36 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .device-check-row:hover { background: var(--s2); }
 .device-check-dot {
+  grid-area: dot;
   width: 8px; height: 8px;
   border-radius: 50%;
 }
 .device-check-dot--ok { background: var(--mint); }
 .device-check-dot--bad { background: var(--rose); }
 .device-check-dot--none { background: var(--text-3); }
-.device-check-label { color: var(--text-1); overflow-wrap: anywhere; }
+.device-check-label { grid-area: label; color: var(--text-1); overflow-wrap: anywhere; }
 .device-check-latency {
+  grid-area: latency;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
   color: var(--text-2);
 }
 .device-check-detail {
+  grid-area: detail;
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .device-check-age {
+  grid-area: age;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
   color: var(--text-3);
   white-space: nowrap;
 }
-.device-check-actions { display: inline-flex; gap: 6px; }
+.device-check-detail:empty { display: none; }
+.device-check-actions { grid-area: actions; display: inline-flex; align-items: center; gap: 6px; }
 .device-check-delete { color: var(--rose-ink); }
 .device-check-chart { height: 120px; margin: -2px 0 8px; }
 .device-check-note {
@@ -2222,8 +2230,11 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   gap: 8px;
   align-items: center;
 }
+.device-check-add .form-control { width: auto; }
+.device-check-add #device-check-kind { flex: 0 0 130px; }
 .device-check-add #device-check-target { flex: 1 1 180px; min-width: 140px; }
-.device-check-add #device-check-port { flex: 0 0 90px; width: 90px; }
+.device-check-add #device-check-port { flex: 0 0 90px; }
+.device-check-add #device-check-interval { flex: 1 1 160px; }
 
 /* SSH command modal */
 .ssh-cmd-row { display: flex; align-items: center; gap: 10px; }

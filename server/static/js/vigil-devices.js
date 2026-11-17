@@ -305,7 +305,7 @@ async function toggleDeviceCheckChart(row) {
       datasets: [{
         label: 'Latency',
         data: results.map(r => ({ x: new Date(r.time).getTime(), y: r.ok ? r.latency_ms : null })),
-        borderColor: tok('--mint'), borderWidth: 1.5, pointRadius: 2, fill: false, spanGaps: false,
+        borderColor: tok('--mint'), borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: false, spanGaps: false,
       }],
     },
     options: {
