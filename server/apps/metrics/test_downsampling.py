@@ -15,11 +15,17 @@ from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 
 from apps.hosts.models import Host
+from apps.metrics import rollups
 from apps.metrics.models import MetricPoint
 
 
 class DownsamplingTests(TestCase):
     def setUp(self):
+        # Longer ranges come from raw rows here on every database: TimescaleDB's
+        # continuous aggregates never see rows written inside a test transaction
+        # (test_rollups.py says the same and tests the views on their own).
+        rollups._views_present = False
+        self.addCleanup(setattr, rollups, "_views_present", None)
         self.user = get_user_model().objects.create_user("m", password="x")
         self.client.force_login(self.user)
         self.host = Host.objects.create(hostname="m1", ip_address="10.42.0.1",

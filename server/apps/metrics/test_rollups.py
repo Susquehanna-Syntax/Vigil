@@ -6,8 +6,8 @@ bucket, so a chart can draw a band and spikes still show. Ranges of 24 hours
 or less keep stride-sampling raw rows.
 
 On PostgreSQL with TimescaleDB the buckets come from the continuous
-aggregates; elsewhere they are computed from raw rows with the ORM. These run
-on SQLite unless a test says otherwise, so ``has_rollups()`` is False and
+aggregates; elsewhere they are computed from raw rows with the ORM. Every test
+starts with ``has_rollups()`` False, on SQLite and on TimescaleDB alike, so
 every bucket comes from raw rows: test 9 patches the PostgreSQL split in, and
 test 10 reads the real views where the database has them.
 
@@ -55,7 +55,11 @@ class PickBucketTests(TestCase):
 
 class BucketedHistoryTests(TestCase):
     def setUp(self):
-        rollups._views_present = None
+        # Buckets from raw rows on every database: a continuous aggregate only
+        # holds rows its refresh policy has materialised, which never happens
+        # inside a test's transaction, so on TimescaleDB (CI) the views would
+        # answer empty. The tests that want the views say so themselves.
+        rollups._views_present = False
         user = get_user_model().objects.create_user("m", password="x")
         self.client.force_login(user)
         self.host = Host.objects.create(hostname="m1", ip_address="10.42.0.1",
@@ -169,7 +173,9 @@ class BucketedHistoryTests(TestCase):
         self.assertEqual([row["value"] for row in r.json()], [0.0, 1.0, 2.0])
         self.assertEqual(r["X-Vigil-Truncated"], "1")
 
+    @skipUnless(connection.vendor == "sqlite", "has_rollups() looks for the views on PostgreSQL")
     def test_has_rollups_is_false_on_sqlite(self):
+        rollups._views_present = None
         self.assertFalse(rollups.has_rollups())
 
     def test_history_mixes_raw_newest_part_with_the_view_when_present(self):
