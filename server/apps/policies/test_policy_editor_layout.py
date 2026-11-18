@@ -1,7 +1,12 @@
-"""The policy editor's layout, pinned by source scan (no JS runner)."""
+"""The policy editor's layout, pinned by source scan (no JS runner).
+
+The template is read as the browser receives it: its copy now lives inside
+``{% translate %}`` tags, and only the rendered markup carries the text.
+"""
 import re
 from pathlib import Path
 
+from django.template import engines
 from django.test import SimpleTestCase
 
 from vigil.css_text import design_css
@@ -11,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class PolicyEditorLayoutTests(SimpleTestCase):
     def setUp(self):
-        self.html = (ROOT / "templates/pages/_policies.html").read_text(encoding="utf-8")
+        self.html = engines["django"].get_template("pages/_policies.html").render({})
         self.js = (ROOT / "static/js/vigil-policies.js").read_text(encoding="utf-8")
         self.css = design_css()
 
