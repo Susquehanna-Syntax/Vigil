@@ -488,7 +488,7 @@ function renderTopology() {
 function _topoSiteCount(data, siteId) {
   const hosts = data.hosts.filter(host => (host.site_id || '') === siteId);
   const online = hosts.filter(host => host.status === 'online').length;
-  return `${online}/${hosts.length} ${tn('{n} online', '{n} online', online)}`;
+  return t('{online}/{total} online', { online, total: hosts.length });
 }
 
 function _topoSelKey(card) {
@@ -833,7 +833,7 @@ function openTopoHost(id) {
   ];
   if (fw) {
     out.push('<div class="topo-p-rows"><div class="topo-p-line">'
-      + `${escHtml(fw.tool || t('firewall'))} ${fw.enabled ? t('on') : t('off')}` // i18n-ignore
+      + escHtml(t('{tool} is {state}', { tool: fw.tool || t('firewall'), state: fw.enabled ? t('on') : t('off') }))
       + `${fw.incoming ? `, ${escHtml(t('default incoming'))} ${escHtml(fw.incoming)}` : ''}</div>` // i18n-ignore
       + ((fw.allows || []).length
         ? `<div class="topo-p-chips">${fw.allows.map(port => `<span class="topo-pill">${escHtml(String(port))}</span>`).join('')}</div>`
@@ -861,7 +861,7 @@ function openTopoHost(id) {
     `<div class="topo-p-line"><span class="mono">${escHtml(e.ip)}</span> · ${escHtml(tn('{n} session', '{n} sessions', e.count))}` // i18n-ignore
     + `${(e.ports || []).length ? ` · ${escHtml(e.ports.join(', '))}` : ''}</div>`));
   out.push(`<div class="topo-p-foot">${host.network_at
-    ? `${t('Network data collected')} ${escHtml(timeAgo(host.network_at))}` // i18n-ignore
+    ? `${escHtml(t('Network data collected'))} ${escHtml(timeAgo(host.network_at))}` // i18n-ignore
       + `${host.partial ? ` · ${escHtml(t('reported incomplete'))}` : ''}`
     : escHtml(t('No network data yet. This host needs the 2026.14.4 agent.'))}</div>`);
   panel.hidden = false;
@@ -1005,7 +1005,7 @@ function _topoBanner() {
   }
   banner.hidden = false;
   /* The verb agrees with the host total: one host reads "has". */
-  banner.textContent = tn('{missing} of {total} host has not sent network data yet. They need the 2026.14.4 agent.', '{missing} of {total} hosts have not sent network data yet. They need the 2026.14.4 agent.', data.hosts.length, { missing }); // i18n-ignore
+  banner.textContent = tn('{missing} of {total} host has not sent network data yet. They need the 2026.14.4 agent.', '{missing} of {total} hosts have not sent network data yet. They need the 2026.14.4 agent.', data.hosts.length, { missing, total: data.hosts.length }); // i18n-ignore
 }
 
 delegateClick('[data-topo-tag]', (el) => {

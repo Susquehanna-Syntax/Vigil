@@ -33,6 +33,15 @@ function _communityKindWord(kind) {
   return kind;
 }
 
+/** The plural catalog noun for a kind, for "No community tasks yet". */
+/** @param {string} kind @returns {string} */
+function _communityKindPlural(kind) {
+  if (kind === 'tasks') return t('tasks');
+  if (kind === 'playbooks') return t('playbooks');
+  if (kind === 'automations') return t('automations');
+  return kind;
+}
+
 /** One catalog entry from /api/v1/tasks/community/<kind>/. */
 /** @typedef {{kind?: string, filename?: string, name?: string, description?: string, summary?: string,
  *  relevance?: string, author?: string, html_url?: string, risk_level?: string, uid?: string,
@@ -43,7 +52,7 @@ function _communityKindWord(kind) {
 function _communityEmptyHtml(kind) {
   const repo = `<a class="community-catalog-link" href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener">Vigil-Approved-Scripts</a>`; // i18n-ignore
   return `<div class="empty-state">
-    <div class="empty-state-title">${escHtml(t('No community {kind} yet', { kind: _communityKindWord(kind) }))}</div>
+    <div class="empty-state-title">${escHtml(t('No community {kind} yet', { kind: _communityKindPlural(kind) }))}</div>
     <div class="empty-state-desc">${t('They come from the public {repo} repo. Be the first to contribute — open one in its editor and use Submit to Community.', { repo })}</div>
   </div>`;
 }
@@ -81,20 +90,20 @@ function _isReferenced(item, keys) {
 function _requiresHtml(item) {
   const needs = item.requires || [];
   const held = item.have
-    ? `<div class="community-requires community-requires-held">${t('Already in your library.')}</div>`
+    ? `<div class="community-requires community-requires-held">${escHtml(t('Already in your library.'))}</div>`
     : '';
   if (!needs.length) return held;
   if (item.have) return held;
   const rows = needs.map(ref => {
     const held = ref.have === true;
     const mark = held
-      ? `<span class="community-require-held">${t('already yours')}</span>`
-      : `<span class="community-require-will">${t('will fork')}</span>`;
+      ? `<span class="community-require-held">${escHtml(t('already yours'))}</span>`
+      : `<span class="community-require-will">${escHtml(t('will fork'))}</span>`;
     return `<div class="community-require-row">
       <span class="community-require-name">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
   }).join('');
   return `<div class="community-requires">
-    <div class="community-require-count">${tn('{n} item', '{n} items', needs.length)}:</div>
+    <div class="community-require-count">${escHtml(tn('Pulls in {n} item:', 'Pulls in {n} items:', needs.length))}</div>
     ${rows}
   </div>`;
 }
@@ -104,16 +113,16 @@ function _communityCardHtml(item) {
   const meta = [];
   if (item.kind === 'tasks') {
     const actions = (item.parsed_spec?.actions || []).length;
-    meta.push(tn('{n} action', '{n} actions', actions));
+    meta.push(escHtml(tn('{n} action', '{n} actions', actions)));
   } else if (item.summary) {
     // This list is spliced into markup as-is, so every entry escapes itself.
     meta.push(escHtml(item.summary));
   }
   if (item.relevance) meta.push(escHtml(item.relevance));
-  if (item.author) meta.push(t('by {author}', { author: item.author }));
+  if (item.author) meta.push(escHtml(t('by {author}', { author: item.author })));
 
   const github = item.html_url
-    ? `<a class="btn btn-ghost btn-sm community-github-link" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>${t('View on GitHub')}</a>`
+    ? `<a class="btn btn-ghost btn-sm community-github-link" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>${escHtml(t('View on GitHub'))}</a>`
     : '';
   // Was built as a JS argument string: `'${item.kind}','${encodeURIComponent(
   // item.filename)}'` spliced into an onclick. encodeURIComponent is the wrong
@@ -169,7 +178,7 @@ function _renderCommunity(kind) {
   }
   if (!visible.length) {
     grid.innerHTML = `<div class="empty-state"><div class="empty-state-title">${escHtml(t('No matches'))}</div>
-      <div class="empty-state-desc">${escHtml(t('Nothing in {kind} matches “{query}”.', { kind: _communityKindWord(kind), query: q }))}</div></div>`;
+      <div class="empty-state-desc">${escHtml(t('Nothing in {kind} matches “{query}”.', { kind: _communityKindPlural(kind), query: q }))}</div></div>`;
     return;
   }
 
