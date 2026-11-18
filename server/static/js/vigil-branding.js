@@ -111,7 +111,7 @@ async function saveBranding() {
   const note = /** @type {HTMLElement} */ (document.getElementById('br-note'));
   const accent = /** @type {HTMLInputElement} */ (document.getElementById('br-accent')).value.trim();
   if (accent && !/^#[0-9A-Fa-f]{6}$/.test(accent)) {
-    note.textContent = 'Accent must be a hex color in the format #RRGGBB.';
+    note.textContent = t('Accent must be a hex color in the format #RRGGBB.');
     return;
   }
   const body = {
@@ -126,7 +126,7 @@ async function saveBranding() {
       method: 'PATCH', body: JSON.stringify(body),
     });
     note.textContent = '';
-    showToast('Branding saved', 'success');
+    showToast(t('Branding saved'), 'success');
     applyBranding(saved);
   } catch (e) {
     note.textContent = e.message;   // 402 upgrade body, 403, or validation error

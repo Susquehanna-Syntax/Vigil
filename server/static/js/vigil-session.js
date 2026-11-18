@@ -74,11 +74,11 @@ function _sessionWarn() {
     <div class="confirm-msg session-warn-msg" id="session-warn-msg"></div>
     <div class="confirm-actions" id="session-warn-actions"></div>`);
   m.modal.querySelector('#session-warn-title').textContent =
-    sessionState.limit === 'max' ? 'Your sign-in is ending' : 'Still there?';
+    sessionState.limit === 'max' ? t('Your sign-in is ending') : t('Still there?');
   const actions = m.modal.querySelector('#session-warn-actions');
   const signOut = document.createElement('button');
   signOut.className = 'btn btn-outline btn-sm';
-  signOut.textContent = 'Sign out now';
+  signOut.textContent = t('Sign out now');
   signOut.addEventListener('click', () => { location.href = '/logout/'; });
   actions.appendChild(signOut);
   // "Stay signed in" is an idle-only offer: the hard cap cannot be extended,
@@ -86,7 +86,7 @@ function _sessionWarn() {
   if (sessionState.limit === 'idle') {
     const stay = document.createElement('button');
     stay.className = 'btn btn-sm btn-mint';
-    stay.textContent = 'Stay signed in';
+    stay.textContent = t('Stay signed in');
     stay.addEventListener('click', () => {
       sessionState.lastBeat = 0;
       _sessionFetch('POST');

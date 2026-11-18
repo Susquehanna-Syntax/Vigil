@@ -44,6 +44,21 @@ JS_TRANSLATED: list[str] = [
     "static/js/vigil-firewall.js",
     "static/js/vigil-alerts.js",
     "static/js/vigil-sites.js",
+    "static/js/vigil-deeplink.js",
+    "static/js/vigil-host-reboot.js",
+    "static/js/vigil-search.js",
+    "static/js/vigil-branding.js",
+    "static/js/vigil-session.js",
+    "static/js/vigil-about.js",
+    "static/js/vigil-ui-kit.js",
+    "static/js/vigil-sitepick.js",
+    "static/js/vigil-terminal.js",
+    "static/js/vigil-contentyaml.js",
+    "static/js/vigil-usersites.js",
+    "static/js/vigil-users.js",
+    "static/js/vigil-community.js",
+    "static/js/vigil-statuspages.js",
+    "static/js/vigil-topology.js",
 ]
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)

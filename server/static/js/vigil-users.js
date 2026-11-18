@@ -16,7 +16,7 @@ async function loadUsers() {
   try {
     const data = await apiJson('/api/v1/accounts/users/');
     const seats = document.getElementById('users-seats');
-    if (seats) seats.textContent = `Seats: ${data.seats_used} / ${data.seats_allowed}`;
+    if (seats) seats.textContent = t('Seats: {used} / {allowed}', { used: data.seats_used, allowed: data.seats_allowed });
     const me = /** @type {string} */ ((/** @type {any} */ (window.VIGIL_CONFIG) && /** @type {any} */ (window.VIGIL_CONFIG).username) || '');
     /** @type {Record<string, any>} */
     const byId = {};
@@ -33,15 +33,15 @@ async function loadUsers() {
       // ids are integers. No free text goes into an attribute value.
       row.innerHTML =
         `<div class="user-row-main">` +
-          `<span class="user-row-name">${escHtml(u.username)}${isMe ? ' <span class="muted">(you)</span>' : ''}</span>` +
+          `<span class="user-row-name">${escHtml(u.username)}${isMe ? ` <span class="muted">${escHtml(t('(you)'))}</span>` : ''}</span>` +
           `<span class="user-row-email muted">${escHtml(u.email || '')}</span>` +
         `</div>` +
         `<div class="user-row-actions">` +
           (u.by_site
-            ? `<span class="muted user-role-bysite" data-tip="Set with the Sites button">By site</span>`
+            ? `<span class="muted user-role-bysite" data-tip="${escAttr(t('Set with the Sites button'))}">${escHtml(t('By site'))}</span>`
             : `<select class="form-control user-role-select" data-uid="${u.id}"${isMe ? ' disabled' : ''}>${opts}</select>`) +
-          `<button class="btn btn-sky btn-sm user-sites" data-uid="${u.id}">Sites</button>` +
-          (isMe ? '' : `<button class="btn btn-rose btn-sm user-del" data-uid="${u.id}">Delete</button>`) +
+          `<button class="btn btn-sky btn-sm user-sites" data-uid="${u.id}">${escHtml(t('Sites'))}</button>` +
+          (isMe ? '' : `<button class="btn btn-rose btn-sm user-del" data-uid="${u.id}">${escHtml(t('Delete'))}</button>`) +
         `</div>`;
       list.appendChild(row);
     });
@@ -59,7 +59,7 @@ async function loadUsers() {
       btn.addEventListener('click', () => deleteUser(btn.dataset.uid, u ? u.username : ''));
     });
   } catch (e) {
-    list.innerHTML = `<p class="muted">Could not load users: ${escHtml(e.message)}</p>`;
+    list.innerHTML = `<p class="muted">${escHtml(t('Could not load users: {message}', { message: e.message }))}</p>`;
   }
 }
 
@@ -72,7 +72,7 @@ async function createUser() {
   const result = document.getElementById('nu-result');
   result.textContent = '';
   if (!username || !password) {
-    result.textContent = 'Username and password are required.';
+    result.textContent = t('Username and password are required.');
     return;
   }
   try {
@@ -80,7 +80,7 @@ async function createUser() {
       method: 'POST',
       body: JSON.stringify({ username, email, password, role }),
     });
-    showToast(`Created ${username}`, 'success');
+    showToast(t('Created {username}', { username }), 'success');
     /** @type {HTMLInputElement} */ (document.getElementById('nu-username')).value = '';
     /** @type {HTMLInputElement} */ (document.getElementById('nu-email')).value = '';
     /** @type {HTMLInputElement} */ (document.getElementById('nu-password')).value = '';
@@ -99,7 +99,7 @@ async function changeRole(uid, role) {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     });
-    showToast('Role updated', 'success');
+    showToast(t('Role updated'), 'success');
     loadUsers();
   } catch (e) {
     // e.g. Operator needs a Business license — surface it and snap the select back.
@@ -110,11 +110,11 @@ async function changeRole(uid, role) {
 
 /** @param {string|null} uid @param {string} username @returns {Promise<void>} */
 async function deleteUser(uid, username) {
-  const ok = await confirmModal(`Delete user "${username}"? This cannot be undone.`, { danger: true });
+  const ok = await confirmModal(t('Delete user "{username}"? This cannot be undone.', { username }), { danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/accounts/users/${uid}/`, { method: 'DELETE' });
-    showToast(`Deleted ${username}`, 'success');
+    showToast(t('Deleted {username}', { username }), 'success');
     loadUsers();
   } catch (e) {
     // Last-admin / self guards return 400 with a detail message.
