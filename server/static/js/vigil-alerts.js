@@ -106,7 +106,7 @@ function _alertItemHtml(alert, tab) {
   return `
     <div class="alert-item" data-alert-id="${alert.id}">
       ${checkbox}
-      <div class="alert-dot" style="${dotStyle}"></div>
+      <div class="alert-dot" data-css="${dotStyle}"></div>
       <div class="alert-content">
         <div class="${titleClass}">${escHtml(alert.message)}</div>
         <div class="alert-sub">${sub}</div>
