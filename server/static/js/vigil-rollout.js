@@ -39,7 +39,7 @@ const RLT_ACTIVE = ['pending', 'running', 'validating'];
 
 function _waveDot(status) {
   const color = WAVE_STATUS_COLOR[status] || 'var(--text-3)';
-  return `<span class="rlt-wave-dot" style="background:${color};box-shadow:0 0 6px ${status === 'pending' ? 'none' : color};"></span>`;
+  return `<span class="rlt-wave-dot" data-css="background:${color};box-shadow:0 0 6px ${status === 'pending' ? 'none' : color};"></span>`;
 }
 
 function _fmtTs(ts) {
@@ -65,7 +65,7 @@ function _waveProgress(r) {
       : '<span></span>';
     return `<div class="rlt-wave">
       ${_waveDot(wave.status)}
-      <span class="rlt-wave-name" style="color:${color};">${escHtml(wave.name)}</span>
+      <span class="rlt-wave-name" data-css="color:${color};">${escHtml(wave.name)}</span>
       <span class="rlt-wave-count">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
       <span class="rlt-wave-failed">${failed}</span>
       <span class="rlt-wave-tags">${(wave.tags || []).map(escHtml).join(', ')}</span>
@@ -106,7 +106,7 @@ async function openWaveHosts(rolloutId, waveId) {
     return `<tr>
       <td><strong>${escHtml(h.hostname)}</strong>
         <div class="muted-note">${escHtml(h.ip_address || '')}</div></td>
-      <td class="rlt-host-state" style="color:${stateColor};">${escHtml(h.state)}</td>
+      <td class="rlt-host-state" data-css="color:${stateColor};">${escHtml(h.state)}</td>
       <td>${h.completed_at ? escHtml(new Date(h.completed_at).toLocaleString()) : '—'}</td>
       <td>${output
         ? `<pre class="rlt-host-output">${escHtml(output)}</pre>`
@@ -117,7 +117,7 @@ async function openWaveHosts(rolloutId, waveId) {
   document.getElementById('wh-body').innerHTML = `
     <div class="muted-note rlt-summary-below">
       ${data.total} machine${data.total === 1 ? '' : 's'} ·
-      <span style="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};font-weight:600;">${data.failed} failed</span>
+      <span class="rlt-failed-count" data-css="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};">${data.failed} failed</span>
     </div>
     <div class="rlt-hosts-scroll">
       <table class="vuln-table">
@@ -147,7 +147,7 @@ function _rolloutCard(r) {
     <div class="rlt-body">
       <div class="rlt-head">
         <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
-        <span class="rlt-state" style="color:${color};">${escHtml(r.state)}</span>
+        <span class="rlt-state" data-css="color:${color};">${escHtml(r.state)}</span>
         ${r.current_wave_name ? `<span class="rlt-wave-count">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
         <span class="rlt-head-meta">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
       </div>
@@ -225,7 +225,7 @@ function _batchCard(rs) {
       <div class="rlt-head">
         <strong>${escHtml(rs[0].target_name || rs[0].definition_name || rs[0].playbook_name || '(deleted)')}</strong>${rs[0].action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
         <span class="chip chip-muted">parallel · ${rs.length} groups</span>
-        <span class="rlt-state" style="color:${ROLLOUT_STATE_COLOR[overall] || 'var(--text-3)'};">${escHtml(overall)}</span>
+        <span class="rlt-state" data-css="color:${ROLLOUT_STATE_COLOR[overall] || 'var(--text-3)'};">${escHtml(overall)}</span>
         <span class="rlt-head-meta">${escHtml(rs[0].created_by_name || '')} · started ${_fmtTs(rs[0].started_at)}</span>
         ${anyActive ? `<button class="btn btn-ghost btn-xs" data-rlt-batch="${escAttr(batch)}" data-rlt-act="halt-batch" data-stop title="Stop every group now">Halt all</button>` : ''}
       </div>
@@ -243,7 +243,7 @@ function _batchLane(r) {
   return `<div class="rlt-lane">
     <div class="rlt-lane-head" data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
       <strong>${escHtml(r.wave_group_tag || 'Ungrouped')}</strong>
-      <span class="rlt-state" style="color:${ROLLOUT_STATE_COLOR[r.state] || 'var(--text-3)'};">${escHtml(r.state)}</span>
+      <span class="rlt-state" data-css="color:${ROLLOUT_STATE_COLOR[r.state] || 'var(--text-3)'};">${escHtml(r.state)}</span>
       ${r.current_wave_name ? `<span class="rlt-wave-count">${escHtml(r.current_wave_name)}</span>` : ''}
       ${actions}
     </div>

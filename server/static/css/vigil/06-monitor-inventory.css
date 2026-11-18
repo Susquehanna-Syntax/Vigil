@@ -243,6 +243,7 @@
 .proc-table .proc-td-wait { color: var(--text-3); text-align: center; padding: 20px; }
 .proc-val-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .proc-bar-track { width: 50px; height: 4px; background: var(--s3); border-radius: 2px; overflow: hidden; }
+.proc-bar-fill { height: 100%; border-radius: 2px; }
 
 /* ═══════════════════════════════════════════
    INVENTORY TABLE

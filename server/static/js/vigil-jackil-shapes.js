@@ -30,7 +30,7 @@ function _jkStat(body, data) {
     return;
   }
   const inner =
-    `<div class="jk-stat-value" style="color: ${_jkInk(_jkPastel(data.tone))}">${escHtml(data.value)}</div>`
+    `<div class="jk-stat-value" data-css="color: ${_jkInk(_jkPastel(data.tone))}">${escHtml(data.value)}</div>`
     + `<div class="jk-stat-label">${escHtml(data.label)}</div>`
     + (data.sub ? `<div class="jk-stat-sub">${escHtml(data.sub)}</div>` : '');
   body.innerHTML = data.href
@@ -118,7 +118,7 @@ function _jkGauge(body, data) {
 function _jkLegend(data) {
   if ((data.series || []).length < 2) return '';
   return `<div class="jk-legend">${(data.series || []).map((s, si) =>
-    `<span><i style="background:${JK_SERIES_COLORS[si % JK_SERIES_COLORS.length]}"></i>`
+    `<span><i data-css="background:${JK_SERIES_COLORS[si % JK_SERIES_COLORS.length]}"></i>`
     + `${escHtml(s.name)}</span>`).join('')}</div>`;
 }
 

@@ -106,7 +106,25 @@ SCRIPT_BATCH_6 = [
     "static/js/vigil-pickers.js",
 ]
 
+# Still held to their remaining inline style attributes: vigil-alerts.js,
+# vigil-tasks.js and vigil-instance-settings.js are phase 08m. Every other
+# finished file is checked against zero, so each may hold only a bare
+# style="display:none;" or a value worked out per render written as data-css.
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
+
+# Phase 08l: the eight scripts whose styles are worked out per render. The CSP
+# will refuse every style attribute in markup, so each of these writes
+# data-css="…" instead and applyDataCss in vigil-utils.js applies it.
+DATA_CSS_SCRIPTS = [
+    "static/js/vigil-playbook-flow.js",
+    "static/js/vigil-widgets.js",
+    "static/js/vigil-rollout.js",
+    "static/js/vigil-monitor.js",
+    "static/js/vigil-charts.js",
+    "static/js/vigil-jackil-shapes.js",
+    "static/js/vigil-store.js",
+    "static/js/vigil-host-cards.js",
+]
 
 
 def _leftover_styles(rel: str, script: bool) -> list[str]:
@@ -189,6 +207,15 @@ class InlineStyleRatchetTests(SimpleTestCase):
             self.assertEqual(_leftover_styles(rel, script=False), [],
                              f"{rel} was moved into classes in phase 08b; only "
                              'style="display:none;" may remain.')
+
+    def test_scripts_write_per_render_styles_as_data_css(self) -> None:
+        for rel in DATA_CSS_SCRIPTS:
+            with self.subTest(script=rel):
+                self.assertEqual(
+                    _leftover_styles(rel, script=False), [],
+                    f"{rel} works a style out per render and must write it as "
+                    'data-css="…" for applyDataCss to apply; only '
+                    'style="display:none;" may remain.')
 
     def test_the_third_batch_is_done(self):
         for rel in THIRD_BATCH:

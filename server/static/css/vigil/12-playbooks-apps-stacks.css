@@ -611,6 +611,7 @@ select.ak-access-field { width: auto; }
    it its padding in 09-settings-pages; that part also owns `.modal-actions`,
    whose 26px top margin this row's hint used to sit flush against. */
 .rlt-wave-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.rlt-failed-count { font-weight: 600; }
 .chip.rlt-chip-failed { background: var(--rose); color: var(--bg); }
 td.rlt-host-state { font-weight: 600; }
 .confirm-hint.rlt-detail-hint { flex: 1; margin: 0; }
