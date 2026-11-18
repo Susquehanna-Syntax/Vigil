@@ -7,7 +7,6 @@
   "static/js/vigil-apps.js": 38,
   "static/js/vigil-automations.js": 43,
   "static/js/vigil-charts.js": 14,
-  "static/js/vigil-community.js": 20,
   "static/js/vigil-containers.js": 69,
   "static/js/vigil-dashboards.js": 27,
   "static/js/vigil-deploy.js": 26,
@@ -26,10 +25,8 @@
   "static/js/vigil-settings.js": 113,
   "static/js/vigil-sites.js": 25,
   "static/js/vigil-stacks.js": 65,
-  "static/js/vigil-statuspages.js": 21,
   "static/js/vigil-store.js": 30,
   "static/js/vigil-tasks.js": 45,
-  "static/js/vigil-topology.js": 21,
   "static/js/vigil-utils.js": 12,
   "static/js/vigil-vulns.js": 30,
   "static/js/vigil-widgets.js": 39
