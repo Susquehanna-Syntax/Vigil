@@ -332,7 +332,7 @@ async function _renderRolloutGroupChips() {
     _rolloutState.groupChoices = (data.groups || []).filter(g => g.enabled_waves > 0);
     _paintRolloutGroupChips();
   } catch (e) {
-    box.innerHTML = `<span class="bad">${escHtml(t('Could not load wave groups: {msg}', { msg: e.message || 'Request failed' }))}</span>`;
+    box.innerHTML = `<span class="bad">${escHtml(t('Could not load wave groups: {msg}', { msg: e.message || t('Request failed') }))}</span>`;
   }
 }
 

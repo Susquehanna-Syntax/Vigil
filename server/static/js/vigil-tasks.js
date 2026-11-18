@@ -180,7 +180,7 @@ function _defLastRunHtml(last) {
   const when = last.created_at ? new Date(last.created_at).toLocaleDateString() : '';
   return `<div class="def-card-run" title="${escAttr(t('Last run: {words}', { words }))}">
     ${donutHtml(segs, { size: 30, legend: false, title: t('Last run') })}
-    <span>${when ? escHtml(t('Last run {when}:', { when })) : escHtml(t('Last run'))}${': ' + escHtml(words)}</span>
+    <span>${escHtml(when ? t('Last run {when}: {words}', { when, words }) : t('Last run: {words}', { words }))}</span>
   </div>`;
 }
 
