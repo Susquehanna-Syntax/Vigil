@@ -75,7 +75,7 @@ function _rptHasData(w) {
 async function loadReports(refreshView) {
   const list = /** @type {HTMLElement|null} */ (document.getElementById('rpt-list'));
   if (!list) return;
-  if (!_rptLoaded) list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
+  if (!_rptLoaded) list.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
   try {
     const [reports, catalog, playbooks, automations] = await Promise.all([
       apiJson('/api/v1/reports/'),
@@ -89,7 +89,7 @@ async function loadReports(refreshView) {
     _rptAutomations = (automations && automations.automations) || [];
     _rptLoaded = true;
   } catch (e) {
-    list.innerHTML = `<div class="empty-block"><h4>Couldn't load reports</h4>`
+    list.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load reports"))}</h4>`
       + `<p>${escHtml(e.message)}</p></div>`;
     return;
   }
@@ -110,17 +110,17 @@ function _rptCardHtml(r) {
   return `<div class="def-card">
     <div class="def-card-body">
       <div class="def-card-title">${escHtml(r.name)}</div>
-      <div class="def-card-desc">${escHtml(shown || 'No sources')}</div>
+      <div class="def-card-desc">${escHtml(shown || t('No sources'))}</div>
       <div class="def-card-meta">
-        <span>last ${escHtml(String(r.range_days))} days</span>
+        <span>${escHtml(t('last {days} days', { days: String(r.range_days) }))}</span>
         <span class="dot-sep">·</span>
-        <span>${escHtml(String(charts))} chart${charts === 1 ? '' : 's'}</span>
+        <span>${escHtml(tn('{n} chart', '{n} charts', charts))}</span>
       </div>
     </div>
     <div class="def-card-footer">
-      <button class="btn btn-sky btn-sm" type="button" data-rpt-open="${escAttr(r.id)}">Open</button>
-      <button class="btn btn-lemon btn-sm" type="button" data-rpt-edit="${escAttr(r.id)}">Edit</button>
-      <button class="btn btn-rose btn-sm" type="button" data-rpt-del="${escAttr(r.id)}">Delete</button>
+      <button class="btn btn-sky btn-sm" type="button" data-rpt-open="${escAttr(r.id)}">${escHtml(t('Open'))}</button>
+      <button class="btn btn-lemon btn-sm" type="button" data-rpt-edit="${escAttr(r.id)}">${escHtml(t('Edit'))}</button>
+      <button class="btn btn-rose btn-sm" type="button" data-rpt-del="${escAttr(r.id)}">${escHtml(t('Delete'))}</button>
     </div>
   </div>`;
 }
@@ -135,14 +135,14 @@ function _renderReportList() {
     || _rptSourceNames(r).some(n => n.toLowerCase().includes(q)));
   if (reports.length) { list.innerHTML = reports.map(_rptCardHtml).join(''); return; }
   if (_rptReports.length) {
-    list.innerHTML = '<div class="empty-block"><h4>No reports match that search</h4>'
-      + '<p>Nothing of yours is named that.</p></div>';
+    list.innerHTML = `<div class="empty-block"><h4>${escHtml(t('No reports match that search'))}</h4>`
+      + `<p>${escHtml(t('Nothing of yours is named that.'))}</p></div>`;
     return;
   }
   list.innerHTML = `<div class="empty-block">
-    <h4>No reports yet</h4>
-    <p>A report charts how your playbooks and automations are doing over time.</p>
-    <button class="btn btn-mint btn-sm" type="button" data-rpt-new>New report</button>
+    <h4>${escHtml(t('No reports yet'))}</h4>
+    <p>${escHtml(t('A report charts how your playbooks and automations are doing over time.'))}</p>
+    <button class="btn btn-mint btn-sm" type="button" data-rpt-new>${escHtml(t('New report'))}</button>
   </div>`;
 }
 
@@ -233,12 +233,12 @@ function rptKindChanged(d, entry) {
 
 function openReportEditor(report) {
   if (!_rptLoaded) return;
-  document.getElementById('rpt-editor-title').textContent = report ? 'Edit report' : 'New report';
+  document.getElementById('rpt-editor-title').textContent = report ? t('Edit report') : t('New report');
   document.getElementById('rpt-editor-modal').dataset.editing = report ? report.id : '';
   /** @type {HTMLInputElement} */ (document.getElementById('rpt-name')).value = report ? report.name : '';
   /** @type {HTMLTextAreaElement} */ (document.getElementById('rpt-description')).value = report ? (report.description || '') : '';
   const range = /** @type {HTMLSelectElement} */ (document.getElementById('rpt-range'));
-  range.innerHTML = RPT_RANGES.map(n => `<option value="${n}">Last ${n} days</option>`).join('');
+  range.innerHTML = RPT_RANGES.map(n => `<option value="${n}">${escHtml(t('Last {n} days', { n }))}</option>`).join('');
   range.value = String(report ? report.range_days : 30);
   _rptDraft = {
     widgets: (report ? (report.widgets || []) : RPT_DEFAULT_KINDS.map(kind => ({ kind })))
@@ -278,7 +278,7 @@ function _renderRptPicks(boxId, group, sources) {
   const q = (/** @type {HTMLInputElement|null} */ (document.getElementById(`${group}-filter`))?.value || '').trim().toLowerCase();
   const rows = !q ? sources : sources.filter(s => (s.name || '').toLowerCase().includes(q));
   if (!rows.length) {
-    box.innerHTML = `<div class="rpt-none muted">${sources.length ? 'Nothing matches that filter.' : 'None yet.'}</div>`;
+    box.innerHTML = `<div class="rpt-none muted">${sources.length ? escHtml(t('Nothing matches that filter.')) : escHtml(t('None yet.'))}</div>`;
     return;
   }
   box.innerHTML = rows.map(s => `<label class="rpt-pick">
@@ -291,7 +291,7 @@ function _renderRptPicks(boxId, group, sources) {
 function _renderRptWidgetAdd() {
   const sel = /** @type {HTMLSelectElement} */ (document.getElementById('rpt-widget-add'));
   if (!sel) return;
-  sel.innerHTML = '<option value="">Add a chart…</option>' + _rptCatalog.map(c =>
+  sel.innerHTML = `<option value="">${escHtml(t('Add a chart…'))}</option>` + _rptCatalog.map(c =>
     `<option value="${escAttr(c.kind)}">${escHtml(c.title)} — ${escHtml(c.description)}</option>`).join('');
   sel.value = '';
 }
@@ -303,7 +303,7 @@ function _renderRptWidgets() {
   // scheduled preview draws fresh ones.
   _destroyRptPreview();
   if (!_rptDraft.widgets.length) {
-    box.innerHTML = '<div class="rpt-none muted">Pick at least one chart.</div>';
+    box.innerHTML = `<div class="rpt-none muted">${escHtml(t('Pick at least one chart.'))}</div>`;
     return;
   }
   const picked = _rptPickedSources();
@@ -325,7 +325,7 @@ function _rptWidgetCardHtml(d, i, picked) {
   const labels = (entry.labels || {})[d.chart] || ['', ''];
   const axesOff = d.axes ? '' : 'disabled';
   const sourcePicks = !picked.length
-    ? '<div class="rpt-none muted">Tick a playbook or automation above first.</div>'
+    ? `<div class="rpt-none muted">${escHtml(t('Tick a playbook or automation above first.'))}</div>`
     : picked.map(s => `<label class="rpt-pick">
         <input type="checkbox" data-rpt-wsrc="${i}" value="${escAttr(s.id)}"
           ${d.sources.has(s.id) ? 'checked' : ''} ${d.sourceMode === 'some' ? '' : 'disabled'}>
@@ -333,54 +333,54 @@ function _rptWidgetCardHtml(d, i, picked) {
       </label>`).join('');
   return `<div class="rpt-wcard">
     <div class="rpt-wset">
-      <label class="rpt-wfield">Data
+      <label class="rpt-wfield">${escHtml(t('Data'))}
         <select class="form-control" data-rpt-wkind="${i}">
           ${_rptCatalog.map(c => `<option value="${escAttr(c.kind)}" ${c.kind === d.kind ? 'selected' : ''}>${escHtml(c.title)}</option>`).join('')}
         </select>
       </label>
       <div class="rpt-how">${escHtml(entry.how || '')}</div>
-      <label class="rpt-wfield">Show as
+      <label class="rpt-wfield">${escHtml(t('Show as'))}
         <select class="form-control" data-rpt-wchart="${i}">
           ${(entry.charts || []).map(ch => `<option value="${escAttr(ch)}" ${ch === d.chart ? 'selected' : ''}>${escHtml(rptChartLabel(ch, entry.family))}</option>`).join('')}
         </select>
       </label>
-      <label class="rpt-wfield">Title
+      <label class="rpt-wfield">${escHtml(t('Title'))}
         <input type="text" class="form-control" data-rpt-wtitle="${i}" maxlength="80"
           placeholder="${escAttr(entry.title)}" value="${escAttr(d.title)}">
       </label>
       <div class="rpt-axes" ${rptHasAxes(d.chart) ? '' : 'hidden'}>
-        <label class="rpt-check"><input type="checkbox" data-rpt-waxes="${i}" ${d.axes ? 'checked' : ''}> Show axis titles</label>
-        <label class="rpt-wfield">Horizontal axis
+        <label class="rpt-check"><input type="checkbox" data-rpt-waxes="${i}" ${d.axes ? 'checked' : ''}> ${escHtml(t('Show axis titles'))}</label>
+        <label class="rpt-wfield">${escHtml(t('Horizontal axis'))}
           <input type="text" class="form-control" data-rpt-wx="${i}" maxlength="40"
             placeholder="${escAttr(labels[0] || '')}" value="${escAttr(d.xLabel)}" ${axesOff}>
         </label>
-        <label class="rpt-wfield">Vertical axis
+        <label class="rpt-wfield">${escHtml(t('Vertical axis'))}
           <input type="text" class="form-control" data-rpt-wy="${i}" maxlength="40"
             placeholder="${escAttr(labels[1] || '')}" value="${escAttr(d.yLabel)}" ${axesOff}>
         </label>
       </div>
-      <label class="rpt-wfield">Legend
+      <label class="rpt-wfield">${escHtml(t('Legend'))}
         <select class="form-control" data-rpt-wlegend="${i}">
-          ${[['auto', 'Auto'], ['show', 'Show'], ['hide', 'Hide']].map(([v, t]) =>
-            `<option value="${v}" ${d.legend === v ? 'selected' : ''}>${t}</option>`).join('')}
+          ${[['auto', t('Auto')], ['show', t('Show')], ['hide', t('Hide')]].map(([v, label]) =>
+            `<option value="${v}" ${d.legend === v ? 'selected' : ''}>${escHtml(label)}</option>`).join('')}
         </select>
       </label>
       <div class="rpt-wsrc">
         <label class="rpt-check"><input type="radio" name="rpt-wsrcmode-${i}" data-rpt-wsrcmode="${i}" value="all"
-          ${d.sourceMode === 'all' ? 'checked' : ''}> All of this report's sources</label>
+          ${d.sourceMode === 'all' ? 'checked' : ''}> ${escHtml(t("All of this report's sources"))}</label>
         <label class="rpt-check"><input type="radio" name="rpt-wsrcmode-${i}" data-rpt-wsrcmode="${i}" value="some"
-          ${d.sourceMode === 'some' ? 'checked' : ''}> Only these</label>
+          ${d.sourceMode === 'some' ? 'checked' : ''}> ${escHtml(t('Only these'))}</label>
         <div class="rpt-wsrc-picks">${sourcePicks}</div>
       </div>
       <div class="rpt-wbtns">
         ${_rptDraft.widgets.length < 12
-          ? `<button class="btn btn-outline btn-xs" type="button" data-rpt-wdup="${i}">Duplicate</button>` : ''}
-        <button class="btn btn-outline btn-xs" type="button" data-rpt-wup="${i}" ${i === 0 ? 'disabled' : ''}>Move up</button>
-        <button class="btn btn-outline btn-xs" type="button" data-rpt-wdown="${i}" ${i === last ? 'disabled' : ''}>Move down</button>
-        <button class="btn btn-rose btn-xs" type="button" data-rpt-wdel="${i}">Remove</button>
+          ? `<button class="btn btn-outline btn-xs" type="button" data-rpt-wdup="${i}">${escHtml(t('Duplicate'))}</button>` : ''}
+        <button class="btn btn-outline btn-xs" type="button" data-rpt-wup="${i}" ${i === 0 ? 'disabled' : ''}>${escHtml(t('Move up'))}</button>
+        <button class="btn btn-outline btn-xs" type="button" data-rpt-wdown="${i}" ${i === last ? 'disabled' : ''}>${escHtml(t('Move down'))}</button>
+        <button class="btn btn-rose btn-xs" type="button" data-rpt-wdel="${i}">${escHtml(t('Remove'))}</button>
       </div>
     </div>
-    <div class="rpt-wprev" data-rpt-wprev="${i}"><div class="rpt-empty muted">Drawing the preview…</div></div>
+    <div class="rpt-wprev" data-rpt-wprev="${i}"><div class="rpt-empty muted">${escHtml(t('Drawing the preview…'))}</div></div>
   </div>`;
 }
 
@@ -414,7 +414,7 @@ async function _rptRunPreview() {
   const body = _rptBodyFromForm();
   if (!body.playbooks.length && !body.automations.length) {
     _rptPreviewSeq += 1;
-    _rptPreviewMessage('Pick a playbook or automation to see a preview.');
+    _rptPreviewMessage(t('Pick a playbook or automation to see a preview.'));
     return;
   }
   const seq = ++_rptPreviewSeq;
@@ -453,10 +453,10 @@ function _rptBodyFromForm() {
 async function saveReport() {
   const btn = /** @type {HTMLButtonElement} */ (document.getElementById('rpt-save-btn'));
   const body = _rptBodyFromForm();
-  if (!body.name) { showToast('Give the report a name', 'error'); return; }
-  if (!body.widgets.length) { showToast('Pick at least one chart', 'error'); return; }
+  if (!body.name) { showToast(t('Give the report a name'), 'error'); return; }
+  if (!body.widgets.length) { showToast(t('Pick at least one chart'), 'error'); return; }
   if (!body.playbooks.length && !body.automations.length) {
-    showToast('Pick at least one playbook or automation', 'error');
+    showToast(t('Pick at least one playbook or automation'), 'error');
     return;
   }
   const editing = /** @type {HTMLElement} */ (document.getElementById('rpt-editor-modal')).dataset.editing;
@@ -478,11 +478,11 @@ async function saveReport() {
 
 async function deleteReport(id) {
   const r = _rptReports.find(x => x.id === id);
-  if (!(await confirmModal(`Delete the report “${r ? r.name : ''}”?`,
-    { danger: true, confirmText: 'Delete' }))) return;
+  if (!(await confirmModal(t('Delete the report “{name}”?', { name: r ? r.name : '' }),
+    { danger: true, confirmText: t('Delete') }))) return;
   try {
     await apiJson(`/api/v1/reports/${id}/`, { method: 'DELETE' });
-    showToast('Report deleted', 'success');
+    showToast(t('Report deleted'), 'success');
   } catch (e) {
     showToast(e.message, 'error');
     return;
@@ -529,15 +529,15 @@ async function openReport(id) {
   view.hidden = false;
   view.innerHTML = `
     <div class="rpt-head">
-      <button class="btn btn-outline btn-sm" type="button" data-rpt-back>Back to reports</button>
-      <span class="rpt-head-title">${escHtml(report.name || 'Report')}</span>
+      <button class="btn btn-outline btn-sm" type="button" data-rpt-back>${escHtml(t('Back to reports'))}</button>
+      <span class="rpt-head-title">${escHtml(report.name || t('Report'))}</span>
       <span class="rpt-head-range muted">${escHtml(String(range.from || ''))} – ${escHtml(String(range.to || ''))}
-        · last ${escHtml(String((range.days || []).length || report.range_days || ''))} days</span>
-      <button class="btn btn-lemon btn-sm" type="button" data-rpt-view-edit>Edit</button>
-      <button class="btn btn-outline btn-sm" type="button" data-rpt-layout>Edit layout</button>
+        · ${escHtml(t('last {days} days', { days: String((range.days || []).length || report.range_days || '') }))}</span>
+      <button class="btn btn-lemon btn-sm" type="button" data-rpt-view-edit>${escHtml(t('Edit'))}</button>
+      <button class="btn btn-outline btn-sm" type="button" data-rpt-layout>${escHtml(t('Edit layout'))}</button>
     </div>
     ${data.truncated
-      ? '<div class="rpt-note muted">Too much history to read at once — this covers the most recent runs only.</div>'
+      ? `<div class="rpt-note muted">${escHtml(t('Too much history to read at once — this covers the most recent runs only.'))}</div>`
       : ''}
     <div class="grid-stack rpt-gs" id="rpt-gs"></div>`;
   _renderRptGrid(id, widgets);
@@ -584,7 +584,7 @@ function _rptAddWidget(w, i, place) {
     content: `<div class="rpt-card">
         <div class="rpt-card-head">
           <span class="rpt-card-title">${escHtml(w.title)}</span>
-          <a class="btn btn-outline btn-xs" href="/api/v1/reports/${escAttr(_rptOpenId)}/data/${i}.csv" download>CSV</a>
+          <a class="btn btn-outline btn-xs" href="/api/v1/reports/${escAttr(_rptOpenId)}/data/${i}.csv" download>${escHtml(t('CSV'))}</a>
         </div>
         <div class="rpt-card-body" data-rpt-body="${i}"></div>
       </div>`,
@@ -617,7 +617,7 @@ async function _rptToggleLayout() {
     // Under the breakpoint every card is one column wide; places saved from
     // there would squash the twelve-column layout for everyone.
     if (_rptGrid.getColumn() !== 12) {
-      showToast('Widen the window to arrange the cards.', 'info');
+      showToast(t('Widen the window to arrange the cards.'), 'info');
       return;
     }
     // Only a move made while editing is worth saving, not the grid settling.
@@ -630,7 +630,7 @@ function _rptSetLayoutEditing(on) {
   _rptEditing = on;
   _rptGrid.setStatic(!on);
   const button = document.querySelector('[data-rpt-layout]');
-  if (button) button.textContent = on ? 'Done' : 'Edit layout';
+  if (button) button.textContent = on ? t('Done') : t('Edit layout');
   const grid = document.getElementById('rpt-gs');
   if (grid) grid.classList.toggle('rpt-gs-editing', on);
 }
@@ -649,7 +649,7 @@ async function _rptSaveLayout() {
     if (at >= 0) _rptReports[at] = updated;
     _rptOpen = updated;
     _rptDirty = false;
-    showToast('Layout saved', 'success');
+    showToast(t('Layout saved'), 'success');
     return true;
   } catch (e) {
     showToast(e.message, 'error');
@@ -667,13 +667,13 @@ function _drawRptWidget(body, w, i, charts = _rptCharts) {
   }
   if (!_rptHasData(w)) {
     // An empty failures chart means nothing failed, not that nothing ran.
-    const empty = w.kind === 'failures_by_step' ? 'No failures in this range.' : 'Nothing ran in this range.';
-    body.innerHTML = `<div class="rpt-empty muted">${empty}</div>`;
+    const empty = w.kind === 'failures_by_step' ? t('No failures in this range.') : t('Nothing ran in this range.');
+    body.innerHTML = `<div class="rpt-empty muted">${escHtml(empty)}</div>`;
     return;
   }
   const cfg = rptChartConfig(w);
   if (!cfg) {
-    body.innerHTML = '<div class="rpt-empty muted">This chart kind is not known to this build.</div>';
+    body.innerHTML = `<div class="rpt-empty muted">${escHtml(t('This chart kind is not known to this build.'))}</div>`;
     return;
   }
   const holder = document.createElement('div');
@@ -699,9 +699,9 @@ function _rptTableHtml(w) {
 function _rptDaysTable(w) {
   const series = rptDaySeries(w);
   const days = (w.data || {}).days || [];
-  if (!days.length) return '<div class="rpt-empty muted">Nothing ran in this range.</div>';
+  if (!days.length) return `<div class="rpt-empty muted">${escHtml(t('Nothing ran in this range.'))}</div>`;
   return `<table class="rpt-table">
-    <thead><tr><th>Day</th>${series.map(x => `<th>${escHtml(x.name)}</th>`).join('')}</tr></thead>
+    <thead><tr><th>${escHtml(t('Day'))}</th>${series.map(x => `<th>${escHtml(x.name)}</th>`).join('')}</tr></thead>
     <tbody>${days.map((day, d) => `<tr><td>${escHtml(day)}</td>${
       series.map(x => `<td>${escHtml(_rptCell(w.kind, (x.values || [])[d]))}</td>`).join('')
     }</tr>`).join('')}</tbody>
@@ -720,10 +720,10 @@ function _rptCell(kind, value) {
 
 function _rptRowsTable(w) {
   const rows = (w.data || {}).rows || [];
-  if (!rows.length) return '<div class="rpt-empty muted">Nothing ran in this range.</div>';
+  if (!rows.length) return `<div class="rpt-empty muted">${escHtml(t('Nothing ran in this range.'))}</div>`;
   if (w.kind === 'host_outcomes') {
     return `<table class="rpt-table">
-      <thead><tr><th>Host</th><th>Source</th><th>Outcome</th><th>When</th></tr></thead>
+      <thead><tr><th>${escHtml(t('Host'))}</th><th>${escHtml(t('Source'))}</th><th>${escHtml(t('Outcome'))}</th><th>${escHtml(t('When'))}</th></tr></thead>
       <tbody>${rows.map(r => `<tr>
           <td>${escHtml(r.host)}</td>
           <td>${escHtml(r.source)}</td>
@@ -737,7 +737,7 @@ function _rptRowsTable(w) {
   const [second, head, field] = w.kind === 'branch_paths'
     ? ['branch', 'Host-runs', 'hosts'] : ['step', 'Failed', 'failed'];
   return `<table class="rpt-table">
-    <thead><tr><th>Source</th><th>${second === 'branch' ? 'Branch' : 'Step'}</th><th>${head}</th></tr></thead>
+    <thead><tr><th>${escHtml(t('Source'))}</th><th>${second === 'branch' ? escHtml(t('Branch')) : escHtml(t('Step'))}</th><th>${escHtml(head)}</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
         <td>${escHtml(r.source)}</td>
         <td>${escHtml(second === 'branch' && r.label ? r.label : r[second])}</td>
@@ -782,7 +782,7 @@ function rptFoldedSeries(series, mean) {
       if (!mean) return day.reduce((n, v) => n + v, 0);
       return day.length ? Math.round(day.reduce((n, v) => n + v, 0) * 10 / day.length) / 10 : null;
     });
-    out.push({ name: mean ? 'Other (average)' : 'Other', values, color: '--st-skipped' });
+    out.push({ name: mean ? t('Other (average)') : t('Other'), values, color: '--st-skipped' });
   }
   return out;
 }
@@ -910,7 +910,7 @@ function rptPieSlices(points) {
     .map((p, i) => ({ ...p, color: RPT_SERIES_TOKENS[i] }));
   const tail = sorted.slice(RPT_SERIES_TOKENS.length);
   if (tail.length) {
-    head.push({ label: 'Other', value: tail.reduce((n, p) => n + (Number(p.value) || 0), 0),
+    head.push({ label: t('Other'), value: tail.reduce((n, p) => n + (Number(p.value) || 0), 0),
                 color: '--st-skipped' });
   }
   return head;
@@ -1076,12 +1076,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Typing only updates the draft: re-rendering the cards would throw the
   // cursor out of the box being typed in.
   document.getElementById('rpt-widgets')?.addEventListener('input', (e) => {
-    const t = /** @type {HTMLInputElement} */ (e.target);
-    const field = ['rptWtitle', 'rptWx', 'rptWy'].find(k => k in t.dataset);
+    const input = /** @type {HTMLInputElement} */ (e.target);
+    const field = ['rptWtitle', 'rptWx', 'rptWy'].find(k => k in input.dataset);
     if (!field) return;
-    const d = _rptDraft.widgets[Number(t.dataset[field])];
+    const d = _rptDraft.widgets[Number(input.dataset[field])];
     if (!d) return;
-    d[{ rptWtitle: 'title', rptWx: 'xLabel', rptWy: 'yLabel' }[field]] = t.value;
+    d[{ rptWtitle: 'title', rptWx: 'xLabel', rptWy: 'yLabel' }[field]] = input.value;
     _rptSchedulePreview();
   });
   // Every other control changes what the card shows, so the cards redraw.
@@ -1179,8 +1179,9 @@ function _rptWidgetChanged(t) {
   } else if ('rptWsrc' in ds) {
     const d = at('rptWsrc');
     if (!d) return false;
-    if (t.checked) d.sources.add(t.value);
-    else d.sources.delete(t.value);
+    const widget = /** @type {HTMLInputElement} */ (t);
+    if (widget.checked) d.sources.add(widget.value);
+    else d.sources.delete(widget.value);
   } else {
     return false;
   }

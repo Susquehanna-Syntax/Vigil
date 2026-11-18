@@ -35,6 +35,8 @@ STUBS = "\n".join([
     "let cssVar = n => n;",
     "const escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');",
     "const escAttr = escHtml;",
+    "const t = (m) => String(m);",
+    "const tn = (s, p, n) => String(n === 1 ? s : p);",
     "const document = { addEventListener() {} };",
     "const window = {};",
 ])

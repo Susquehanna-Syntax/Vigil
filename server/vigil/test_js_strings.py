@@ -59,6 +59,8 @@ JS_TRANSLATED: list[str] = [
     "static/js/vigil-community.js",
     "static/js/vigil-statuspages.js",
     "static/js/vigil-topology.js",
+    "static/js/vigil-reports.js",
+    "static/js/vigil-api-keys.js",
 ]
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)

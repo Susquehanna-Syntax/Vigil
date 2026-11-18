@@ -144,7 +144,8 @@ class ReportChartFunctionTests(SimpleTestCase):
 
     def _prologue(self) -> str:
         tokens = re.search(r"const RPT_SERIES_TOKENS = \[[^\]]*\];", self.src).group(0)
-        return "\n".join([tokens,
+        return "\n".join(["const t = (m) => String(m);",
+                          tokens,
                           _function(self.src, "rptSeriesColors"),
                           _function(self.src, "rptFormatSeconds")])
 

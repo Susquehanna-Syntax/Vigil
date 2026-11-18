@@ -30,6 +30,8 @@ STUBS = "\n".join([
     "const cssVar = n => n;",
     "const escHtml = s => String(s);",
     "const escAttr = escHtml;",
+    "const t = (m) => String(m);",
+    "const tn = (s, p, n) => String(n === 1 ? s : p);",
     "const document = { addEventListener() {} };",
     "const window = {};",
 ])
@@ -134,7 +136,7 @@ class ReportEditorMarkupTests(SimpleTestCase):
         """A redraw replaces the input being typed in, and the cursor with it."""
         wiring = CODE[CODE.index("document.addEventListener('DOMContentLoaded'"):]
         # The line may carry a JSDoc cast since the file is type-checked (M6).
-        typing = wiring[wiring.index("addEventListener('input', (e) => {\n    const t = "):]
+        typing = wiring[wiring.index("addEventListener('input', (e) => {\n    const input = "):]
         typing = typing[:typing.index("});")]
         self.assertIn("_rptSchedulePreview()", typing)
         self.assertNotIn("_renderRptWidgets", typing)
