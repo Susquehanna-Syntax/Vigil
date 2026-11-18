@@ -34,6 +34,7 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/pages/_playbooks.html",
     "templates/pages/_policies.html",
     "templates/pages/_monitor.html",
+    "templates/pages/_reprovision.html",
     "templates/dashboard.html",
     "templates/compliance_report.html",
 ]
