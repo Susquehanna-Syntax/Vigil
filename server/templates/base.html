@@ -518,7 +518,7 @@ settings before deciding anything.
       Which hosts land in which wave comes from the wave's tags &mdash; change the tags to change
       who gets patched.
     </div>
-    <div class="form-group form-group-tight">
+    <div class="form-group form-group-12">
       <label class="form-label">Task definition</label>
       <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
         <span id="rollout-start-def-label">Choose a task or playbook…</span>
@@ -566,14 +566,14 @@ settings before deciding anything.
   <div class="totp-sub totp-sub-loose">
     <strong>How submission works:</strong>
     <ol class="community-submit-steps">
-      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" class="inline-code inline-code-tight">task.yaml</code> under <code class="inline-code inline-code-tight">tasks/</code>.</li>
+      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" class="code-tight">task.yaml</code> under <code class="code-tight">tasks/</code>.</li>
       <li>Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account.</li>
       <li>Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.</li>
       <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry.</li>
     </ol>
   </div>
   <div class="totp-sub totp-sub-loose totp-sub-fine">
-    <strong>Auto-added to your YAML</strong> if you haven't set them: <code class="inline-code inline-code-tight-sm">author</code> (your Vigil username) and <code class="inline-code inline-code-tight-sm">created</code> (today's date). Required by the catalog so every entry is attributed.
+    <strong>Auto-added to your YAML</strong> if you haven't set them: <code class="code-tight-sm">author</code> (your Vigil username) and <code class="code-tight-sm">created</code> (today's date). Required by the catalog so every entry is attributed.
   </div>
   <div class="community-submit-actions">
     <button class="btn btn-ghost" data-act="copyCommunityYaml">Copy YAML</button>
@@ -594,7 +594,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   </div>
   <div class="totp-sub totp-sub-mid">
     Opens a normal SSH session in your own terminal. Copy the command below, or use the
-    <code class="inline-code inline-code-tight-sm">ssh://</code>
+    <code class="code-tight-sm">ssh://</code>
     link if your OS has a handler registered. Vigil doesn't connect to the host for you.
   </div>
   <div class="form-group">

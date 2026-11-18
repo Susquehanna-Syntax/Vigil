@@ -588,7 +588,8 @@
 .rollout-start-pair { display: flex; gap: 12px; margin-bottom: 14px; }
 /* As `.wave-row > .form-group` does for the wave editor's two columns. */
 .rollout-start-pair > .form-group { flex: 1; margin-bottom: 0; }
-.form-group-tight { margin-bottom: 14px; }
+.form-group.form-group-12 { margin-bottom: 12px; }
+.form-group.form-group-tight { margin-bottom: 14px; }
 .rollout-start-actions {
   display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
 }

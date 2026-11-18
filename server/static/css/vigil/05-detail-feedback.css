@@ -223,6 +223,7 @@
 .enroll-command-actions { display: flex; gap: 8px; margin: 14px 0; }
 .enroll-cmd-block { margin-bottom: 12px; }
 .enroll-cmd { cursor: pointer; user-select: all; word-break: break-all; }
+.enroll-cmd-copy { display: flex; gap: 8px; margin-bottom: 20px; }
 /* Smaller than `.btn svg`'s default size, so the rule names the button. */
 .btn .btn-icon-xs { width: 13px; height: 13px; }
 .enroll-step-icon { margin-bottom: 16px; }
@@ -239,9 +240,9 @@
 .enroll-step-title-done { font-size: 16px; }
 .enroll-step-title-mint { color: var(--mint-ink); }
 .enroll-pulse-row { margin-top: 20px; }
-/* Alone, so `.status-dot.pending`'s slower animation cannot win the tie, exactly
-   as the inline `animation` used to. */
-.enroll-pulse-dot { display: inline-block; animation: pulse 1.5s infinite; }
+/* Three classes, to beat `.status-dot.pending`'s slower animation (two classes,
+   an earlier part) as the inline `animation` used to. */
+.status-dot.pending.enroll-pulse-dot { display: inline-block; animation: pulse 1.5s infinite; }
 .enroll-card.enroll-card-below { margin-bottom: 20px; }
 .enroll-meta.enroll-replaces { margin-top: 6px; }
 .enroll-approve-actions { display: flex; gap: 8px; }
