@@ -184,11 +184,11 @@
 /* Two elements that are a direct child of `.apf-section` but do not wear
    `.apf-check` or `.apf-narrow`, so nothing above touches them and these two
    classes beat the (0,1,0) `.apf-field` / `.confirm-hint` margins they follow. */
-.apf-field.apf-under-section { margin-top: 10px; }
+.apf-field.apf-under-section, .apf-grid.apf-under-section { margin-top: 10px; }
 .confirm-hint.apf-hint-tight { margin: 4px 0 8px; }
-/* The checkbox under an "Add fallback" label, which `.apf-check` alone would
-   place 10px below it while the inline style asked for 8. */
-.apf-check.apf-under-input-label { margin-top: 8px; }
+/* The checkbox under a field, 8px below it where `.apf-section > .apf-check`
+   further down gives every other checkbox 10px; one class more than that rule. */
+.apf-section > .apf-check.apf-under-input-label { margin-top: 8px; }
 
 /* The allowlist picker is the widest part of the form and needs its own scroll
    box: an agent's full action list is longer than any dialog holding it. */
