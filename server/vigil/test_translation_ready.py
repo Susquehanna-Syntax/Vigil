@@ -29,6 +29,7 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/pages/_stack_editor.html",
     "templates/status_public.html",
     "templates/ui_kit.html",
+    "templates/pages/_settings.html",
 ]
 
 _DROP = [
