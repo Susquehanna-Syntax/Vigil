@@ -2,7 +2,6 @@
   "static/js/vigil-agentprofile-form.js": 34,
   "static/js/vigil-ai.js": 32,
   "static/js/vigil-apps.js": 38,
-  "static/js/vigil-automations.js": 43,
   "static/js/vigil-containers.js": 69,
   "static/js/vigil-dashboards.js": 27,
   "static/js/vigil-deploy.js": 26,
@@ -17,6 +16,5 @@
   "static/js/vigil-stacks.js": 65,
   "static/js/vigil-store.js": 30,
   "static/js/vigil-utils.js": 12,
-  "static/js/vigil-vulns.js": 30,
-  "static/js/vigil-widgets.js": 39
+  "static/js/vigil-vulns.js": 30
 }

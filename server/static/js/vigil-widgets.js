@@ -46,7 +46,7 @@ function _wFailed(body, what, err) {
   body.innerHTML =
     `<div class="dash-empty dash-failed">` +
     `<span class="dash-failed-mark" aria-hidden="true">!</span>` +
-    `<span>Could not load ${escHtml(what)}.</span>` +
+    `<span>${t('Could not load {what}.', { what: escHtml(what) })}</span>` +
     (detail ? `<span class="muted-note">${escHtml(detail)}</span>` : '') +
     `</div>`;
 }
@@ -148,15 +148,15 @@ async function _renderStatTile(body, settings) {
   const h = _wRows(hosts);
   const a = _wRows(alerts);
   const stats = {
-    hosts: { value: h.length, label: 'Total hosts', color: 'var(--lavender-ink)' },
+    hosts: { value: h.length, label: t('Total hosts'), color: 'var(--lavender-ink)' },
     online: { value: h.filter(x => x.status === 'online').length,
-              label: 'Online', color: 'var(--mint-ink)' },
+              label: t('Online'), color: 'var(--mint-ink)' },
     offline: { value: h.filter(x => x.status === 'offline').length,
-               label: 'Offline', color: 'var(--text-3)' },
+               label: t('Offline'), color: 'var(--text-3)' },
     alerts_firing: { value: a.filter(x => x.state === 'firing').length,
-                     label: 'Alerts firing', color: 'var(--rose-ink)' },
+                     label: t('Alerts firing'), color: 'var(--rose-ink)' },
     pending: { value: h.filter(x => x.status === 'pending').length,
-               label: 'Pending approval', color: 'var(--peach-ink)' },
+               label: t('Pending approval'), color: 'var(--peach-ink)' },
   };
   const stat = stats[settings.stat] || stats.hosts;
   body.innerHTML =
@@ -202,11 +202,11 @@ function _dashHostCard(h) {
         ${escHtml(os)} · ${escHtml(h.ip_address || '—')}
       </div>
       ${tags.length ? `<div class="host-tag-row">${
-        tags.map(t => `<span class="host-tag-chip">${escHtml(t)}</span>`).join('')}</div>` : ''}
+        tags.map(tagName => `<span class="host-tag-chip">${escHtml(tagName)}</span>`).join('')}</div>` : ''}
     </div>
     <div class="host-metrics">
-      ${[['cpu', 'CPU', 'sky'], ['memory', 'Memory', 'lavender'], ['disk', 'Disk', 'mint'],
-         ['net-in', 'Net In', 'peach'], ['net-out', 'Net Out', 'lemon']].map(([k, label, colour]) => `
+      ${[['cpu', t('CPU'), 'sky'], ['memory', t('Memory'), 'lavender'], ['disk', t('Disk'), 'mint'],
+         ['net-in', t('Net In'), 'peach'], ['net-out', t('Net Out'), 'lemon']].map(([k, label, colour]) => `
         <div class="host-metric" data-metric="${k}">
           <div class="host-metric-label">${label}</div>
           <div class="host-metric-value">—</div>
@@ -216,11 +216,11 @@ function _dashHostCard(h) {
         </div>`).join('')}
     </div>
     <div class="host-card-actions">
-      <div class="host-checkin">${escHtml(h.last_checkin ? timeAgo(h.last_checkin) : 'Never')}</div>
-      <button type="button" class="btn btn-ghost" data-host-act="connect">Connect</button>
-      <button type="button" class="btn btn-sky" data-host-act="deploy">Deploy</button>
+      <div class="host-checkin">${escHtml(h.last_checkin ? timeAgo(h.last_checkin) : t('Never'))}</div>
+      <button type="button" class="btn btn-ghost" data-host-act="connect">${escHtml(t('Connect'))}</button>
+      <button type="button" class="btn btn-sky" data-host-act="deploy">${escHtml(t('Deploy'))}</button>
       <button type="button" class="btn btn-ghost btn-rose-ghost" data-host-act="remove"
-              title="Remove agent">Remove</button>
+              title="${escAttr(t('Remove agent'))}">${escHtml(t('Remove'))}</button>
     </div>
   </div>`;
 }
@@ -253,7 +253,7 @@ async function _renderHostStatusGrid(body, settings) {
   const rows = _wRows(await _wCached('/api/v1/hosts/'));
   const want = (settings.tag_filter || '').trim().toLowerCase();
   let shown = want
-    ? rows.filter(h => (h.tags || []).some(t => String(t).toLowerCase() === want))
+    ? rows.filter(h => (h.tags || []).some(tag => String(tag).toLowerCase() === want))
     : rows;
   if (settings.status && settings.status !== 'any') {
     shown = shown.filter(h => h.status === settings.status);
@@ -270,7 +270,7 @@ async function _renderHostStatusGrid(body, settings) {
   // show_search has been in the registry since the widget shipped but was
   // never rendered. The filter is local to this widget's cards.
   const search = settings.show_search === false ? '' :
-    `<input type="text" class="form-control dash-host-search" placeholder="Filter hosts…">`;
+    `<input type="text" class="form-control dash-host-search" placeholder="${escAttr(t('Filter hosts…'))}">`;
   // The dashboard repaints every widget on a 15-second poll, and this renderer
   // used to rebuild all of its cards each time. Every rebuilt card starts with
   // `width: 0%` on its five metric bars (see _dashHostCard) and only reaches
@@ -299,7 +299,7 @@ async function _renderHostStatusGrid(body, settings) {
       if (!card) continue;
       card.dataset.lastCheckin = h.last_checkin || '';
       const when = card.querySelector('.host-checkin');
-      if (when) when.textContent = h.last_checkin ? timeAgo(h.last_checkin) : 'Never';
+      if (when) when.textContent = h.last_checkin ? timeAgo(h.last_checkin) : t('Never');
     }
     if (typeof refreshHostCards === 'function') refreshHostCards(body);
     return;
@@ -339,7 +339,7 @@ async function _renderAlertList(body, settings) {
   if (!shown.length) { _wEmpty(body, 'Nothing firing'); return; }
   body.innerHTML = _dashCards(shown.map(a => _dashCard({
     edge: _EDGE_BY_SEVERITY[a.severity] || 'lemon',
-    title: a.message || '(no message)',
+    title: a.message || t('(no message)'),
     sub: [a.host_hostname, timeAgo(a.fired_at)].filter(Boolean).join(' · '),
     right: a.severity || '',
     tip: `${a.severity || ''} · ${a.message || ''}`,
@@ -355,12 +355,12 @@ async function _renderRolloutProgress(body) {
     const waves = r.waves || [];
     const done = waves.filter(w => w.status === 'complete').length;
     return `<div class="dash-rollout">
-      <div class="dash-rollout-name">${escHtml(r.target_name || 'Rollout')}</div>
+      <div class="dash-rollout-name">${escHtml(r.target_name || t('Rollout'))}</div>
       <div class="dash-rollout-meta">
         <span class="chip">${escHtml(r.state)}</span>
-        wave ${done}/${waves.length}
+        ${escHtml(t('wave {done}/{total}', { done, total: waves.length }))}
         ${r.current_wave_name ? `· ${escHtml(r.current_wave_name)}` : ''}
-        ${r.wave_group_tag ? `· group ${escHtml(r.wave_group_tag)}` : ''}
+        ${r.wave_group_tag ? `· ${t('group {tag}', { tag: escHtml(r.wave_group_tag) })}` : ''}
       </div>
     </div>`;
   }).join('') + `</div>`;
@@ -384,7 +384,7 @@ async function _renderVulnScore(body) {
   body.innerHTML =
     `<div class="dash-stat">
        <div class="dash-stat-value" data-css="color:${colour};">${escHtml(String(score))}</div>
-       <div class="dash-stat-label">Fleet vulnerability score</div>
+       <div class="dash-stat-label">${escHtml(t('Fleet vulnerability score'))}</div>
      </div>`;
 }
 
@@ -425,7 +425,7 @@ async function _renderMetricChart(body, settings, widget) {
     chart = new Chart(ctx, {
       type: 'line',
       data: { datasets: [{
-        label: `${settings.category}/${settings.metric}`,
+        label: `${settings.category}/${settings.metric}`, // i18n-ignore
         data: [], borderColor: tok('--sky'), backgroundColor: 'rgba(130,196,238,.14)',
         borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
       }] },
@@ -716,8 +716,8 @@ async function _renderPendingEnrollments(body) {
       <span class="dash-alert-msg"><strong>${escHtml(h.hostname)}</strong>
         <span class="muted-note">${escHtml(h.ip_address || '')}</span></span>
       <span class="dash-alert-actions">
-        <button class="btn btn-mint btn-xs" data-approve="${escAttr(h.id)}">Approve</button>
-        <button class="btn btn-rose btn-xs" data-reject="${escAttr(h.id)}">Reject</button>
+        <button class="btn btn-mint btn-xs" data-approve="${escAttr(h.id)}">${escHtml(t('Approve'))}</button>
+        <button class="btn btn-rose btn-xs" data-reject="${escAttr(h.id)}">${escHtml(t('Reject'))}</button>
       </span>
     </div>`).join('') + `</div>`;
   // Enrollment is a real decision, so it confirms rather than acting on a
@@ -728,13 +728,13 @@ async function _renderPendingEnrollments(body) {
       const id = approve ? btn.dataset.approve : btn.dataset.reject;
       const name = btn.closest('.dash-alert').querySelector('strong').textContent;
       if (!(await confirmModal(
-        `${approve ? 'Approve' : 'Reject'} ${name}?`,
-        { confirmText: approve ? 'Approve' : 'Reject', danger: !approve }))) return;
+        approve ? t('Approve {name}?', { name }) : t('Reject {name}?', { name }),
+        { confirmText: approve ? t('Approve') : t('Reject'), danger: !approve }))) return;
       try {
         await apiJson(`/api/v1/hosts/${id}/${approve ? 'approve' : 'reject'}/`,
                       { method: 'POST', body: JSON.stringify({}) });
         _WCACHE.delete('/api/v1/hosts/');
-        showToast(`${name} ${approve ? 'approved' : 'rejected'}`, 'success');
+        showToast(approve ? t('{name} approved', { name }) : t('{name} rejected', { name }), 'success');
         _dashPaintAll();
       } catch (e) { showToast(e.message || 'Failed', 'error'); }
     };
@@ -816,8 +816,8 @@ async function _renderNetworkThroughput(body, settings, widget) {
     chart = new Chart(body.querySelector('canvas').getContext('2d'), {
       type: 'line',
       data: { datasets: [
-        { label: 'out', data: [], borderColor: '#82c4ee', borderWidth: 2, pointRadius: 0, tension: .25 },
-        { label: 'in',  data: [], borderColor: '#7eddb5', borderWidth: 2, pointRadius: 0, tension: .25 },
+        { label: t('out'), data: [], borderColor: '#82c4ee', borderWidth: 2, pointRadius: 0, tension: .25 },
+        { label: t('in'),  data: [], borderColor: '#7eddb5', borderWidth: 2, pointRadius: 0, tension: .25 },
       ] },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
@@ -853,19 +853,19 @@ async function _renderTaskHistory(body, settings) {
   const rows = _wRows(await _wCached('/api/v1/tasks/history/', 8000));
   const failures = new Set(['failed', 'timeout', 'rejected']);
   const shown = rows
-    .filter(t => !settings.failures_only || failures.has(t.state))
+    .filter(row => !settings.failures_only || failures.has(row.state))
     .slice(0, Number(settings.limit) || 10);
   if (!shown.length) {
-    _wEmpty(body, settings.failures_only ? 'No failures' : 'Nothing has run yet');
+    _wEmpty(body, settings.failures_only ? t('No failures') : t('Nothing has run yet'));
     return;
   }
-  body.innerHTML = _dashCards(shown.map(t => _dashCard({
-    edge: _EDGE_BY_RUN_STATE[t.state] || 'grey',
-    title: t.step_label || t.action || '(no step)',
-    sub: [t.host_hostname, timeAgo(t.completed_at || t.created_at)]
+  body.innerHTML = _dashCards(shown.map(row => _dashCard({
+    edge: _EDGE_BY_RUN_STATE[row.state] || 'grey',
+    title: row.step_label || row.action || t('(no step)'),
+    sub: [row.host_hostname, timeAgo(row.completed_at || row.created_at)]
       .filter(Boolean).join(' · '),
-    right: t.state || '',
-    tip: `${t.state || ''} · ${t.step_label || t.action || ''}`,
+    right: row.state || '',
+    tip: `${row.state || ''} · ${row.step_label || row.action || ''}`,
     nav: { page: 'tasks', tab: 'tasks-history' },
   })));
 }
@@ -874,13 +874,13 @@ async function _renderWaveStatus(body, settings) {
   const wanted = (settings.group_tag || '').trim();
   const url = wanted ? `/api/v1/waves/?group=${encodeURIComponent(wanted)}` : '/api/v1/waves/';
   const rows = _wRows(await _wCached(url));
-  if (!rows.length) { _wEmpty(body, wanted ? `No wave tagged ${wanted}` : 'No waves yet'); return; }
+  if (!rows.length) { _wEmpty(body, wanted ? t('No wave tagged {tag}', { tag: wanted }) : t('No waves yet')); return; }
   body.innerHTML = _dashCards(rows.map(w => _dashCard({
     edge: 'lav',
-    title: `${w.order} · ${w.name}`,
+    title: `${w.order} · ${w.name}`, // i18n-ignore — the wave order and name are data
     sub: (w.group_tags || []).join(' · '),
     right: String(w.exclusive_host_count ?? w.host_count ?? 0),
-    rightSub: 'hosts',
+    rightSub: t('hosts'),
     tip: w.name,
     nav: { page: 'playbooks', anchor: 'wave-panel' },
   })));
@@ -893,20 +893,20 @@ async function _renderPlaybookCoverage(body, settings) {
   ]);
   const book = _wRows(playbooks).find(b => String(b.id) === String(settings.playbook));
   if (!book) { _wEmpty(body, 'That playbook no longer exists'); return; }
-  const targets = (book.target_tags || []).map(t => String(t).toLowerCase());
+  const targets = (book.target_tags || []).map(tag => String(tag).toLowerCase());
   const done = String(book.completion_tag || '').toLowerCase();
   const matching = _wRows(hosts).filter((h) => {
-    const tags = (h.tags || []).map(t => String(t).toLowerCase());
-    return targets.length ? targets.some(t => tags.includes(t)) : true;
+    const tags = (h.tags || []).map(tag => String(tag).toLowerCase());
+    return targets.length ? targets.some(tag => tags.includes(tag)) : true;
   });
   const ran = matching.filter(h =>
-    done && (h.tags || []).some(t => String(t).toLowerCase() === done));
+    done && (h.tags || []).some(tag => String(tag).toLowerCase() === done));
   const pct = matching.length ? Math.round(ran.length / matching.length * 100) : 0;
   body.innerHTML = `
     <div class="dash-stat">
       <div class="dash-stat-value" data-css="color:${pct === 100 ? 'var(--mint)' : 'var(--lemon)'};">
         ${ran.length}<span class="dash-stat-suffix">/${matching.length}</span></div>
-      <div class="dash-stat-label">${escHtml(book.name)}${done ? '' : ' — no completion tag set'}</div>
+      <div class="dash-stat-label">${escHtml(book.name)}${done ? '' : ` ${escHtml(t('— no completion tag set'))}`}</div>
       <div class="dash-cover-bar"><span data-css="width:${pct}%;"></span></div>
     </div>`;
 }
@@ -972,8 +972,8 @@ async function _renderFirewallStatus(body, settings) {
     <div class="dash-stat">
       <div class="dash-stat-value dash-stat-value-22" data-css="color:${active === false ? 'var(--rose)' : 'var(--mint)'};">
         ${escHtml(String(backend))}</div>
-      <div class="dash-stat-label">${rules.length} rule${rules.length === 1 ? '' : 's'}${
-        active === false ? ' · inactive' : ''}</div>
+      <div class="dash-stat-label">${tn('{n} rule', '{n} rules', rules.length)}${
+        active === false ? ` · ${escHtml(t('inactive'))}` : ''}</div>
     </div>`;
 }
 
@@ -989,7 +989,7 @@ async function _renderWindowsPatches(body) {
     if (!u) {
       return `<div class="dash-proc">
         <span class="dash-proc-name">${escHtml(host.hostname)}</span>
-        <span class="dash-proc-value muted-note" title="No agent has counted yet">—</span>
+        <span class="dash-proc-value muted-note" title="${escAttr(t('No agent has counted yet'))}">—</span>
       </div>`;
     }
     const colour = u.critical ? 'var(--rose)'
@@ -999,7 +999,7 @@ async function _renderWindowsPatches(body) {
       <span class="dash-proc-name">
         <span class="dash-host-dot dash-dot-${escAttr(host.status)}"></span>
         ${escHtml(host.hostname)}
-        ${host.reboot_required ? '<span class="chip">reboot</span>' : ''}
+        ${host.reboot_required ? `<span class="chip">${escHtml(t('reboot'))}</span>` : ''}
       </span>
       <span class="dash-proc-value" data-css="color:${colour};"
             title="${escAttr(detail)}">${u.pending}</span>
@@ -1026,13 +1026,13 @@ async function _renderQuickDeploy(body, settings) {
   body.innerHTML = `
     <div class="dash-stat dash-stat-gap10">
       <div class="dash-stat-label">${escHtml(def.name)}</div>
-      <button class="btn btn-peach btn-sm" data-quick-deploy>Deploy…</button>
+      <button class="btn btn-peach btn-sm" data-quick-deploy>${escHtml(t('Deploy…'))}</button>
     </div>`;
   // Hands off to the normal deploy modal rather than dispatching from here:
   // choosing hosts and passing 2FA is the ceremony, not a detail to skip.
   body.querySelector('[data-quick-deploy]').onclick = () => {
     if (typeof openDeployModal === 'function') openDeployModal(def.id);
-    else showToast('Open the Tasks page to deploy', 'info');
+    else showToast(t('Open the Tasks page to deploy'), 'info');
   };
 }
 
@@ -1065,7 +1065,7 @@ async function _renderUptimeBars(body, settings) {
                       title="${escAttr(r.day)} · ${r.uptime}%"></span>`;
       }).join('')}
     </div>
-    <div class="dash-stat-label">${mean.toFixed(1)}% over ${rows.length} days</div>`;
+    <div class="dash-stat-label">${t('{pct} over {n}', { pct: `${mean.toFixed(1)}%`, n: tn('{n} day', '{n} days', rows.length) })}</div>`;
 }
 
 /* ── Business ──────────────────────────────────────────────────────────── */
@@ -1281,7 +1281,7 @@ document.addEventListener('click', async (ev) => {
     const hostItems = type === 'machine' ? await _hostPickerItems() : null;
     openPicker({
       type,
-      title: 'Choose a ' + (type === 'machine' ? 'host' : type),
+      title: t('Choose a {type}', { type: type === 'machine' ? t('host') : type }),
       allowAdd: type === 'task',
       // Hosts come from the list the widget itself uses. The picker's own
       // machine list is the status-page one, which is admin-only and not
@@ -1297,9 +1297,9 @@ document.addEventListener('click', async (ev) => {
         if (!row.querySelector('[data-clear-picker]')) {
           open.insertAdjacentHTML('afterend',
             `<button type="button" class="btn btn-outline btn-sm" data-clear-picker
-                     data-for="${escAttr(input.id)}">Clear</button>`);
+                     data-for="${escAttr(input.id)}">${escHtml(t('Clear'))}</button>`);
         }
-        open.textContent = 'Change\u2026';
+        open.textContent = t('Change…');
       },
     });
     return;
@@ -1310,8 +1310,8 @@ document.addEventListener('click', async (ev) => {
     if (!input) return;
     input.value = '';
     const row = input.closest('.setting-picker');
-    row.querySelector('[data-picker-name]').textContent = '\u2014 none \u2014';
-    row.querySelector('[data-open-picker]').textContent = 'Choose\u2026';
+    row.querySelector('[data-picker-name]').textContent = t('— none —');
+    row.querySelector('[data-open-picker]').textContent = t('Choose…');
     clear.remove();
   }
 });
@@ -1319,19 +1319,19 @@ document.addEventListener('click', async (ev) => {
 function _settingsField(name, field, value, options) {
   const id = `ws-${name}`;
   const label = `<label class="form-label" for="${escAttr(id)}">${escHtml(field.label || name)}</label>`;
-  const t = field.type;
+  const fieldType = field.type;
 
-  if (t === 'bool') {
+  if (fieldType === 'bool') {
     return `<label class="setting-check">
       <input type="checkbox" id="${escAttr(id)}" data-setting="${escAttr(name)}"
              ${value ? 'checked' : ''}> ${escHtml(field.label || name)}</label>`;
   }
-  if (t === 'longtext') {
+  if (fieldType === 'longtext') {
     return `<div class="form-group">${label}
       <textarea class="form-control" id="${escAttr(id)}" rows="5"
                 data-setting="${escAttr(name)}">${escHtml(value ?? '')}</textarea></div>`;
   }
-  if (t === 'int') {
+  if (fieldType === 'int') {
     return `<div class="form-group">${label}
       <input type="number" class="form-control" id="${escAttr(id)}"
              data-setting="${escAttr(name)}" value="${escAttr(value ?? field.default ?? 0)}"
@@ -1341,27 +1341,27 @@ function _settingsField(name, field, value, options) {
   // Tasks, playbooks and hosts get the searchable picker modal the playbook and
   // automation editors already use, not a <select>. A dropdown is unusable once
   // a fleet has more than a screenful of either, and it cannot search.
-  if (_PICKER_TYPE[t]) {
+  if (_PICKER_TYPE[fieldType]) {
     const chosen = options.find(([v]) => String(v) === String(value));
     return `<div class="form-group">${label}
       <div class="setting-picker">
         <input type="hidden" id="${escAttr(id)}" data-setting="${escAttr(name)}"
                value="${escAttr(value ?? '')}">
         <span class="setting-picker-name" data-picker-name>${
-          escHtml(chosen ? chosen[1] : '— none —')}</span>
-        <button type="button" class="btn btn-sky btn-sm" data-open-picker="${escAttr(t)}"
-                data-for="${escAttr(id)}">${chosen ? 'Change' : 'Choose'}\u2026</button>
+          escHtml(chosen ? chosen[1] : t('— none —'))}</span>
+        <button type="button" class="btn btn-sky btn-sm" data-open-picker="${escAttr(fieldType)}"
+                data-for="${escAttr(id)}">${escHtml(chosen ? t('Change') : t('Choose'))}\u2026</button>
         ${chosen ? `<button type="button" class="btn btn-outline btn-sm"
-                            data-clear-picker data-for="${escAttr(id)}">Clear</button>` : ''}
+                            data-clear-picker data-for="${escAttr(id)}">${escHtml(t('Clear'))}</button>` : ''}
       </div></div>`;
   }
-  if (t === 'choice' || options.length) {
-    const list = t === 'choice'
+  if (fieldType === 'choice' || options.length) {
+    const list = fieldType === 'choice'
       // A choice may carry display labels for its option values (Jackil's
       // catalog names a unit by id but shows the operator a word).
       ? (field.options || []).map(o => [o, (field.labels && field.labels[o]) || o])
       : options;
-    const blank = t === 'choice' ? '' : `<option value="">— none —</option>`;
+    const blank = fieldType === 'choice' ? '' : `<option value="">${escHtml(t('— none —'))}</option>`;
     return `<div class="form-group">${label}
       <select class="form-control" id="${escAttr(id)}" data-setting="${escAttr(name)}">
         ${blank}${list.map(([v, text]) =>
@@ -1384,18 +1384,18 @@ async function openWidgetSettings(widgetId) {
 
   const m = mountModal('widget-settings');
   m.setBody(`<div class="modal-title"><span>${escHtml(spec.label || widget.kind)}</span>
-      <button class="modal-close" id="ws-x" aria-label="Close">
+      <button class="modal-close" id="ws-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
-    <div id="ws-body"><span class="muted-note">Loading…</span></div>`);
+    <div id="ws-body"><span class="muted-note">${escHtml(t('Loading…'))}</span></div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#ws-x')).onclick = m.close;
   m.open();
 
   if (!Object.keys(schema).length) {
     document.getElementById('ws-body').innerHTML =
       `<p class="muted-note">${escHtml(spec.description || '')}</p>
-       <p class="muted-note">This widget has nothing to configure.</p>
-       <div class="modal-actions"><button class="btn btn-outline btn-sm" id="ws-close">Close</button></div>`;
+       <p class="muted-note">${escHtml(t('This widget has nothing to configure.'))}</p>
+       <div class="modal-actions"><button class="btn btn-outline btn-sm" id="ws-close">${escHtml(t('Close'))}</button></div>`;
     document.getElementById('ws-close').onclick = m.close;
     return;
   }
@@ -1403,8 +1403,8 @@ async function openWidgetSettings(widgetId) {
   // Fetch each picker's options once, in parallel, before drawing the form.
   const types = [...new Set(Object.values(schema).map(f => f.type))];
   const lists = {};
-  await Promise.all(types.map(async (t) => {
-    try { lists[t] = await _settingsOptions(t); } catch (e) { lists[t] = []; }
+  await Promise.all(types.map(async (type) => {
+    try { lists[type] = await _settingsOptions(type); } catch (e) { lists[type] = []; }
   }));
 
   // A metric picker chooses the category/metric pair together, so the separate
@@ -1424,8 +1424,8 @@ async function openWidgetSettings(widgetId) {
     `${spec.description ? `<p class="muted-note widget-settings-desc">${escHtml(spec.description)}</p>` : ''}
      ${fields}
      <div class="modal-actions">
-       <button class="btn btn-outline btn-sm" id="ws-cancel">Cancel</button>
-       <button class="btn btn-mint btn-sm" id="ws-save">Save</button>
+       <button class="btn btn-outline btn-sm" id="ws-cancel">${escHtml(t('Cancel'))}</button>
+       <button class="btn btn-mint btn-sm" id="ws-save">${escHtml(t('Save'))}</button>
      </div>`;
 
   document.getElementById('ws-cancel').onclick = m.close;
@@ -1459,6 +1459,6 @@ async function openWidgetSettings(widgetId) {
     // Repaint just this widget so the change is visible without a round trip;
     // the value itself is persisted with the rest of the layout on save.
     _dashPaintAll();
-    showToast('Widget updated — saved when you leave edit mode', 'success');
+    showToast(t('Widget updated — saved when you leave edit mode'), 'success');
   };
 }
