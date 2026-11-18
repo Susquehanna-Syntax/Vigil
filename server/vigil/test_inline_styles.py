@@ -54,6 +54,14 @@ THIRD_BATCH = [
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
+def stray_styles(text: str) -> list[str]:
+    """Every style attribute in `text` a finished batch may not leave behind:
+    anything that is not a bare display:none or holds a template tag."""
+    return [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
+            if not _ALLOWED_LEFTOVER.match(m.group(0))
+            and "{{" not in m.group(0) and "{%" not in m.group(0)]
+
+
 def scanned_files() -> list[Path]:
     """Every file the ratchet covers, sorted by its baseline-relative path."""
     return sorted(
@@ -121,20 +129,25 @@ class InlineStyleRatchetTests(SimpleTestCase):
 
     def test_the_second_batch_is_done(self):
         for rel in SECOND_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))
-                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
-            self.assertEqual(leftover, [],
-                             f"{rel} was moved into classes in phase 08b; only "
-                             'style="display:none;" may remain.')
+            assert_batch_is_clean(self, rel)
 
     def test_the_third_batch_is_done(self):
         for rel in THIRD_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))
-                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
-            self.assertEqual(leftover, [],
-                             f"{rel} was moved into classes in phase 08c; only "
-                             'style="display:none;" may remain.')
+            assert_batch_is_clean(self, rel)
+
+    def test_the_first_half_of_base_is_done(self):
+        """08e cleared base.html's shell, sidebar, deploy dialog and wave
+        editor; everything from the rollout-detail overlay down belongs to the
+        next batch and stays as it is."""
+        text = (ROOT / "templates/base.html").read_text(encoding="utf-8")
+        head = text.split('id="rollout-detail-overlay"')[0]
+        self.assertEqual(stray_styles(head), [],
+                         "The first half of base.html was moved into classes in "
+                         'phase 08e; only style="display:none;" may remain.')
+
+
+def assert_batch_is_clean(case, rel: str) -> None:
+    case.assertEqual(
+        stray_styles((ROOT / rel).read_text(encoding="utf-8")), [],
+        f"{rel} was moved into classes; only "
+        'style="display:none;" may remain.')

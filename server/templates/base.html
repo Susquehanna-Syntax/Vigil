@@ -56,7 +56,7 @@
 
   {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
   <nav class="sidebar">
-    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;"></div>
+    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil"></div>
     {# Header site switcher (S1 04g). Logic: vigil-siteswitch.js; hidden unless the user sees more than one site. #}
     <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="Sites"
       role="button" tabindex="0" aria-label="Choose the sites to show" hidden>
@@ -112,7 +112,7 @@
     </div>
     <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
+      {% if alert_count %}<div class="badge-dot badge-dot--alert"></div>{% endif %}
     </div>
     <div class="sidebar-icon" data-page="statuspages" data-tip="Status Pages">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
@@ -122,7 +122,7 @@
     </div>
     <div class="sidebar-icon" data-page="settings" data-tip="Settings">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      {% if pending_count %}<div class="badge-dot" style="background: var(--peach);"></div>{% endif %}
+      {% if pending_count %}<div class="badge-dot badge-dot--pending"></div>{% endif %}
     </div>
 
     <div class="sidebar-spacer"></div>
@@ -131,8 +131,8 @@
       <svg viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
     </div>
     <div class="sidebar-icon" data-tip="Theme: Dark" id="theme-toggle" data-act="toggleTheme">
-      <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-      <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg id="theme-icon-moon" class="theme-toggle-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+      <svg id="theme-icon-sun" class="theme-toggle-icon" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </div>
     <div class="sidebar-icon" data-page="about" data-tip="About">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -163,7 +163,7 @@
   </button>
   <div class="detail-header">
     <div class="detail-hostname" id="detail-hostname">—</div>
-    <div class="detail-meta" style="display:flex;align-items:center;gap:6px;">
+    <div class="detail-meta detail-meta-inline">
       <span id="detail-os-logo"></span>
       <span id="detail-meta">—</span>
     </div>
@@ -171,34 +171,34 @@
 
   <div class="detail-section">
     <div class="detail-section-title">Status</div>
-    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+    <div class="detail-status-row">
       <div class="status-dot" id="detail-status-dot"></div>
-      <span id="detail-status-text" style="font-size: 14px; font-weight: 500;">—</span>
-      <span class="mode-badge" id="detail-mode-badge" style="margin-left: auto;">—</span>
+      <span id="detail-status-text" class="detail-status-text">—</span>
+      <span class="mode-badge mode-badge--end" id="detail-mode-badge">—</span>
     </div>
-    <div style="font-size: 12px; color: var(--text-3);">
+    <div class="detail-sub-line">
       Last check-in: <span class="mono" id="detail-last-checkin">—</span>
     </div>
-    <div style="font-size: 12px; color: var(--text-3); display:flex; align-items:center; gap:8px;">
+    <div class="detail-sub-line detail-agent-line">
       Agent: <span class="mono" id="detail-agent-version">—</span>
-      <button class="btn btn-ghost btn-sm" id="detail-update-agent-btn"
-              style="display:none; padding:2px 8px; color:var(--sky-ink);"
+      <button class="btn btn-ghost btn-sm detail-agent-btn" id="detail-update-agent-btn"
+              style="display:none;"
               data-act="forceUpdateAgent">Update</button>
     </div>
   </div>
 
   <div class="detail-section" id="detail-jackil-section" style="display:none;">
     <div class="detail-section-title">Related in Jackil</div>
-    <div id="detail-jackil-body" style="font-size: 13px;"></div>
+    <div id="detail-jackil-body" class="detail-jackil-body"></div>
   </div>
 
   <div class="detail-section" id="detail-score-section" style="display:none;">
     <div class="detail-section-title">Security score</div>
-    <div style="display:flex;align-items:baseline;gap:12px;">
-      <span class="mono" id="detail-score" style="font-size:28px;font-weight:600;line-height:1;">—</span>
-      <span style="font-size:12px;color:var(--text-3);">/ 100</span>
+    <div class="detail-score-row">
+      <span class="mono detail-score" id="detail-score">—</span>
+      <span class="detail-sub-line">/ 100</span>
     </div>
-    <div style="font-size:12px;color:var(--text-3);margin-top:6px;">
+    <div class="detail-sub-line detail-sub-line-below">
       Last scan: <span class="mono" id="detail-last-scan">never</span>
     </div>
   </div>
@@ -208,55 +208,55 @@
     <div class="metric-grid">
       <div class="metric-card">
         <div class="metric-card-label">CPU Usage</div>
-        <div class="metric-card-value" style="color: var(--sky-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
+        <div class="metric-card-value metric-card-value-sky">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-sky"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Memory</div>
-        <div class="metric-card-value" style="color: var(--lavender-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
+        <div class="metric-card-value metric-card-value-lavender">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-lavender"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Disk</div>
-        <div class="metric-card-value" style="color: var(--mint-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
+        <div class="metric-card-value metric-card-value-mint">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-mint"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Swap</div>
-        <div class="metric-card-value" style="color: var(--peach-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
+        <div class="metric-card-value metric-card-value-peach">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-peach"></div></div>
       </div>
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">CPU History (1h)</div>
-    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+    <div class="detail-chart-box">
       <canvas id="detail-chart-cpu"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">Network I/O</div>
-    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+    <div class="detail-chart-box">
       <canvas id="detail-chart-net"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">Docker Containers</div>
-    <div style="background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">
+    <div class="detail-containers-empty">
       Container metrics will appear here once reported by the agent.
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">Tags</div>
-    <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
+    <div id="detail-tags-row" class="host-tag-row detail-tags-gap"></div>
     <div class="host-tag-add-row">
-      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40" style="font-size:12px;padding:7px 10px;">
+      <input type="text" class="form-control detail-tag-input" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40">
     </div>
-    <div class="confirm-hint" style="margin-top:6px;">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
+    <div class="confirm-hint detail-hint-below">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
   </div>
 
   <div class="detail-section">
@@ -266,13 +266,13 @@
     </div>
   </div>
 
-  <div class="detail-section" style="margin-top:auto; padding-top:24px; border-top:1px solid var(--s3);">
-    <button type="button" class="btn btn-outline btn-rose-ghost" style="width:100%;" id="detail-delete-btn"
+  <div class="detail-section detail-section-last">
+    <button type="button" class="btn btn-outline btn-rose-ghost detail-delete-btn" id="detail-delete-btn"
             data-act="deleteHostFromDetailPanel" data-a1="$el">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
       Remove Agent
     </button>
-    <div class="confirm-hint" style="margin-top:6px;">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
+    <div class="confirm-hint detail-hint-below">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
   </div>
 </div>
 
@@ -313,12 +313,12 @@
 
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
-            <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-weight:600;">
+            <label class="deploy-run-now">
               <input type="checkbox" id="deploy-schedule-run-now" checked data-change="_onRunNowToggle">
               Run now (no schedule window — dispatch on next check-in)
             </label>
             <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
-            <div class="deploy-policy-grid" id="deploy-schedule-fields" style="margin-top:10px;">
+            <div class="deploy-policy-grid deploy-policy-grid-top" id="deploy-schedule-fields">
               <div>
                 <label class="deploy-input-label">Start time</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing.">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
@@ -337,7 +337,7 @@
           <!-- Retry (on-failure policy) -->
           <div class="deploy-panel" data-panel="retry">
             <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
                 <label class="deploy-input-label">Retry attempts</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many extra times to try a step that fails. 0 means one attempt and no retries.">?</span>
                 <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
@@ -352,7 +352,7 @@
           <!-- Success Criteria -->
           <div class="deploy-panel" data-panel="criteria">
             <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
                 <label class="deploy-input-label">Expected exit code</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The exit code that counts as success. Usually 0. Anything else marks the step failed.">?</span>
                 <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
@@ -364,7 +364,7 @@
               </div>
               <div class="full">
                 <label class="deploy-input-label">Output must match regex</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives.">?</span>
-                <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
+                <input type="text" class="form-control deploy-criteria-regex" id="deploy-criteria-regex" placeholder="(optional)">
               </div>
             </div>
           </div>
@@ -373,9 +373,9 @@
 
       <!-- RIGHT: searchable host table OR tag picker -->
       <div class="deploy-right-col">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
-          <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
-          <div class="deploy-tabs" style="margin-bottom:0;">
+        <div class="deploy-target-head">
+          <div class="deploy-col-title deploy-col-title-flush">Target</div>
+          <div class="deploy-tabs deploy-tabs-flush">
             <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">Hosts</button>
             <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">By Tag</button>
           </div>
@@ -385,7 +385,7 @@
           <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" data-input="filterDeployHosts">
           <div class="deploy-host-table">
             <div class="deploy-host-head">
-              <div><input type="checkbox" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
+              <div><input type="checkbox" class="deploy-select-all" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked"></div>
               <div>Hostname</div>
               <div>Mode</div>
             </div>
@@ -393,13 +393,13 @@
               <div class="host-pick-empty">No online, executable hosts available.</div>
             </div>
           </div>
-          <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+          <div class="confirm-hint confirm-hint-tight" id="deploy-host-summary">Select one or more hosts.</div>
         </div>
 
         <div id="deploy-target-tags" style="display:none;">
-          <div class="deploy-policy-help" style="margin-bottom:10px;">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
+          <div class="deploy-policy-help deploy-tag-help">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
           <div class="deploy-day-row" id="deploy-tag-chips"></div>
-          <div class="confirm-hint" id="deploy-tag-summary" style="margin-top:10px;">No tags selected.</div>
+          <div class="confirm-hint confirm-hint-wide" id="deploy-tag-summary">No tags selected.</div>
         </div>
       </div>
 
@@ -411,9 +411,9 @@
       <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> Send to them anyway</label>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
+    <div class="deploy-footer">
       <span id="deploy-risk-label"></span>
-      <div style="display:flex;gap:10px;">
+      <div class="deploy-footer-actions">
         <button type="button" class="btn btn-ghost" data-act="closeDeployModal">Cancel</button>
         <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -430,10 +430,10 @@
   <div class="modal-title">
     <span id="wave-editor-title">New Wave</span>
     <button class="modal-close" data-act="closeWaveEditor">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;">
+  <div class="wave-editor-body">
     <div class="form-group">
       <label class="form-label">Name</label>
       <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
@@ -441,40 +441,40 @@
     <div class="form-group" id="wave-site-field" hidden>
       <label class="form-label" for="wave-site">Site</label>
       <select class="form-control" id="wave-site"></select>
-      <div class="muted-note" style="margin-top:6px;">Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists.</div>
+      <div class="muted-note muted-note-below-field">Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists.</div>
     </div>
     <div class="form-group">
-      <label class="form-label">Groups <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = ungrouped)</span></label>
+      <label class="form-label">Groups <span class="form-label-optional">(comma-separated; blank = ungrouped)</span></label>
       <input type="text" class="form-control" id="wave-group-tags" placeholder="servers, workstations">
-      <div class="muted-note" style="margin-top:6px;">
+      <div class="muted-note muted-note-below-field">
         A group is just a tag. A rollout walks one group's waves in order, so
         keep separate ladders for machines that should not patch together. A
         wave can sit on more than one ladder — a canary wave is often the first
         rung of both. Order only has to be unique within a group.
       </div>
     </div>
-    <div style="display:flex;gap:12px;">
-      <div class="form-group" style="flex:1;">
+    <div class="wave-row">
+      <div class="form-group">
         <label class="form-label">Order</label>
         <input type="number" class="form-control" id="wave-order" min="1" value="1">
-        <div class="confirm-hint" style="margin-top:4px;">Lower numbers patch first.</div>
+        <div class="confirm-hint confirm-hint-flush">Lower numbers patch first.</div>
       </div>
-      <div class="form-group" style="flex:1;">
+      <div class="form-group">
         <label class="form-label">Validation window (hours)</label>
         <input type="number" class="form-control" id="wave-validation" min="0" max="720" value="24">
-        <div class="confirm-hint" style="margin-top:4px;">How long to wait after this wave before starting the next. 0 advances immediately.</div>
+        <div class="confirm-hint confirm-hint-flush">How long to wait after this wave before starting the next. 0 advances immediately.</div>
       </div>
     </div>
     <div class="form-group">
       <label class="form-label">Host tags</label>
       <input type="text" class="form-control" id="wave-tags" placeholder="canary, staging">
-      <div class="confirm-hint" style="margin-top:4px;">
+      <div class="confirm-hint confirm-hint-flush">
         Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
         Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
       </div>
-      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky-ink);"></div>
+      <div class="confirm-hint confirm-hint-tight wave-match-preview" id="wave-match-preview"></div>
     </div>
-    <label class="form-check" style="margin-bottom:4px;">
+    <label class="form-check wave-enabled-check">
       <input type="checkbox" id="wave-enabled" checked>
       <span>Enabled &mdash; a disabled wave is skipped entirely</span>
     </label>

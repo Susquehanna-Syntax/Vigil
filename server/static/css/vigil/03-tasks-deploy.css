@@ -537,3 +537,44 @@
   line-height: 1.45;
 }
 
+/* The deploy dialog's and the wave editor's own looks, moved out of
+   base.html (08e). A rule that repeats a declaration the element's shared
+   class already makes — `.deploy-policy-grid`'s and `.form-group`'s bottom
+   margin, `.confirm-hint`'s top margin, `.deploy-col-title`'s and
+   `.deploy-tabs`' bottom margin — carries that shared class too, so it beats
+   it as the inline used to. */
+.deploy-run-now {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px; cursor: pointer; font-weight: 600;
+}
+.deploy-policy-grid.deploy-policy-grid-top { margin-top: 10px; }
+.deploy-criteria-regex { font-family: 'IBM Plex Mono', monospace; }
+.deploy-target-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; flex-shrink: 0;
+}
+.deploy-col-title.deploy-col-title-flush { margin-bottom: 0; }
+.deploy-tabs.deploy-tabs-flush { margin-bottom: 0; }
+.deploy-select-all { accent-color: var(--sky); width: 14px; height: 14px; cursor: pointer; }
+.confirm-hint.confirm-hint-tight { margin-top: 8px; }
+.confirm-hint.confirm-hint-wide { margin-top: 10px; }
+.confirm-hint.confirm-hint-flush { margin-top: 4px; }
+/* The wave editor's match count, painted in the accent colour. */
+.confirm-hint.wave-match-preview { margin-top: 6px; color: var(--sky-ink); }
+.deploy-policy-help.deploy-tag-help { margin-bottom: 10px; }
+.deploy-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 20px; gap: 12px;
+}
+.deploy-footer-actions { display: flex; gap: 10px; }
+
+.wave-editor-body { overflow-y: auto; }
+.wave-editor-close-icon {
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;
+}
+.muted-note.muted-note-below-field { margin-top: 6px; }
+.form-label-optional { color: var(--text-3); font-weight: 400; }
+.wave-row { display: flex; gap: 12px; }
+.wave-row > .form-group { flex: 1; }
+.form-check.wave-enabled-check { margin-bottom: 4px; }
+

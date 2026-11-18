@@ -80,7 +80,41 @@
   border-radius: 2px; overflow: hidden;
   margin-top: 10px;
 }
-.metric-card-fill { height: 100%; border-radius: 2px; }
+/* The bars start empty; the drawer's script writes width per render. */
+.metric-card-fill { height: 100%; width: 0%; border-radius: 2px; }
+.metric-card-value-sky      { color: var(--sky-ink); }
+.metric-card-value-lavender { color: var(--lavender-ink); }
+.metric-card-value-mint     { color: var(--mint-ink); }
+.metric-card-value-peach    { color: var(--peach-ink); }
+.metric-card-fill-sky      { background: var(--sky); }
+.metric-card-fill-lavender { background: var(--lavender); }
+.metric-card-fill-mint     { background: var(--mint); }
+.metric-card-fill-peach    { background: var(--peach); }
+
+/* The host detail drawer's own looks, moved out of base.html (08e). A rule
+   that repeats a declaration an element's shared class already makes — the
+   buttons' padding, `.form-control`'s font-size and padding, `.confirm-hint`'s
+   and `.host-tag-row`'s margins — carries that shared class too, so it beats
+   it as the inline used to. */
+.detail-meta-inline { display: flex; align-items: center; gap: 6px; }
+.detail-status-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.detail-status-text { font-size: 14px; font-weight: 500; }
+.mode-badge--end { margin-left: auto; }
+.detail-sub-line { font-size: 12px; color: var(--text-3); }
+.detail-agent-line { display: flex; align-items: center; gap: 8px; }
+.btn-sm.detail-agent-btn, .btn-ghost:hover.detail-agent-btn { padding: 2px 8px; }
+.detail-agent-btn { color: var(--sky-ink); }
+.detail-jackil-body { font-size: 13px; }
+.detail-score-row { display: flex; align-items: baseline; gap: 12px; }
+.detail-score { font-size: 28px; font-weight: 600; line-height: 1; }
+.detail-sub-line-below { margin-top: 6px; }
+.detail-chart-box { height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px; }
+.detail-containers-empty { background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
+.host-tag-row.detail-tags-gap { margin-bottom: 8px; }
+.form-control.detail-tag-input { font-size: 12px; padding: 7px 10px; }
+.confirm-hint.detail-hint-below { margin-top: 6px; }
+.detail-section.detail-section-last { margin-top: auto; padding-top: 24px; border-top: 1px solid var(--s3); }
+.btn.detail-delete-btn { width: 100%; }
 
 .detail-actions {
   display: flex; flex-wrap: wrap; gap: 8px;
