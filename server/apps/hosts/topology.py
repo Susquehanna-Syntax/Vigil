@@ -23,6 +23,7 @@ from rest_framework.response import Response
 from vigil import scoping
 
 from .api_schema import HostsTopologySerializer
+from .device_checks import device_states, poller_for_devices
 from .models import DockerContainer, Host, UnmanagedDevice
 
 MAX_LISTENING = 64
@@ -52,7 +53,6 @@ def build_topology(user) -> dict:
         containers[container.host_id].append(container)
 
     devices = _devices()
-
     # One pass over the interface data feeds three things: every address the
     # host has, the subset that identifies it as a destination, and the subnets.
     addresses, ips, claims = {}, {}, {}
@@ -141,9 +141,18 @@ def _devices():
 
     Not ``exclude(ip_address="")``: on SQLite a GenericIPAddressField compares
     that empty string to ``None``, which would filter out every row.
+
+    The check state and the poller are two batch lookups over the same rows, so
+    the whole map pays for them once whatever the device count is.
     """
-    return [{"id": str(d.id), "name": d.name, "type": d.device_type, "ip": str(d.ip_address)}
-            for d in UnmanagedDevice.objects.exclude(ip_address__isnull=True).order_by("name")]
+    rows = list(UnmanagedDevice.objects.exclude(ip_address__isnull=True).order_by("name"))
+    states = device_states(rows)
+    pollers = poller_for_devices(rows)
+    return [{"id": str(d.id), "name": d.name, "type": d.device_type, "ip": str(d.ip_address),
+             "site_id": str(d.site_id) if d.site_id else None,
+             "check_state": states.get(d.id),
+             "poller_id": str(pollers[d.id]) if d.id in pollers else None}
+            for d in rows]
 
 
 def _sites(site_of):

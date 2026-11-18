@@ -802,6 +802,9 @@ class HostsTopologyDeviceSerializer(serializers.Serializer):
     name = serializers.CharField()
     type = serializers.CharField()
     ip = serializers.CharField()
+    site_id = serializers.CharField(allow_null=True)
+    check_state = serializers.CharField(allow_null=True)
+    poller_id = serializers.CharField(allow_null=True)
 
 
 class HostsTopologyLinkSerializer(serializers.Serializer):

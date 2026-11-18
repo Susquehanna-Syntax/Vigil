@@ -228,6 +228,38 @@ def assigned_poller(check: DeviceCheck) -> Host | None:
     return _assign(check, pollers)
 
 
+def poller_for_devices(devices) -> dict:
+    """``poller_id`` for a list of devices: the poller that runs their checks now.
+
+    The same rule :func:`assigned_poller` applies to one check, applied to each
+    device's *first* enabled check (the oldest — `created_at`, `id`). When that
+    check has no poller to take it the device is absent, even if a later check
+    could be placed: what :func:`checks_for` hands out follows the same first
+    match, so a line here always points at a device somebody really polls. A
+    device with no enabled check is absent too; callers read an absent device
+    as None.
+
+    Exactly two queries whatever the number of devices: the online pollers
+    once, and the enabled checks of these devices once carrying their device
+    and poller. The assignment itself is the same Python :func:`_assign` the
+    check-in path uses, so a page can never disagree with what a check-in says.
+    """
+    if not devices:
+        return {}
+    pollers = list(Host.objects.filter(status=Host.Status.ONLINE, agent_poller=True).order_by("id"))
+    out: dict = {}
+    seen: set = set()
+    for check in (DeviceCheck.objects.filter(enabled=True, device__in=list(devices))
+                  .select_related("device", "poller").order_by("created_at", "id")):
+        if check.device_id in seen:
+            continue
+        seen.add(check.device_id)              # the *first* enabled check decides, even None
+        poller = _assign(check, pollers)
+        if poller is not None:
+            out[check.device_id] = poller.id
+    return out
+
+
 def checks_for(host: Host) -> list[DeviceCheck]:
     """Every enabled check this host is the assigned poller for, sorted by id.
 

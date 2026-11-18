@@ -17,6 +17,8 @@ from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import (
+    CheckResult,
+    DeviceCheck,
     DockerContainer,
     Host,
     HostFirewall,
@@ -51,9 +53,10 @@ def iface(address, prefix=24, name="eth0"):
             "addrs": [{"family": "ipv4", "address": address, "prefix": prefix}]}
 
 
-def make_host(hostname, ip=None, status=Host.Status.ONLINE, tags=None):
+def make_host(hostname, ip=None, status=Host.Status.ONLINE, tags=None, poller=False):
     return Host.objects.create(hostname=hostname, agent_token="tok-" + uuid4().hex,
-                               status=status, ip_address=ip, tags=tags or [])
+                               status=status, ip_address=ip, tags=tags or [],
+                               agent_poller=poller)
 
 
 def make_network(host, interfaces=None, listening=None, connections=None, partial=False):
@@ -69,6 +72,13 @@ def admin():
         user = get_user_model().objects.create_user("topo-admin", password="x")
         UserProfile.objects.create(user=user, role=Role.ADMIN)
     return user
+
+
+def make_check(device, poller=None, host=None):
+    """An enabled ICMP check on a device, its params filled with the address."""
+    return DeviceCheck.objects.create(
+        device=device, kind=DeviceCheck.Kind.ICMP,
+        params={"host": host or str(device.ip_address)}, poller=poller)
 
 
 def rows_between(payload, left, right):
@@ -164,7 +174,8 @@ class TopologyApiTests(TestCase):
                          [(app_id, dev_id, [161], 1)])
         self.assertEqual(payload["devices"],
                          [{"id": dev_id, "name": "core-switch", "type": "switch",
-                           "ip": "10.0.0.1"}])
+                           "ip": "10.0.0.1", "site_id": None, "check_state": None,
+                           "poller_id": None}])
 
     def test_external_and_subnets(self):
         app = make_host("app", ip="10.0.0.5")
@@ -247,6 +258,11 @@ class TopologyApiTests(TestCase):
                 DockerContainer.objects.create(host=host, container_id=f"c{index}",
                                                name=f"c{index}", stack="s", state="running")
                 HostFirewall.objects.create(host=host, tool="ufw", enabled=True)
+                device = UnmanagedDevice.objects.create(name=f"d{index}", device_type="switch",
+                                                        ip_address=f"10.0.9.{10 + index}")
+                make_check(device)
+                CheckResult.objects.create(device_check=device.checks.first(),
+                                           time=timezone.now(), ok=True, detail="ok")
 
         seed(2)
         self._get()
@@ -261,6 +277,50 @@ class TopologyApiTests(TestCase):
         self.assertEqual(len(again["hosts"]), 6)
         self.assertEqual(len(first), len(second),
                          f"query count grew with the host count: {len(first)} → {len(second)}")
+
+    def test_a_polled_device_reports_its_state_site_and_poller(self):
+        # An online poller host every global device's check can land on: these
+        # tests run as a Community install, where everything is global and so
+        # any poller qualifies (device_checks._eligible).
+        poller = make_host("poll-1", ip="10.0.0.2", poller=True)
+        up = UnmanagedDevice.objects.create(name="sw-up", device_type="switch",
+                                            ip_address="10.0.0.20")
+        down = UnmanagedDevice.objects.create(name="sw-down", device_type="switch",
+                                              ip_address="10.0.0.21")
+        for device, ok in ((up, True), (down, False)):
+            check = make_check(device)
+            CheckResult.objects.create(device_check=check, time=timezone.now(), ok=ok,
+                                       detail="ok" if ok else "timeout")
+
+        devices = {d["name"]: d for d in self._get()["devices"]}
+        self.assertEqual((devices["sw-up"]["check_state"], devices["sw-up"]["poller_id"],
+                          devices["sw-up"]["site_id"]), ("up", str(poller.id), None))
+        self.assertEqual(devices["sw-down"]["check_state"], "down")
+
+    def test_a_site_device_sits_in_its_own_site(self):
+        site = Site.objects.create(name="HQ", slug="hq")
+        device = UnmanagedDevice.objects.create(name="hq-print", device_type="printer",
+                                                ip_address="10.0.0.30", site_id=site.id)
+
+        row = next(d for d in self._get()["devices"] if d["id"] == str(device.id))
+        self.assertEqual(row["site_id"], str(site.id))
+
+    def test_a_device_nobody_checks_has_neither_state_nor_poller(self):
+        quiet = UnmanagedDevice.objects.create(name="sw-quiet", device_type="printer",
+                                               ip_address="10.0.0.22")
+
+        row = next(d for d in self._get()["devices"] if d["id"] == str(quiet.id))
+        self.assertIsNone(row["check_state"])
+        self.assertIsNone(row["poller_id"])
+
+    def test_a_check_whose_only_poller_is_offline_reports_no_poller(self):
+        offline = make_host("poll-off", status=Host.Status.OFFLINE)
+        device = UnmanagedDevice.objects.create(name="sw-orphan", device_type="switch",
+                                                ip_address="10.0.0.23")
+        make_check(device, poller=offline)
+
+        row = next(d for d in self._get()["devices"] if d["id"] == str(device.id))
+        self.assertIsNone(row["poller_id"])
 
     def test_unauthenticated_callers_are_refused(self):
         self.assertEqual(APIClient().get("/api/v1/hosts/topology/").status_code, 403)

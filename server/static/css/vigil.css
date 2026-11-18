@@ -4683,6 +4683,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 .topo-link { fill: none; stroke: var(--text-3); stroke-width: 1.5; stroke-opacity: .7; }
 .topo-link-ext { stroke-dasharray: 3 5; }
+.topo-link-poll { stroke: var(--sky-ink); stroke-dasharray: 2 4; stroke-opacity: .8; }
 .topo-link-hi { stroke: var(--lavender-ink); stroke-width: 2.5; stroke-opacity: 1; }
 .topo-link-dim { stroke-opacity: .16; }
 .topo-link-label { font-size: 10px; font-weight: 700; fill: var(--text-2); paint-order: stroke;
