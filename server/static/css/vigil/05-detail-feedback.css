@@ -99,7 +99,8 @@
 .detail-meta-inline { display: flex; align-items: center; gap: 6px; }
 .detail-status-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
 .detail-status-text { font-size: 14px; font-weight: 500; }
-.mode-badge--end { margin-left: auto; }
+/* The script resets the badge's className, so the row places it. */
+.detail-status-row .mode-badge { margin-left: auto; }
 .detail-sub-line { font-size: 12px; color: var(--text-3); }
 .detail-agent-line { display: flex; align-items: center; gap: 8px; }
 .btn-sm.detail-agent-btn, .btn-ghost:hover.detail-agent-btn { padding: 2px 8px; }

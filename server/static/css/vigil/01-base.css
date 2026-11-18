@@ -138,10 +138,6 @@ body {
 }
 .sidebar-avatar:hover { transform: scale(1.1); }
 
-/* The header theme button (08e): its icons are 26px, not the shared 20px, so
-   this needs the same specificity as `.sidebar-icon svg` and comes after it. */
-.sidebar-icon .theme-toggle-icon { width: 26px; height: 26px; }
-
 /* ═══════════════════════════════════════════
    MAIN
    ═══════════════════════════════════════════ */
