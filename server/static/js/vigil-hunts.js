@@ -71,13 +71,13 @@ async function openHuntResults(runId) {
   let body;
   try { body = await _huntFetch(0); }
   catch (e) {
-    showToast('Could not load hunt results for that run', 'error');
+    showToast(t('Could not load hunt results for that run'), 'error');
     return;
   }
   const run = await apiJson(`/api/v1/tasks/runs/${runId}/`).catch(() => null);
   const titleEl = document.getElementById('hunt-page-title');
   const subEl = document.getElementById('hunt-page-sub');
-  if (titleEl) titleEl.textContent = 'Hunt Results';
+  if (titleEl) titleEl.textContent = t('Hunt Results');
   if (subEl) {
     const name = run ? (run.definition_name || run.name_snapshot || 'Run') : '';
     const state = run ? run.state : '';
@@ -182,7 +182,7 @@ function _huntRenderHosts(hosts) {
     tr.addEventListener('click', () => {
       huntResults.hostFilter = (huntResults.hostFilter === h.host_id) ? '' : h.host_id;
       _huntFetch(0).then((body) => _huntSetData(body, true)).catch((e) => {
-        showToast('Could not refilter hunt results', 'error');
+        showToast(t('Could not refilter hunt results'), 'error');
       });
     });
     tbody.appendChild(tr);
@@ -231,7 +231,7 @@ function _huntAppendMatches(matches) {
   const more = document.getElementById('hunt-more');
   if (more) more.hidden = huntResults.offset >= huntResults.total;
   const count = document.getElementById('hunt-matches-count');
-  if (count) count.textContent = `· ${huntResults.total}`;
+  if (count) count.textContent = `· ${huntResults.total}`; // i18n-ignore: a separator and a number, not words
   const empty = document.getElementById('hunt-empty');
   if (empty) empty.hidden = huntResults.total > 0;
 }
@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('hunt-step')?.addEventListener('change', () => {
     _huntFetch(0).then((body) => _huntSetData(body, true)).catch((e) => {
-      showToast('Could not refilter hunt results', 'error');
+      showToast(t('Could not refilter hunt results'), 'error');
     });
   });
 
@@ -315,14 +315,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('hunt-refresh')?.addEventListener('click', () => {
     if (!huntResults.runId) return;
     _huntFetch(0).then((body) => _huntSetData(body, true)).catch((e) => {
-      showToast('Could not refresh hunt results', 'error');
+      showToast(t('Could not refresh hunt results'), 'error');
     });
   });
 
   document.getElementById('hunt-more')?.addEventListener('click', () => {
     if (!huntResults.runId) return;
     _huntFetch(huntResults.offset).then((body) => _huntSetData(body, false)).catch((e) => {
-      showToast('Could not load more matches', 'error');
+      showToast(t('Could not load more matches'), 'error');
     });
   });
 

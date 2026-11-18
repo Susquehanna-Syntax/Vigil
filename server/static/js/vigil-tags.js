@@ -32,30 +32,34 @@ function _filterTags() {
 }
 
 function _tagKindBadge(kind) {
-  if (kind === 'auto') return '<span class="bl-badge off">from inventory</span>';
-  if (kind === 'agent') return '<span class="bl-badge off">reported by agent</span>';
+  if (kind === 'auto') return `<span class="bl-badge off">${escHtml(t('from inventory'))}</span>`;
+  if (kind === 'agent') return `<span class="bl-badge off">${escHtml(t('reported by agent'))}</span>`;
   return '';
 }
 
-function _tagCard(t) {
-  const used = t.host_count === 0
-    ? '<span class="muted-span">on no machines</span>'
-    : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
-  const actions = t.editable && t.can_change !== false
-    ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(t.id)}">Rename</button>
-       <button class="btn btn-ghost btn-sm delete-btn" data-tag-del="${escAttr(t.id)}">Delete</button>`
+/**
+ * @param {TagRow} tagRow
+ * @returns {string}
+ */
+function _tagCard(tagRow) {
+  const used = tagRow.host_count === 0
+    ? `<span class="muted-span">${escHtml(t('on no machines'))}</span>`
+    : `on ${tagRow.host_count} machine${tagRow.host_count === 1 ? '' : 's'}`;
+  const actions = tagRow.editable && tagRow.can_change !== false
+    ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(tagRow.id)}">${escHtml(t('Rename'))}</button>
+       <button class="btn btn-ghost btn-sm delete-btn" data-tag-del="${escAttr(tagRow.id)}">${escHtml(t('Delete'))}</button>`
     : '<span class="confirm-hint hint-flush">' +
-      (!t.editable ? 'maintained by Vigil' : t.site_id ? 'you can use it, not change it' : 'global: changed by an administrator of the whole install') + '</span>';
+      (!tagRow.editable ? 'maintained by Vigil' : tagRow.site_id ? 'you can use it, not change it' : 'global: changed by an administrator of the whole install') + '</span>';
   return `<div class="bl-card">
     <div class="bl-card-head">
       <div>
-        <span class="bl-name">${escHtml(t.name)}</span>
-        ${_tagKindBadge(t.kind)}
+        <span class="bl-name">${escHtml(tagRow.name)}</span>
+        ${_tagKindBadge(tagRow.kind)}
       </div>
       <div class="tag-card-actions">${actions}</div>
     </div>
     <div class="bl-card-body card-body-quiet">
-      ${used}${t.description ? ' · ' + escHtml(t.description) : ''}
+      ${used}${tagRow.description ? ' · ' + escHtml(tagRow.description) : ''}
     </div>
   </div>`;
 }
@@ -79,12 +83,12 @@ function _renderTags() {
 async function loadTags() {
   const box = document.getElementById('tags-list');
   if (!box) return;
-  box.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
+  box.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
   try {
     _allTags = await apiJson('/api/v1/tags/');
     _renderTags();
   } catch (e) {
-    box.innerHTML = `<div class="empty-block"><h4>Couldn't load tags</h4><p>${escHtml(e.message)}</p></div>`;
+    box.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load tags"))}</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
@@ -100,7 +104,7 @@ async function createTag() {
     await apiJson('/api/v1/tags/', {
       method: 'POST', body: JSON.stringify(body),
     });
-    showToast('Tag created', 'success');
+    showToast(t('Tag created'), 'success');
     await loadTags();
   } catch (e) {
     showToast(e.message || 'Could not create the tag', 'error');
@@ -118,7 +122,7 @@ async function renameTag(tagId) {
     await apiJson(`/api/v1/tags/${tagId}/`, {
       method: 'PATCH', body: JSON.stringify({ name: name.trim() }),
     });
-    showToast('Tag renamed everywhere', 'success');
+    showToast(t('Tag renamed everywhere'), 'success');
     await loadTags();
   } catch (e) {
     showToast(e.message || 'Could not rename the tag', 'error');
@@ -131,7 +135,7 @@ async function deleteTag(tagId) {
   if (!confirm(`Delete the tag "${tag.name}"?`)) return;
   try {
     await apiJson(`/api/v1/tags/${tagId}/`, { method: 'DELETE' });
-    showToast('Tag deleted', 'success');
+    showToast(t('Tag deleted'), 'success');
     await loadTags();
   } catch (e) {
     // A 409 here is the API refusing to empty a wave behind your back; its
@@ -193,7 +197,7 @@ function attachTagPicker(inputId, opts = {}) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn btn-outline btn-sm tag-pick-btn';
-  btn.textContent = 'Pick…';
+  btn.textContent = t('Pick…');
   input.insertAdjacentElement('afterend', btn);
 
   btn.addEventListener('click', async () => {
@@ -275,8 +279,8 @@ function attachTagCombobox(inputId, opts) {
     options = matches;
     if (q && !have.has(q) && !_allTags.some(t => t.name.toLowerCase() === q)) {
       options.push(_RESERVED_TAG.test(q)
-        ? { name: q, meta: 'set by Vigil from inventory — cannot be added by hand', disabled: true }
-        : { name: q, meta: 'new tag', create: true });
+        ? { name: q, meta: t('set by Vigil from inventory — cannot be added by hand'), disabled: true }
+        : { name: q, meta: t('new tag'), create: true });
     }
     if (!options.length) {
       list.innerHTML = `<div class="tag-combo-empty">${q ? 'Already on this machine.' : 'No other tags yet — type one to create it.'}</div>`;
@@ -348,14 +352,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Every tag field in the app, in one place so none gets forgotten.
   // (The rollout start dialog picks wave groups from chips in vigil-rollout.js,
   // so it has no tag field to wire.)
-  attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
-  attachTagPicker('wave-group-tags', { title: 'Ladders this wave belongs to' });
-  attachTagPicker('bl-tags', { title: 'Machines this playbook targets' });
-  attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
-  attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
-  attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',
+  attachTagPicker('wave-tags', { title: t('Machines in this wave are tagged') });
+  attachTagPicker('wave-group-tags', { title: t('Ladders this wave belongs to') });
+  attachTagPicker('bl-tags', { title: t('Machines this playbook targets') });
+  attachTagPicker('auto-event-tags', { title: t('Only fire for hosts tagged') });
+  attachTagPicker('auto-target-tags', { title: t('Run on hosts tagged') });
+  attachTagPicker('repro-prof-tags', { title: t('Tag the rebuilt host with'),
                                        includeReserved: true });
-  attachTagPicker('pol-tags', { title: 'Hosts this policy applies to are tagged',
+  attachTagPicker('pol-tags', { title: t('Hosts this policy applies to are tagged'),
                                includeReserved: true });
   // The host drawer adds one tag at a time and saves it at once: a combobox,
   // not a comma field (vigil-host-cards.js).

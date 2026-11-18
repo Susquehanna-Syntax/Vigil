@@ -49,6 +49,7 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/status_public.html",
     "templates/ui_kit.html",
     "templates/base.html",
+    "templates/pages/_settings.html",
 ]
 
 _DROP = [

@@ -317,116 +317,116 @@
 
         </div>
         <div class="settings-pane" data-pane="relays">
-      <div class="section-label">Relays</div>
+      <div class="section-label">{% translate "Relays" %}</div>
       <div class="totp-card">
-        <p class="totp-sub">A relay is a small container agents connect to instead of this dashboard, so the dashboard can stay off the internet. The built-in relay is this dashboard itself. See the wiki for setup.</p>
+        <p class="totp-sub">{% blocktranslate %}A relay is a small container agents connect to instead of this dashboard, so the dashboard can stay off the internet. The built-in relay is this dashboard itself. See the wiki for setup.{% endblocktranslate %}</p>
         <div id="relays-usage" class="muted relays-usage"></div>
         <div id="relays-list"></div>
       </div>
 
-      <div class="section-label settings-section-later">Add a relay</div>
+      <div class="section-label settings-section-later">{% translate "Add a relay" %}</div>
       <div class="totp-card">
-        <div class="setting-row"><label for="relay-name">Name</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder="Edge relay"></div>
-        <div class="setting-row"><label for="relay-location">Location (optional)</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder="Frankfurt DC"></div>
-        <div class="setting-row"><label for="relay-url">Address agents use</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder="https://relay.example.com"></div>
-        <div class="setting-row"><label for="relay-priority">Order</label>
+        <div class="setting-row"><label for="relay-name">{% translate "Name" %}</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder='{% translate "Edge relay" %}'></div>
+        <div class="setting-row"><label for="relay-location">{% translate "Location (optional)" %}</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder='{% translate "Frankfurt DC" %}'></div>
+        <div class="setting-row"><label for="relay-url">{% translate "Address agents use" %}</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder='{% translate "https://relay.example.com" %}'></div>
+        <div class="setting-row"><label for="relay-priority">{% translate "Order" %}</label>
           <input type="number" class="form-control relay-priority-field" id="relay-priority" value="100" min="0" max="1000">
-          <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
+          <div class="totp-sub">{% translate "Agents try lower numbers first when their own address stops answering." %}</div>
         </div>
-        <button class="btn btn-mint btn-sm" data-act="addRelay">Add relay</button>
+        <button class="btn btn-mint btn-sm" data-act="addRelay">{% translate "Add relay" %}</button>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="users">
-      <div class="section-label">Users</div>
+      <div class="section-label">{% translate "Users" %}</div>
       <div class="totp-card">
-        <div class="totp-sub users-intro-tight">Manage who can sign in and what they can do. Admins configure Vigil and approve agents; Operators deploy tasks and acknowledge alerts; Viewers are read-only. The Operator role requires a Business license.</div>
+        <div class="totp-sub users-intro-tight">{% blocktranslate %}Manage who can sign in and what they can do. Admins configure Vigil and approve agents; Operators deploy tasks and acknowledge alerts; Viewers are read-only. The Operator role requires a Business license.{% endblocktranslate %}</div>
         <p id="users-seats" class="muted users-seats"></p>
         <div id="users-list"></div>
       </div>
 
-      <div class="section-label set-label-far">Add a user</div>
+      <div class="section-label set-label-far">{% translate "Add a user" %}</div>
       <div class="totp-card">
-        <div class="setting-row"><label>Username</label><input type="text" class="form-control" id="nu-username" placeholder="e.g. jsmith" autocomplete="off"></div>
-        <div class="setting-row"><label>Email</label><input type="email" class="form-control" id="nu-email" placeholder="optional" autocomplete="off"></div>
-        <div class="setting-row"><label>Password</label><input type="password" class="form-control" id="nu-password" placeholder="at least 8 characters" autocomplete="new-password"></div>
-        <div class="setting-row"><label>Role</label>
+        <div class="setting-row"><label>{% translate "Username" %}</label><input type="text" class="form-control" id="nu-username" placeholder='{% translate "e.g. jsmith" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Email" %}</label><input type="email" class="form-control" id="nu-email" placeholder='{% translate "optional" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Password" %}</label><input type="password" class="form-control" id="nu-password" placeholder='{% translate "at least 8 characters" %}' autocomplete="new-password"></div>
+        <div class="setting-row"><label>{% translate "Role" %}</label>
           <select class="form-control" id="nu-role">
-            <option value="viewer">Viewer</option>
-            <option value="operator">Operator (Business)</option>
-            <option value="admin">Admin</option>
+            <option value="viewer">{% translate "Viewer" %}</option>
+            <option value="operator">{% translate "Operator (Business)" %}</option>
+            <option value="admin">{% translate "Admin" %}</option>
           </select></div>
         <div class="set-actions-center">
-          <button class="btn btn-mint btn-sm" id="nu-create" data-act="createUser">Create user</button>
+          <button class="btn btn-mint btn-sm" id="nu-create" data-act="createUser">{% translate "Create user" %}</button>
           <span id="nu-result" class="muted"></span>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="images">
-      <div class="section-label">OS Images</div>
+      <div class="section-label">{% translate "OS Images" %}</div>
       <div class="totp-card">
         <div class="totp-sub ad-sub-flush">
-          Images used by remote reprovisioning. Registering an image is
+          {% blocktranslate %}Images used by remote reprovisioning. Registering an image is
           admin-only: whoever adds one chooses what runs as root on every
           machine rebuilt from it. Each image is verified against its SHA-256
           on import, then the ISO is discarded and only the extracted install
-          tree is kept.
+          tree is kept.{% endblocktranslate %}
         </div>
         <div id="images-list"></div>
       </div>
         </div>
         <div class="settings-pane" data-pane="sites">
-      <div class="section-label">Sites</div>
+      <div class="section-label">{% translate "Sites" %}</div>
       <div class="totp-card">
-        <div class="totp-sub ad-sub-flush">Sites are administrative boundaries — a campus, a department, a client org — that group hosts. Free installs use the single default site; a Business license lets you add more and assign hosts.</div>
+        <div class="totp-sub ad-sub-flush">{% blocktranslate %}Sites are administrative boundaries — a campus, a department, a client org — that group hosts. Free installs use the single default site; a Business license lets you add more and assign hosts.{% endblocktranslate %}</div>
         <div id="sites-list"></div>
       </div>
 
-      <div class="section-label set-label-far">Add a site</div>
+      <div class="section-label set-label-far">{% translate "Add a site" %}</div>
       <div class="totp-card">
-        <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="ns-name" placeholder="e.g. West Campus" autocomplete="off"></div>
-        <div class="setting-row"><label>Slug</label><input type="text" class="form-control" id="ns-slug" placeholder="west-campus" autocomplete="off"></div>
-        <div class="setting-row"><label>Description</label><input type="text" class="form-control" id="ns-description" placeholder="optional" autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Name" %}</label><input type="text" class="form-control" id="ns-name" placeholder='{% translate "e.g. West Campus" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Slug" %}</label><input type="text" class="form-control" id="ns-slug" placeholder='{% translate "west-campus" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Description" %}</label><input type="text" class="form-control" id="ns-description" placeholder='{% translate "optional" %}' autocomplete="off"></div>
         <div class="set-actions-center">
-          <button class="btn btn-mint btn-sm" id="ns-create" data-act="createSite">Create site</button>
+          <button class="btn btn-mint btn-sm" id="ns-create" data-act="createSite">{% translate "Create site" %}</button>
           <span id="ns-note" class="muted"></span>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="branding">
-      <div class="section-label">Branding</div>
+      <div class="section-label">{% translate "Branding" %}</div>
       <div class="totp-card">
-        <div class="totp-sub ad-sub-flush">Replace the Vigil identity with your own across the dashboard and the sign-in page. Leave a field blank to keep the Vigil default.</div>
-        <div class="setting-row"><label>Product name</label><input type="text" class="form-control" id="br-product" placeholder="Vigil" autocomplete="off" maxlength="60"></div>
-        <div class="setting-row"><label>Logo URL</label><input type="url" class="form-control" id="br-logo" placeholder="https://example.com/logo.png" autocomplete="off"></div>
-        <div class="setting-row"><label>Accent color</label>
+        <div class="totp-sub ad-sub-flush">{% blocktranslate %}Replace the Vigil identity with your own across the dashboard and the sign-in page. Leave a field blank to keep the Vigil default.{% endblocktranslate %}</div>
+        <div class="setting-row"><label>{% translate "Product name" %}</label><input type="text" class="form-control" id="br-product" placeholder='{% translate "Vigil" %}' autocomplete="off" maxlength="60"></div>
+        <div class="setting-row"><label>{% translate "Logo URL" %}</label><input type="url" class="form-control" id="br-logo" placeholder='{% translate "https://example.com/logo.png" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Accent color" %}</label>
           <span class="br-accent-row">
             <input type="color" id="br-accent-picker" value="#82c4ee" class="br-accent-picker">
-            <input type="text" class="form-control br-accent-field" id="br-accent" placeholder="#82c4ee" autocomplete="off" maxlength="7">
+            <input type="text" class="form-control br-accent-field" id="br-accent" placeholder='{% translate "#82c4ee" %}' autocomplete="off" maxlength="7">
           </span>
         </div>
-        <div class="setting-row"><label>Footer text</label><input type="text" class="form-control" id="br-footer" placeholder="Vigil — A Susquehanna Syntax product" autocomplete="off" maxlength="200"></div>
-        <div class="setting-row"><label>Support URL</label><input type="url" class="form-control" id="br-support" placeholder="https://example.com/support" autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Footer text" %}</label><input type="text" class="form-control" id="br-footer" placeholder='{% translate "Vigil — A Susquehanna Syntax product" %}' autocomplete="off" maxlength="200"></div>
+        <div class="setting-row"><label>{% translate "Support URL" %}</label><input type="url" class="form-control" id="br-support" placeholder='{% translate "https://example.com/support" %}' autocomplete="off"></div>
         <div class="set-actions-center">
-          <button class="btn btn-mint btn-sm" id="br-save">Save branding</button>
+          <button class="btn btn-mint btn-sm" id="br-save">{% translate "Save branding" %}</button>
           <p id="br-note" class="muted set-label-flush"></p>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="display">
-      <div class="section-label set-label-far">Display &amp; Timezone</div>
+      <div class="section-label set-label-far">{% translate "Display &amp; Timezone" %}</div>
       {# Was a read-only box saying to edit .env and restart. Now a real control backed by apps/instance; an env var still wins when set, and the field says so. #}
       <div class="is-group" data-group="locale"></div>
 
-      <div class="section-label set-label-far">Appearance</div>
+      <div class="section-label set-label-far">{% translate "Appearance" %}</div>
       <div class="totp-card">
         <div class="totp-sub theme-sub-flush">
-          Every colour that means something keeps it in every theme: mint is healthy,
+          {% blocktranslate %}Every colour that means something keeps it in every theme: mint is healthy,
           rose is critical, lemon is a warning. System switches between Dark and Paper
-          with your operating system. Applies instantly and is remembered on this browser.
+          with your operating system. Applies instantly and is remembered on this browser.{% endblocktranslate %}
         </div>
         {% comment %}The previews are pictures of the other themes, so their colours
         are literal on purpose: a preview drawn with tokens would only ever show
@@ -434,141 +434,141 @@
         <div class="theme-cards">
           <button type="button" class="theme-card" id="theme-dark" data-act="setTheme" data-a1="dark" aria-pressed="false">
             <span class="theme-prev theme-prev--dark"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
-            <span class="theme-name">Dark</span>
+            <span class="theme-name">{% translate "Dark" %}</span>
           </button>
           <button type="button" class="theme-card" id="theme-light" data-act="setTheme" data-a1="light" aria-pressed="false">
             <span class="theme-prev theme-prev--light"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
-            <span class="theme-name">Paper</span>
+            <span class="theme-name">{% translate "Paper" %}</span>
           </button>
           <button type="button" class="theme-card" id="theme-river" data-act="setTheme" data-a1="river" aria-pressed="false">
             <span class="theme-prev theme-prev--river"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
-            <span class="theme-name">River</span>
+            <span class="theme-name">{% translate "River" %}</span>
           </button>
           <button type="button" class="theme-card" id="theme-ink" data-act="setTheme" data-a1="ink" aria-pressed="false">
             <span class="theme-prev theme-prev--ink"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
-            <span class="theme-name">Ink <span class="exp-tag">Experimental</span></span>
+            <span class="theme-name">{% translate "Ink" %} <span class="exp-tag">{% translate "Experimental" %}</span></span>
           </button>
         </div>
         <div class="set-row">
-          <div><b>Follow system</b><small>Dark or Paper, with your operating system</small></div>
-          <button type="button" class="btn btn-outline btn-sm" id="theme-system" data-act="setTheme" data-a1="system" aria-pressed="false">System</button>
+          <div><b>{% translate "Follow system" %}</b><small>{% translate "Dark or Paper, with your operating system" %}</small></div>
+          <button type="button" class="btn btn-outline btn-sm" id="theme-system" data-act="setTheme" data-a1="system" aria-pressed="false">{% translate "System" %}</button>
         </div>
         <div class="set-row">
-          <div><b>Reduce motion</b><small>Collapse movement; colour and opacity changes still land</small></div>
-          <button type="button" class="toggle" role="switch" aria-checked="false" id="motion-reduce" data-act="toggleReduceMotion" aria-label="Reduce motion"></button>
+          <div><b>{% translate "Reduce motion" %}</b><small>{% translate "Collapse movement; colour and opacity changes still land" %}</small></div>
+          <button type="button" class="toggle" role="switch" aria-checked="false" id="motion-reduce" data-act="toggleReduceMotion" aria-label='{% translate "Reduce motion" %}'></button>
         </div>
       </div>
 
-      <div class="section-label set-label-far">Layout Density</div>
+      <div class="section-label set-label-far">{% translate "Layout Density" %}</div>
       <div class="totp-card">
         <div class="totp-sub theme-sub-flush">
-          Cozy is the default, roomy layout. Compact tightens spacing to fit more on screen. Applies instantly and is remembered on this browser.
+          {% blocktranslate %}Cozy is the default, roomy layout. Compact tightens spacing to fit more on screen. Applies instantly and is remembered on this browser.{% endblocktranslate %}
         </div>
         <div class="density-toggle">
-          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" data-act="setDensity" data-a1="cozy">Cozy</button>
-          <button type="button" class="btn btn-outline btn-sm" id="density-compact" data-act="setDensity" data-a1="compact">Compact</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" data-act="setDensity" data-a1="cozy">{% translate "Cozy" %}</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-compact" data-act="setDensity" data-a1="compact">{% translate "Compact" %}</button>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="scanners">
-      <div class="section-label set-label-far">Greenbone / OpenVAS</div>
+      <div class="section-label set-label-far">{% translate "Greenbone / OpenVAS" %}</div>
       <div class="is-group" data-group="greenbone"></div>
-      <div class="section-label set-label-far">Nessus / Tenable</div>
+      <div class="section-label set-label-far">{% translate "Nessus / Tenable" %}</div>
       <div class="is-group" data-group="nessus"></div>
         </div>
         <div class="settings-pane" data-pane="jackil">
-      <div class="section-label set-label-far">Jackil</div>
+      <div class="section-label set-label-far">{% translate "Jackil" %}</div>
       <div class="is-group" data-group="jackil"></div>
-      <div class="section-label set-label-far">Integration keys</div>
-      <div class="totp-card" id="jackil-keys"><p class="muted">Loading…</p></div>
-      <div class="section-label set-label-far">Tickets Vigil has opened</div>
-      <div class="totp-card" id="jackil-tickets"><p class="muted">Loading…</p></div>
+      <div class="section-label set-label-far">{% translate "Integration keys" %}</div>
+      <div class="totp-card" id="jackil-keys"><p class="muted">{% translate "Loading…" %}</p></div>
+      <div class="section-label set-label-far">{% translate "Tickets Vigil has opened" %}</div>
+      <div class="totp-card" id="jackil-tickets"><p class="muted">{% translate "Loading…" %}</p></div>
         </div>
         <div class="settings-pane" data-pane="api">
-      <div class="section-label">Scoped API keys</div>
-      <div class="totp-card" id="api-keys"><p class="muted">Loading…</p></div>
-      <div class="section-label set-label-far">Webhooks</div>
-      <div class="totp-card" id="webhooks"><p class="muted">Loading…</p></div>
+      <div class="section-label">{% translate "Scoped API keys" %}</div>
+      <div class="totp-card" id="api-keys"><p class="muted">{% translate "Loading…" %}</p></div>
+      <div class="section-label set-label-far">{% translate "Webhooks" %}</div>
+      <div class="totp-card" id="webhooks"><p class="muted">{% translate "Loading…" %}</p></div>
         </div>
         <div class="settings-pane" data-pane="email">
-      <div class="section-label set-label-far">Outgoing Mail</div>
+      <div class="section-label set-label-far">{% translate "Outgoing Mail" %}</div>
       <div class="is-group" data-group="email"></div>
         </div>
         <div class="settings-pane" data-pane="retention">
-      <div class="section-label set-label-far">Retention &amp; Limits</div>
+      <div class="section-label set-label-far">{% translate "Retention &amp; Limits" %}</div>
       <div class="is-group" data-group="retention"></div>
-      <div class="section-label set-label-far">Backups</div>
+      <div class="section-label set-label-far">{% translate "Backups" %}</div>
       <div class="is-group" data-group="backups"></div>
       <div class="totp-card" id="backup-runs" hidden>
-        <div class="totp-label">Recent backups</div>
-        <div id="backup-runs-list" class="muted">Loading…</div>
+        <div class="totp-label">{% translate "Recent backups" %}</div>
+        <div id="backup-runs-list" class="muted">{% translate "Loading…" %}</div>
       </div>
         </div>
         <div class="settings-pane" data-pane="distribution">
-      <div class="section-label set-label-far">Agent Distribution</div>
+      <div class="section-label set-label-far">{% translate "Agent Distribution" %}</div>
       <div class="totp-card">
         <div class="totp-sub theme-sub-flush">
-          Upload the compiled agent binary here, then use the one-liner to install on new hosts.
-          The binary is served directly from this server — no Docker Hub or external hosting required.
+          {% blocktranslate %}Upload the compiled agent binary here, then use the one-liner to install on new hosts.
+          The binary is served directly from this server — no Docker Hub or external hosting required.{% endblocktranslate %}
         </div>
 
         <!-- Download links -->
-        <div class="agent-plat-label">Linux</div>
+        <div class="agent-plat-label">{% translate "Linux" %}</div>
         <div class="agent-dl-row">
           <a href="/agent/download/linux-amd64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            x86-64
+            {% translate "x86-64" %}
           </a>
           <a href="/agent/download/linux-arm64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            ARM64
+            {% translate "ARM64" %}
           </a>
         </div>
-        <div class="agent-plat-label">macOS</div>
+        <div class="agent-plat-label">{% translate "macOS" %}</div>
         <div class="agent-dl-row">
           <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Apple Silicon
+            {% translate "Apple Silicon" %}
           </a>
         </div>
-        <div class="agent-plat-label">Windows</div>
+        <div class="agent-plat-label">{% translate "Windows" %}</div>
         <div class="agent-dl-row-last">
           <a href="/agent/download/windows-amd64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            x86-64 (.exe)
+            {% translate "x86-64 (.exe)" %}
           </a>
         </div>
 
         <!-- One-liner install commands -->
-        <label class="deploy-input-label">Linux / macOS one-liner</label>
-        <div class="code-block mono copyable-code" id="install-cmd" data-act="copyInstallCmd" title="Click to copy"></div>
-        <label class="deploy-input-label install-cmd-label">Windows (PowerShell, run as Administrator)</label>
-        <div class="code-block mono copyable-code" id="install-cmd-ps1" data-act="copyInstallCmdPs1" title="Click to copy"></div>
+        <label class="deploy-input-label">{% translate "Linux / macOS one-liner" %}</label>
+        <div class="code-block mono copyable-code" id="install-cmd" data-act="copyInstallCmd" title='{% translate "Click to copy" %}'></div>
+        <label class="deploy-input-label install-cmd-label">{% translate "Windows (PowerShell, run as Administrator)" %}</label>
+        <div class="code-block mono copyable-code" id="install-cmd-ps1" data-act="copyInstallCmdPs1" title='{% translate "Click to copy" %}'></div>
         <div id="agent-versions" class="agent-versions"></div>
 
         <!-- Upload new binary -->
         <div class="agent-upload">
-          <div class="deploy-input-label agent-upload-label">Upload new binary</div>
+          <div class="deploy-input-label agent-upload-label">{% translate "Upload new binary" %}</div>
           <div class="agent-upload-row">
             <div>
-              <label class="deploy-input-label">Platform</label>
+              <label class="deploy-input-label">{% translate "Platform" %}</label>
               <select class="form-control upload-platform-field" id="upload-platform">
-                <option value="linux-amd64">Linux (x86-64)</option>
-                <option value="linux-arm64">Linux (ARM64)</option>
-                <option value="darwin-arm64">macOS (Apple Silicon)</option>
-                <option value="windows-amd64">Windows (x86-64)</option>
+                <option value="linux-amd64">{% translate "Linux (x86-64)" %}</option>
+                <option value="linux-arm64">{% translate "Linux (ARM64)" %}</option>
+                <option value="darwin-arm64">{% translate "macOS (Apple Silicon)" %}</option>
+                <option value="windows-amd64">{% translate "Windows (x86-64)" %}</option>
               </select>
             </div>
             <div>
-              <label class="deploy-input-label">Version</label>
+              <label class="deploy-input-label">{% translate "Version" %}</label>
               <input type="text" class="form-control upload-version-field" id="upload-version" placeholder="1.0.0">
             </div>
             <div class="upload-file-cell">
-              <label class="deploy-input-label">Binary file</label>
+              <label class="deploy-input-label">{% translate "Binary file" %}</label>
               <input type="file" id="upload-binary" class="upload-file-input">
             </div>
-            <button class="btn btn-sky btn-sm" data-act="uploadAgentBinary">Upload</button>
+            <button class="btn btn-sky btn-sm" data-act="uploadAgentBinary">{% translate "Upload" %}</button>
           </div>
         </div>
       </div>

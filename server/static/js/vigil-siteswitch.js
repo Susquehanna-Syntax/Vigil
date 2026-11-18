@@ -40,9 +40,9 @@ function _siteSwitchLabel() {
   const ticked = _siteSwitchTicked();
   const all = ticked.size === _siteSwitch.sites.length;
   const one = ticked.size === 1 ? _siteSwitch.sites.find((s) => ticked.has(s.id)) : null;
-  const text = all ? 'All my sites' : one ? one.name : `${ticked.size} sites`;
+  const text = all ? t('All my sites') : one ? one.name : tn('{n} site', '{n} sites', ticked.size);
   const btn = /** @type {HTMLButtonElement} */ (document.getElementById('site-switch'));
-  btn.dataset.tip = all ? 'Sites: all of yours' : `Sites: ${text}`;
+  btn.dataset.tip = all ? t('Sites: all of yours') : t('Sites: {list}', { list: text });
   btn.classList.toggle('site-switch-narrowed', !all);
   document.getElementById('site-switch-label').textContent = text;
   const count = /** @type {HTMLElement} */ (document.getElementById('site-switch-count'));
@@ -55,22 +55,22 @@ function openSiteSwitch() {
   const ticked = _siteSwitchTicked();
   const m = mountModal('siteswitch', { variant: 'm-pop' });
   m.setBody(`
-    <div class="modal-title"><span>Sites to show</span>
-      <button class="modal-close" id="ss-x" aria-label="Close">
+    <div class="modal-title"><span>${escHtml(t('Sites to show'))}</span>
+      <button class="modal-close" id="ss-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="muted ss-note">Every page lists only the ticked sites. What you may do does not change.</p>
+    <p class="muted ss-note">${escHtml(t('Every page lists only the ticked sites. What you may do does not change.'))}</p>
     ${_siteSwitch.sites.length > 6 ? `<input class="form-control ss-search" id="ss-search" type="search"
-      placeholder="Find a site" autocomplete="off" aria-label="Find a site">` : ''}
+      placeholder="${escAttr(t('Find a site'))}" autocomplete="off" aria-label="${escAttr(t('Find a site'))}">` : ''}
     <div class="ss-list" id="ss-list">${_siteSwitch.sites.map((s) => `
       <label class="ss-site" data-name="${escAttr(s.name.toLowerCase())}">
         <input type="checkbox" value="${escAttr(s.id)}"${ticked.has(s.id) ? ' checked' : ''}>
-        <span>${escHtml(s.is_global ? 'Global (unassigned hosts)' : s.name)}</span>
+        <span>${escHtml(s.is_global ? t('Global (unassigned hosts)') : s.name)}</span>
       </label>`).join('')}</div>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" id="ss-all">All my sites</button>
-      <button class="btn btn-mint btn-sm" id="ss-apply">Show these</button>
+      <button class="btn btn-outline btn-sm" id="ss-all">${escHtml(t('All my sites'))}</button>
+      <button class="btn btn-mint btn-sm" id="ss-apply">${escHtml(t('Show these'))}</button>
     </div>`);
 
   const boxes = () => /** @type {HTMLInputElement[]} */ ([...m.modal.querySelectorAll('#ss-list input[type=checkbox]')]);

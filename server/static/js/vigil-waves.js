@@ -24,18 +24,18 @@ function _filterWaves() {
     (w.tags || []).some(t => (t || '').toLowerCase().includes(q)));
 }
 
-/** @param {any} w @returns {string} */
-function _waveCard(w) {
-  const tags = (w.tags || []).length
-    ? (w.tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
-    : '<span class="rose-note">no tags — matches nothing</span>';
+/** @param {any} waveRow @returns {string} */
+function _waveCard(waveRow) {
+  const tags = (waveRow.tags || []).length
+    ? (waveRow.tags || []).map(tg => `<span class="chip">${escHtml(tg)}</span>`).join(' ')
+    : `<span class="rose-note">${escHtml(t('no tags — matches nothing'))}</span>`;
 
   // Matching vs actually-patched. They differ when an earlier wave already
   // claimed a host, and that difference is the thing operators trip over.
-  const overlap = w.host_count - w.exclusive_host_count;
-  const hosts = w.host_count === 0
-    ? '<span class="muted-span">no hosts match</span>'
-    : `${w.exclusive_host_count} host${w.exclusive_host_count === 1 ? '' : 's'}` +
+  const overlap = waveRow.host_count - waveRow.exclusive_host_count;
+  const hosts = waveRow.host_count === 0
+    ? `<span class="muted-span">${escHtml(t('no hosts match'))}</span>`
+    : tn('{n} host', '{n} hosts', waveRow.exclusive_host_count) +
       (overlap > 0
         ? ` <span class="muted-span">(${overlap} also in an earlier wave)</span>`
         : '');
@@ -43,17 +43,17 @@ function _waveCard(w) {
   return `<div class="bl-card">
     <div class="bl-card-head">
       <div>
-        <span class="bl-name">${escHtml(w.order)} &middot; ${escHtml(w.name)}</span>
-        <span class="bl-badge ${w.enabled ? 'on' : 'off'}">${w.enabled ? 'enabled' : 'off'}</span>
-        ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
+        <span class="bl-name">${escHtml(waveRow.order)} &middot; ${escHtml(waveRow.name)}</span>
+        <span class="bl-badge ${waveRow.enabled ? 'on' : 'off'}">${waveRow.enabled ? 'enabled' : 'off'}</span>
+        ${(waveRow.group_tags || []).map(tg => `<span class="chip">${escHtml(tg)}</span>`).join(' ')}
       </div>
       <div class="wave-card-actions">
-        <button class="btn btn-sky btn-sm" data-wave-edit="${escAttr(w.id)}">Edit</button>
-        <button class="btn btn-ghost btn-sm delete-btn" data-wave-del="${escAttr(w.id)}">Delete</button>
+        <button class="btn btn-sky btn-sm" data-wave-edit="${escAttr(waveRow.id)}">${escHtml(t('Edit'))}</button>
+        <button class="btn btn-ghost btn-sm delete-btn" data-wave-del="${escAttr(waveRow.id)}">${escHtml(t('Delete'))}</button>
       </div>
     </div>
     <div class="bl-card-body card-body-lines">
-      <div>${hosts} &middot; validation window ${escHtml(w.validation_hours)}h</div>
+      <div>${hosts} &middot; validation window ${escHtml(waveRow.validation_hours)}h</div>
       <div class="wave-card-tags">${tags}</div>
     </div>
   </div>`;
@@ -81,7 +81,7 @@ function _renderWaves() {
 async function loadWaves() {
   const box = document.getElementById('waves-list');
   if (!box) return;
-  box.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
+  box.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
   try {
     const [waves, groups] = await Promise.all([
       apiJson('/api/v1/waves/'),
@@ -91,7 +91,7 @@ async function loadWaves() {
     _waveGroups = (groups && groups.groups) || [];
     _renderWaves();
   } catch (e) {
-    box.innerHTML = `<div class="empty-block"><h4>Couldn't load waves</h4><p>${escHtml(e.message)}</p></div>`;
+    box.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load waves"))}</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
@@ -169,8 +169,8 @@ async function saveWave() {
     const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (document.getElementById('wave-site')), document.getElementById('wave-site-field'));
     if (siteId !== undefined) payload.site_id = siteId;
   }
-  if (!payload.name) { showToast('Give the wave a name', 'error'); return; }
-  if (!payload.tags.length) { showToast('A wave needs at least one tag', 'error'); return; }
+  if (!payload.name) { showToast(t('Give the wave a name'), 'error'); return; }
+  if (!payload.tags.length) { showToast(t('A wave needs at least one tag'), 'error'); return; }
 
   btn.disabled = true;
   try {
@@ -198,7 +198,7 @@ async function deleteWave(waveId) {
   if (!confirm(`Delete wave "${w.name}"? Rollouts already finished keep their history.`)) return;
   try {
     await apiJson(`/api/v1/waves/${waveId}/`, { method: 'DELETE' });
-    showToast('Wave deleted', 'success');
+    showToast(t('Wave deleted'), 'success');
     await loadWaves();
   } catch (e) {
     showToast(e.message || 'Could not delete the wave', 'error');
