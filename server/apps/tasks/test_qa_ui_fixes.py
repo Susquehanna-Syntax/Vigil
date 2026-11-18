@@ -29,7 +29,8 @@ class DeployModalQaTests(SimpleTestCase):
         self.assertTrue("_firstInvalidDeployInput()" in deploy, "submitDeploy must name the bad input")
 
     def test_inputs_tab_is_labelled_and_opened_first(self):
-        self.assertTrue('id="deploy-tab-options" style="display:none;">Inputs</button>'
+        # The label is wrapped for translation (S6 09h); the English it renders is unchanged.
+        self.assertTrue('id="deploy-tab-options" style="display:none;">{% translate "Inputs" %}</button>'
                         in _read(TEMPLATES / "base.html"), "tab should read Inputs")
         self.assertTrue("setDeployTab('options')" in _read(JS / "vigil-deploy.js"),
                         "a task with inputs should open on them")
