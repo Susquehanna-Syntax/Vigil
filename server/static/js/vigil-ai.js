@@ -57,6 +57,13 @@ actions:
 
 /* ── Modal shell ─────────────────────────────────────────────────────── */
 let _aiModal = null;
+// The picker area's own markup. "No AI providers are configured" replaces it,
+// so every open puts it back first; without that, a second open found no
+// #ai-picker and threw until the page was reloaded.
+const _AI_PICKER_HTML = `
+      <div class="section-label ai-ask-label">Ask which models</div>
+      <div class="ai-provider-picker" id="ai-picker"></div>
+      <button class="btn btn-mint btn-sm ai-run-btn" id="ai-run">Get suggestions</button>`;
 function _ensureAiModal() {
   if (_aiModal) return _aiModal;
   _aiModal = mountModal('ai', { wide: true });
@@ -69,11 +76,7 @@ function _ensureAiModal() {
       </button>
     </div>
     <div class="page-sub ai-context" id="ai-context"></div>
-    <div id="ai-picker-wrap">
-      <div class="section-label ai-ask-label">Ask which models</div>
-      <div class="ai-provider-picker" id="ai-picker"></div>
-      <button class="btn btn-mint btn-sm ai-run-btn" id="ai-run">Get suggestions</button>
-    </div>
+    <div id="ai-picker-wrap">${_AI_PICKER_HTML}</div>
     <div class="ai-compare" id="ai-compare"></div>`);
   /** @type {HTMLElement} */ (_aiModal.modal.querySelector('#ai-close')).onclick = () => _closeAi();
   return _aiModal;
@@ -88,6 +91,9 @@ async function _openAi(context, runFn, staticResult) {
   _staticResolver = staticResult || null;
   document.getElementById('ai-context').textContent = context || '';
   document.getElementById('ai-compare').innerHTML = '';
+  if (!document.getElementById('ai-picker')) {
+    document.getElementById('ai-picker-wrap').innerHTML = _AI_PICKER_HTML;
+  }
   const picker = document.getElementById('ai-picker');
   document.getElementById('ai-picker-wrap').style.display = '';
   picker.innerHTML = '<span class="ai-empty">Loading providers…</span>';
