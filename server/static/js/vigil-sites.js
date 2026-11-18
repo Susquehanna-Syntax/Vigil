@@ -185,7 +185,7 @@ async function assignHosts(site) {
     <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>
       <button class="modal-close" id="sa-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <p class="muted" style="margin-bottom:10px;">A host belongs to exactly one site. Unchecking returns it to Global.</p>
+    <p class="muted sa-intro">A host belongs to exactly one site. Unchecking returns it to Global.</p>
     <input type="text" class="deploy-host-search" id="sa-search" placeholder="Search hosts by hostname\u2026">
     <div class="sa-chips" id="sa-chips">
       ${['online', 'offline', 'pending'].map((s) => chip(s, s, 'status')).join('')}

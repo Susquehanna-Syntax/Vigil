@@ -450,7 +450,7 @@ function renderProcTable(tableId, points, metricName) {
   const table = document.getElementById(tableId);
   const tbody = table.querySelector('tbody');
   if (!points.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">No data yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="proc-td-wait">No data yet</td></tr>';
     return;
   }
   // Get the latest snapshot: group by rank, take most recent per rank
@@ -475,8 +475,8 @@ function renderProcTable(tableId, points, metricName) {
       <td class="proc-name">${escHtml(name)}</td>
       <td class="proc-pid">${pid}</td>
       <td class="proc-val" style="color:${accentColor};">
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-          <div style="width:50px;height:4px;background:var(--s3);border-radius:2px;overflow:hidden;">
+        <div class="proc-val-row">
+          <div class="proc-bar-track">
             <div style="height:100%;width:${barW}%;background:${accentColor};border-radius:2px;"></div>
           </div>
           ${val}%
@@ -500,7 +500,7 @@ function getLatestDiskPercent(diskData) {
 function renderDiskBars(diskData) {
   const container = document.getElementById('disk-bars');
   if (!diskData.length) {
-    container.innerHTML = '<div style="color:var(--text-3);font-size:13px;text-align:center;padding:20px;">Waiting for data...</div>';
+    container.innerHTML = '<div class="disk-bars-empty">Waiting for data...</div>';
     return;
   }
   // Get latest value per mount

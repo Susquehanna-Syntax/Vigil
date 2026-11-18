@@ -536,7 +536,7 @@ async function _loadFindingsInto(container, summary) {
       chip.style.flexShrink = '0';
       chip.title = `${f.exception.kind}: ${f.exception.reason} (until ${f.exception.expires_on})`;
       chip.innerHTML =
-        `<span style="opacity:.7;">${escHtml(f.exception.kind)} ·</span> ` +
+        `<span class="vuln-exception-kind">${escHtml(f.exception.kind)} ·</span> ` +
         `${escHtml(f.exception.reason)}`;
       title.appendChild(chip);
     }

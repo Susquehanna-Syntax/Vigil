@@ -620,7 +620,7 @@ function editRelay(id) {
     <div class="setting-row"><label>Location</label><input type="text" class="form-control" id="re-location" maxlength="120" autocomplete="off"></div>
     <div class="setting-row"><label>Address agents use</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="https://relay.example.com"></div>
     <div class="setting-row"><label>Order</label>
-      <input type="number" class="form-control" id="re-priority" min="0" max="1000" style="max-width:120px;">
+      <input type="number" class="form-control relay-order-field" id="re-priority" min="0" max="1000">
       <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
     </div>
     <p class="muted" id="re-note"></p>
@@ -837,7 +837,7 @@ function _securityKeyRow(key) {
       <div class="user-name">${escHtml(key.name)}</div>
       <div class="user-meta">added ${escHtml(added)} &middot; ${escHtml(lastUsed)}</div>
     </div>
-    <div style="display:flex;gap:6px;">
+    <div class="key-row-actions">
       <button class="btn btn-outline btn-sm" data-act="renameSecurityKey" data-a1="${key.id}"
               data-a2="${escAttr(key.name)}">Rename</button>
       <button class="btn btn-rose btn-sm" data-act="removeSecurityKey" data-a1="${key.id}"

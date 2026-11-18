@@ -90,6 +90,22 @@ SCRIPT_BATCH_5 = [
     "static/js/vigil-tags.js",
 ]
 
+# Phase 08k: the monitor, host drawer, status pages, settings, automations,
+# vulns, sites, run history, playbooks and picker scripts. What those ten still
+# write inline is a value worked out per render (a state colour, a bar width).
+SCRIPT_BATCH_6 = [
+    "static/js/vigil-monitor.js",
+    "static/js/vigil-host-cards.js",
+    "static/js/vigil-statuspages.js",
+    "static/js/vigil-settings.js",
+    "static/js/vigil-automations.js",
+    "static/js/vigil-vulns.js",
+    "static/js/vigil-sites.js",
+    "static/js/vigil-runhistory.js",
+    "static/js/vigil-playbooks.js",
+    "static/js/vigil-pickers.js",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
@@ -215,5 +231,12 @@ class InlineStyleRatchetTests(SimpleTestCase):
         for rel in SCRIPT_BATCH_5:
             self.assertEqual(_leftover_styles(rel, script=True), [],
                              f"{rel} was moved into classes in phase 08j; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")
+
+    def test_the_sixth_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_6:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08k; only "
                              'style="display:none;" or a value worked out per '
                              "render may remain.")

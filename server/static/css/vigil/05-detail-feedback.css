@@ -120,6 +120,17 @@
 .detail-actions {
   display: flex; flex-wrap: wrap; gap: 8px;
 }
+/* Markup vigil-host-cards.js builds into the host drawer and the task-detail
+   drawer. Each class settles a look nothing else gives these elements, so it
+   beats nothing it has to beat; the two muted lines there keep wearing the
+   shared `.muted-span`. */
+.detail-actions-note { color: var(--text-3); font-size: 13px; }
+.jackil-link-status { font-size: 11px; }
+.jackil-related-label {
+  color: var(--text-3); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; margin-top: 8px;
+}
+.jackil-link { color: var(--text-1); text-decoration: none; font-weight: 500; }
 
 /* ═══════════════════════════════════════════
    EMPTY STATE

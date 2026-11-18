@@ -74,6 +74,9 @@ code.code-tight-sm {
   padding: 20px 22px; transition: border-color 0.3s var(--ease-out-expo); }
 .bl-card:hover { border-color: var(--s4); }
 .bl-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; gap: 12px; }
+/* The baseline card's description line (vigil-playbooks.js) clears the chips
+   above it. */
+.muted-note.bl-desc-line { margin-top: 4px; }
 .bl-name { font-family: 'Fraunces', serif; font-weight: 500; font-size: 18px; margin-right: 12px; }
 .bl-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; vertical-align: middle; }
 .bl-badge.on { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
@@ -91,6 +94,10 @@ code.code-tight-sm {
 .bl-seq-actions { color: var(--text-3); font-size: 12px; }
 .bl-meta { display: flex; flex-wrap: wrap; gap: 18px; font-size: 12px; color: var(--text-2); margin-bottom: 12px; }
 .bl-meta b { color: var(--text-1); font-weight: 600; }
+/* The automation card's one-line summary and the inputs modal's intro
+   (vigil-automations.js) — `.muted-note` never sets a bottom margin. */
+.auto-card-note { margin-bottom: 8px; }
+.auto-inputs-note { margin-bottom: 10px; }
 .bl-call { background: var(--s2); border-radius: var(--r-md); padding: 10px 14px; }
 .bl-call-label { font-size: 11px; color: var(--text-3); margin-bottom: 5px; }
 .bl-call pre { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--mint-ink); white-space: pre; overflow-x: auto; }
@@ -190,6 +197,12 @@ code.code-tight-sm {
 .sp-host-status { font-size: 11px; font-weight: 600; }
 .sp-host-status.up { color: var(--mint-ink); } .sp-host-status.down { color: var(--rose-ink); }
 .sp-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Markup vigil-statuspages.js builds (08k). `.section-label:first-child` is
+   (0,2,0) and comes earlier, so the flush label carries two classes to settle
+   margin-top either way. */
+.sp-branding-check { margin-bottom: 14px; }
+.section-label.sp-section-label-flush { margin-top: 0; }
+.muted-note.sp-note-plain { text-transform: none; letter-spacing: 0; font-weight: 400; }
 
 /* Confirm modal */
 .confirm-msg { font-size: 14px; color: var(--text-1); line-height: 1.6; margin-bottom: 26px; }
@@ -472,6 +485,9 @@ select.form-control:hover { border-color: var(--s4); }
 .user-row-name { font-weight: 600; font-size: 0.9rem; }
 .user-row-email { font-size: 0.8rem; }
 .user-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* The security-key row's button group (vigil-settings.js, 08k) gaps 6px, not
+   the users row's 8. */
+.key-row-actions { display: flex; gap: 6px; }
 .user-role-select { width: 130px; padding: 6px 10px; font-size: 0.82rem; }
 
 /* ═══════════════════════════════════════════
@@ -502,6 +518,7 @@ select.form-control:hover { border-color: var(--s4); }
 :root[data-density="compact"] .assign-row { padding: 5px 2px; }
 
 /* Host membership editor: search + status/tag chips + current-site column */
+.sa-intro { margin-bottom: 10px; }
 .sa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .sa-chip {
   font-size: 12px; padding: 3px 10px; border-radius: 11px; cursor: pointer;
@@ -575,6 +592,8 @@ td.agent-hostname { font-weight: 600; }
 .agent-os { color: var(--text-2); }
 .relays-usage { margin-top: 10px; }
 .relay-priority-field { max-width: 120px; }
+/* The relay editor modal's order field (vigil-settings.js) is as narrow. */
+.relay-order-field { max-width: 120px; }
 /* `.muted` sets font-size at (0,1,0) and comes later than this part. The seats
    line only showed its colour from that class, so it keeps the class for the
    colour and inherits the size back, as the inline style left it. */

@@ -30,6 +30,8 @@
 .run-state.t-peach { color: var(--peach-ink); }
 .run-state.t-lav { color: var(--lavender-ink); }
 .hist-pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 14px; }
+/* The run modal's one-line summary (vigil-runhistory.js) clears the task list. */
+.run-detail-intro { margin-bottom: 12px; }
 .run-task-list { max-height: 420px; overflow-y: auto; }
 .run-task { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .run-task:last-child { border-bottom: none; }

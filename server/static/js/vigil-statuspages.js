@@ -43,7 +43,7 @@ function _spCard(p) {
   }).join('') || '<p class="muted-note">No hosts available yet.</p>';
 
   const branding = p.is_primary ? '' : `
-    <label class="setting-check" style="margin-bottom:14px;">
+    <label class="setting-check sp-branding-check">
       <input type="checkbox" data-sp-brand="${p.id}" ${p.hide_badge ? 'checked' : ''}>
       Hide the "Powered by Vigil" badge <span class="chip chip-muted">Business</span>
     </label>`;
@@ -57,7 +57,7 @@ function _spCard(p) {
     <div class="sp-url">${p.enabled
         ? `Live at <a href="${escAttr(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>`
         : '<span class="muted-note">Enable to publish. Nobody can see it while off.</span>'}</div>
-    <div class="section-label" style="margin-top:0;">Machines on this page <span class="muted-note" style="text-transform:none;letter-spacing:0;font-weight:400;">— none checked = all hosts</span></div>
+    <div class="section-label sp-section-label-flush">Machines on this page <span class="muted-note sp-note-plain">— none checked = all hosts</span></div>
     <div class="sp-hosts">${hostRows}</div>
     ${branding}
     <div class="sp-card-actions">
