@@ -35,7 +35,7 @@ function _alertRelTime(iso) {
   else if (mins < 60) span = `${mins}m`;
   else if (mins < 1440) span = `${Math.round(mins / 60)}h`;
   else span = `${Math.round(mins / 1440)}d`;
-  return diff >= 0 ? `${span} ago` : `in ${span}`;
+  return diff >= 0 ? t('{span} ago', { span }) : t('in {span}', { span });
 }
 
 /* ── Rendering ───────────────────────────────────────────────────────── */
@@ -59,7 +59,7 @@ function _alertItemHtml(alert, tab) {
   let sub, time, actions = '';
   if (tab === 'firing') {
     sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(alert.severity)}` +
-          (alert.metric_value != null ? ` · ${t('Value: {value}', { value: alert.metric_value })}` : '');
+          (alert.metric_value != null ? ` · ${escHtml(t('Value: {value}', { value: alert.metric_value }))}` : '');
     time = `${_alertRelTime(alert.fired_at)}`;
     const fixBtn = `<button class="btn btn-sm btn-lav" data-alert-action="suggest-fix" data-alert-id="${alert.id}">${escHtml(t('Suggest Fix'))}</button>`;
     // An outdated image has a known fix: the built-in Update container task (M11).
@@ -89,14 +89,14 @@ function _alertItemHtml(alert, tab) {
     const refire = alert.acknowledged_until
       ? t('Re-fires {when}', { when: _alertRelTime(alert.acknowledged_until) })
       : t('Permanent');
-    sub = `${escHtml(alert.host_hostname || '—')} · ${t("Ack'd {when}", { when: _alertRelTime(alert.acknowledged_at) })} · ${escHtml(refire)}`;
+    sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(t("Ack'd {when}", { when: _alertRelTime(alert.acknowledged_at) }))} · ${escHtml(refire)}`;
     time = t('Fired {when}', { when: _alertRelTime(alert.fired_at) });
     actions = `
       <div class="alert-actions">
         <button class="btn btn-sm btn-peach" data-unack="${escAttr(alert.id)}">${escHtml(t('Un-ack'))}</button>
       </div>`;
   } else {
-    sub = `${escHtml(alert.host_hostname || '—')} · ${t('Resolved {when}', { when: _alertRelTime(alert.resolved_at) })}`;
+    sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(t('Resolved {when}', { when: _alertRelTime(alert.resolved_at) }))}`;
     time = t('Fired {when}', { when: _alertRelTime(alert.fired_at) });
   }
 
@@ -111,7 +111,7 @@ function _alertItemHtml(alert, tab) {
         <div class="${titleClass}">${escHtml(alert.message)}</div>
         <div class="alert-sub">${sub}</div>
       </div>
-      <div class="alert-time">${time}</div>
+      <div class="alert-time">${escHtml(time)}</div>
       ${actions}
     </div>`;
 }

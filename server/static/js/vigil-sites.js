@@ -61,7 +61,7 @@ async function loadSites() {
           `<span class="site-row-desc muted">${escHtml(s.description || '')}</span>` +
         `</div>` +
         `<div class="site-row-meta">` +
-          `<span class="muted">${tn('{n} host', '{n} hosts', s.host_count)}</span>` +
+          `<span class="muted">${escHtml(tn('{n} host', '{n} hosts', s.host_count))}</span>` +
           `<div class="site-row-actions">${actions}</div>` +
         `</div>`;
       list.appendChild(row);
@@ -134,7 +134,7 @@ function editSite(site) {
 /** @param {Site|undefined} site @returns {Promise<void>} */
 async function deleteSite(site) {
   if (!site || site.is_global) return;
-  const ok = await confirmModal(t('Delete site "{name}"? Its hosts return to Global.', { name: `"${site.name}"` }), { danger: true });
+  const ok = await confirmModal(t('Delete site "{name}"? Its hosts return to Global.', { name: site.name }), { danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/sites/${site.id}/`, { method: 'DELETE' });
