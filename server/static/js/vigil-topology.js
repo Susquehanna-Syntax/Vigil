@@ -391,7 +391,10 @@ function _topoLinkGeometry(data, cards) {
 
 function _topoCurve(edge) {
   const { x1, y1, x2, y2, horizontal } = edge;
-  const dist = Math.max(40, Math.hypot(x2 - x1, y2 - y1) * 0.45);
+  // The handles reach at most half the gap: two cards side by side (a poller
+  // and the device it polls, often) get a gentle S, not a loop past both ends.
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const dist = Math.max(Math.min(40, len / 2), len * 0.45);
   const sx = x2 >= x1 ? 1 : -1, sy = y2 >= y1 ? 1 : -1;
   const cx1 = horizontal ? x1 + dist * sx : x1;
   const cx2 = horizontal ? x2 - dist * sx : x2;

@@ -232,12 +232,12 @@ def poller_for_devices(devices) -> dict:
     """``poller_id`` for a list of devices: the poller that runs their checks now.
 
     The same rule :func:`assigned_poller` applies to one check, applied to each
-    device's *first* enabled check (the oldest — `created_at`, `id`). When that
-    check has no poller to take it the device is absent, even if a later check
-    could be placed: what :func:`checks_for` hands out follows the same first
-    match, so a line here always points at a device somebody really polls. A
-    device with no enabled check is absent too; callers read an absent device
-    as None.
+    device's *first* enabled check (the oldest — `created_at`, `id`). A check
+    pinned to a poller that cannot take it falls back to the site's lowest-id
+    eligible poller, so ``_assign`` gives None only when the device's site has
+    no eligible poller at all, and that is true of every check on the device:
+    the first check speaks for all of them. A device with no enabled check, or
+    none any poller can take, is absent; callers read an absent device as None.
 
     Exactly two queries whatever the number of devices: the online pollers
     once, and the enabled checks of these devices once carrying their device

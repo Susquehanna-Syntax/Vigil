@@ -53,6 +53,7 @@ def build_topology(user) -> dict:
         containers[container.host_id].append(container)
 
     devices = _devices()
+
     # One pass over the interface data feeds three things: every address the
     # host has, the subset that identifies it as a destination, and the subnets.
     addresses, ips, claims = {}, {}, {}
