@@ -41,7 +41,7 @@ function _renderScanners(scanners) {
   if (!scanners.length) {
     const empty = document.createElement('div');
     empty.style.color = 'var(--text-3)';
-    empty.textContent = 'No scanners registered.';
+    empty.textContent = t('No scanners registered.');
     wrap.appendChild(empty);
     return;
   }
@@ -70,11 +70,11 @@ function _renderScanners(scanners) {
     if (s.configured) {
       pill.style.color = 'var(--mint-ink)';
       pill.style.background = 'rgba(var(--rgb-mint), var(--tint-a))';
-      pill.textContent = 'Configured';
+      pill.textContent = t('Configured');
     } else {
       pill.style.color = 'var(--text-3)';
       pill.style.background = 'var(--s2)';
-      pill.textContent = 'Not configured';
+      pill.textContent = t('Not configured');
     }
     row.appendChild(pill);
     wrap.appendChild(row);

@@ -36,7 +36,7 @@ async function sitePickFill(select, field, current, { editing = false, currentNa
   const want = current ? String(current) : '';
   const opts = [];
   if (info.global || (editing && want === '')) {
-    opts.push(`<option value=""${want === '' ? ' selected' : ''}>Global (every site)</option>`);
+    opts.push(`<option value=""${want === '' ? ' selected' : ''}>${escHtml(t('Global (every site)'))}</option>`);
   }
   for (const s of info.sites) {
     opts.push(`<option value="${escHtml(s.id)}"${want === s.id ? ' selected' : ''}>${escHtml(s.name)}</option>`);
@@ -65,25 +65,25 @@ function sitePickValue(select, field) {
 async function sitePickChoose(title) {
   const info = await sitePickLoad();
   if (!info.enabled) return undefined;
-  const choices = (info.global ? [{ id: '', name: 'Global (every site)' }] : []).concat(info.sites);
+  const choices = (info.global ? [{ id: '', name: t('Global (every site)') }] : []).concat(info.sites);
   if (choices.length === 1) return choices[0].id || null;
   return new Promise((resolve) => {
     const m = mountModal('sitepick', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
         <span id="sitepick-title"></span>
-        <button class="modal-close" id="sitepick-x" aria-label="Close">
+        <button class="modal-close" id="sitepick-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="form-group">
-        <label class="form-label" for="sitepick-select">Site</label>
+        <label class="form-label" for="sitepick-select">${escHtml(t('Site'))}</label>
         <select class="form-control" id="sitepick-select">${choices.map((s) =>
           `<option value="${escHtml(s.id)}">${escHtml(s.name)}</option>`).join('')}</select>
       </div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="sitepick-cancel">Cancel</button>
-        <button class="btn btn-mint btn-sm" id="sitepick-ok">Create</button>
+        <button class="btn btn-outline btn-sm" id="sitepick-cancel">${escHtml(t('Cancel'))}</button>
+        <button class="btn btn-mint btn-sm" id="sitepick-ok">${escHtml(t('Create'))}</button>
       </div>`);
     /** @type {HTMLElement} */ (m.modal.querySelector('#sitepick-title')).textContent = title;
     const select = /** @type {HTMLSelectElement} */ (m.modal.querySelector('#sitepick-select'));

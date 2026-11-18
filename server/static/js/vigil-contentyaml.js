@@ -63,9 +63,9 @@ async function openContentYaml(kind, id) {
     contentYamlState.id = id;
     contentYamlState.filename = data.filename || '';
     /** @type {HTMLTextAreaElement} */ (_cyEl('text')).value = data.yaml || '';
-    _cyEl('title').textContent = `Edit ${kind} as YAML`;
+    _cyEl('title').textContent = t('Edit {kind} as YAML', { kind });
     _cyEl('filename').textContent =
-      `Shared as ${cfg.dir}/${data.filename} in the community repo.`;
+      t('Shared as {dir}/{filename} in the community repo.', { dir: cfg.dir, filename: data.filename });
     _cyError('');
     _cyEl('overlay').classList.add('open');
     _cyEl('modal').classList.add('open');
@@ -86,7 +86,7 @@ async function saveContentYaml() {
     const body = { yaml: /** @type {HTMLTextAreaElement} */ (_cyEl('text')).value };
     body[cfg.idField] = contentYamlState.id;
     await apiJson(cfg.put, { method: 'POST', body: JSON.stringify(body) });
-    showToast('Saved', 'success');
+    showToast(t('Saved'), 'success');
     closeContentYaml();
     if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
@@ -100,9 +100,9 @@ async function saveContentYaml() {
 async function copyContentYaml() {
   try {
     await copyText(/** @type {HTMLTextAreaElement} */ (_cyEl('text')).value);
-    showToast('YAML copied to clipboard', 'success');
+    showToast(t('YAML copied to clipboard'), 'success');
   } catch {
-    showToast('Clipboard blocked — select the text and copy it', 'error');
+    showToast(t('Clipboard blocked — select the text and copy it'), 'error');
   }
 }
 
@@ -117,12 +117,12 @@ function submitContentYaml() {
   const cfg = CONTENT_YAML_ENDPOINTS[contentYamlState.kind];
   if (!cfg) return;
   const yaml = _injectCommunityMetadata((/** @type {HTMLTextAreaElement} */ (_cyEl('text')).value || '').trim());
-  if (!yaml) { showToast('Nothing to submit', 'error'); return; }
+  if (!yaml) { showToast(t('Nothing to submit'), 'error'); return; }
   const filename = contentYamlState.filename || `${contentYamlState.kind}.yaml`;
   const url = `${COMMUNITY_REPO_URL}/new/main/${cfg.dir}`
     + `?filename=${encodeURIComponent(filename)}&value=${encodeURIComponent(yaml)}`;
   window.open(url, '_blank', 'noopener');
-  showToast('Opening GitHub — review it there, then open the pull request', 'success');
+  showToast(t('Opening GitHub — review it there, then open the pull request'), 'success');
 }
 
 /* ── Wiring ───────────────────────────────────────────────────────────── */
@@ -138,12 +138,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Empty means "new", and there is no server-side document for that yet.
   document.getElementById('bl-yaml-btn')?.addEventListener('click', () => {
     const id = document.getElementById('bl-editor-modal')?.dataset.editing;
-    if (!id) { showToast('Save the playbook first, then edit it as YAML', 'error'); return; }
+    if (!id) { showToast(t('Save the playbook first, then edit it as YAML'), 'error'); return; }
     openContentYaml('playbook', id);
   });
   document.getElementById('auto-yaml-btn')?.addEventListener('click', () => {
     const id = document.getElementById('auto-editor-modal')?.dataset.editing;
-    if (!id) { showToast('Save the automation first, then edit it as YAML', 'error'); return; }
+    if (!id) { showToast(t('Save the automation first, then edit it as YAML'), 'error'); return; }
     openContentYaml('automation', id);
   });
 });

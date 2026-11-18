@@ -58,7 +58,7 @@ async function openVigilItem(type, id) {
       if (typeof loadAutomations !== 'function') break;
       const automations = /** @type {any[]} */ ((await loadAutomations()) || []);
       const found = automations.find((a) => String(a.id) === String(id));
-      if (!found) { showToast('That automation is not available', 'error'); break; }
+      if (!found) { showToast(t('That automation is not available'), 'error'); break; }
       if (typeof _openAutoEditor === 'function') _openAutoEditor(found);
       break;
     }

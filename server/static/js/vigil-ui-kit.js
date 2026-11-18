@@ -53,9 +53,9 @@ function _closeKitDialog(id) {
 async function kitConfirm() {
   // confirmModal's own buttons carry no data-act, and this page must not name
   // one that does not resolve: its handlers are the ten in ui_kit.html.
-  const answer = await confirmModal('Delete the example?', {
-    title: 'Delete the example?',
-    confirmText: 'Delete',
+  const answer = await confirmModal(t('Delete the example?'), {
+    title: t('Delete the example?'),
+    confirmText: t('Delete'),
     danger: true,
   });
   showToast(answer ? 'Nothing was deleted — it was only an example.' : 'Cancelled.',
@@ -69,7 +69,7 @@ function kitShake() {
 
 /** @param {string} type */
 function kitToast(type) {
-  showToast(`A ${type} toast.`, type);
+  showToast(t('A {type} toast.', { type }), type);
 }
 
 //: One <div class="kit-swatch"> per token: a block painted from var(--token),

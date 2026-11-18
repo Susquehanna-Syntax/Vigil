@@ -7,8 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const card of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.host-card'))) {
     if (card.dataset.rebootRequired !== '1') continue;
     const chip = document.createElement('span');
-    chip.textContent = 'Reboot pending';
-    chip.title = 'Agent reports a reboot is required';
+    chip.textContent = t('Reboot pending');
+    chip.title = t('Agent reports a reboot is required');
     chip.style.cssText =
       'font-size:10px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;' +
       'padding:2px 10px;border-radius:20px;background:rgba(var(--rgb-peach), var(--tint-a));' +

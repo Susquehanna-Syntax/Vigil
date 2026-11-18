@@ -22,7 +22,7 @@ function _srchEl(id) { return document.getElementById(id); }
 function _renderSearch(body) {
   const out = _srchEl('srch-results');
   if (!body.groups.length) {
-    out.innerHTML = `<div class="apps-empty-state">Nothing matched “${escHtml(body.query)}”.</div>`;
+    out.innerHTML = `<div class="apps-empty-state">${escHtml(t('Nothing matched “{query}”.', { query: body.query }))}</div>`;
     return;
   }
   out.innerHTML = body.groups.map(g => `<div class="srch-group">
@@ -98,8 +98,8 @@ document.addEventListener('input', (ev) => {
 });
 
 document.addEventListener('keydown', (ev) => {
-  const t = /** @type {HTMLElement} */ (ev.target);
-  const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  const target = /** @type {HTMLElement} */ (ev.target);
+  const typing = target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
   if (((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k' && !ev.altKey && !ev.shiftKey)
       || (ev.key === '/' && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey)) {
     ev.preventDefault();
@@ -109,11 +109,11 @@ document.addEventListener('keydown', (ev) => {
   // Arrow keys walk from the box through the result rows and back.
   if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
   const rows = /** @type {HTMLElement[]} */ ([...document.querySelectorAll('#srch-results .srch-row')]);
-  if (t && t.id === 'srch-input') {
+  if (target && target.id === 'srch-input') {
     if (ev.key === 'ArrowDown' && rows.length) { ev.preventDefault(); rows[0].focus(); }
     return;
   }
-  const i = rows.indexOf(t);
+  const i = rows.indexOf(target);
   if (i < 0) return;
   ev.preventDefault();
   if (ev.key === 'ArrowDown') (rows[i + 1] || rows[i]).focus();
