@@ -604,6 +604,15 @@ select.ak-access-field { width: auto; }
 .form-control.totp-input.ak-secret-field {
   font-size: 13px; letter-spacing: normal; text-align: left;
 }
+/* ── Inline styles moved out of vigil-instance-settings.js (S6 08i) ────── */
+/* The Jackil Tickets pane builds the same rows vigil-api-keys.js does, so it
+   reuses that screen's `.ak-*` classes — see its block above. One look is new: a
+   key's "Can change devices" box. It needs two selectors because the card every
+   dashboard row wears sizes itself at 12px from 11-hints-dashboards, a part after
+   this one; everything else about the label stays as `.dash-card` has it. */
+.dash-card .jk-write-check {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11px; white-space: nowrap;
+}
 /* ── Inline styles moved out of vigil-rollout.js (S6 08g) ──────────────── */
 /* A wave's own colour and glow stay inline — both are worked out per render —
    but the dot was never a flex or grid item, which this restores. Two classes on

@@ -1,0 +1,70 @@
+"""Translation readiness (S6 M6 item 7): a ratchet on untranslated template text.
+
+Only English ships, but a template on TRANSLATED_TEMPLATES has every string a
+person reads inside `{% translate %}` or `{% blocktranslate %}`, so a later
+language is a .po file rather than a code change. The check is deliberately
+blunt: strip code, comments, translate blocks, template tags and markup, and
+whatever letters are left were missed. The visible attributes (placeholder,
+title, aria-label, alt, data-tip, data-hint) are held to the same rule.
+
+Add a template to the list once it is wrapped; never take one off."""
+
+import re
+from pathlib import Path
+
+from django.conf import settings
+from django.test import SimpleTestCase
+
+ROOT = Path(settings.BASE_DIR)
+
+TRANSLATED_TEMPLATES: list[str] = []
+
+_DROP = [
+    re.compile(r"<script\b.*?</script>", re.S | re.I),
+    re.compile(r"<style\b.*?</style>", re.S | re.I),
+    re.compile(r"<svg\b.*?</svg>", re.S | re.I),
+    re.compile(r"<!--.*?-->", re.S),
+    re.compile(r"\{#.*?#\}", re.S),
+    re.compile(r"\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}", re.S),
+    re.compile(r"\{%\s*blocktranslate\b.*?\{%\s*endblocktranslate\s*%\}", re.S),
+    re.compile(r"\{%.*?%\}", re.S),
+    re.compile(r"\{\{.*?\}\}", re.S),
+]
+_VISIBLE_ATTR = re.compile(
+    r'\s(?:placeholder|title|aria-label|alt|data-tip|data-hint)='
+    r'"((?:\{%.*?%\}|\{\{.*?\}\}|[^"])*)"', re.I | re.S)
+_TAG = re.compile(r"<[^>]*>", re.S)
+_ENTITY = re.compile(r"&[a-zA-Z]+;|&#\d+;")
+_LETTERS = re.compile(r"[A-Za-z]{2,}")
+
+
+def untranslated(text: str) -> list[str]:
+    """The words a person would read that no translate tag covers."""
+    attrs = [m.group(1) for m in _VISIBLE_ATTR.finditer(text)]
+    body = text
+    for pattern in _DROP:
+        body = pattern.sub(" ", body)
+    body = _ENTITY.sub(" ", _TAG.sub(" ", body))
+    found = [" ".join(chunk.split()) for chunk in body.split("\n") if _LETTERS.search(chunk)]
+    for value in attrs:
+        for pattern in _DROP[-2:]:
+            value = pattern.sub(" ", value)
+        if _LETTERS.search(value):
+            found.append(f"[attribute] {value.strip()}")
+    return found
+
+
+class TranslationReadyTests(SimpleTestCase):
+    def test_the_checker_catches_bare_text_and_attributes(self):
+        self.assertEqual(untranslated('<p>{% translate "Hosts" %}</p>'), [])
+        self.assertEqual(untranslated("<p>{% blocktranslate %}Hi {{ n }}{% endblocktranslate %}</p>"), [])
+        self.assertEqual(untranslated("<p>Hosts</p>"), ["Hosts"])
+        self.assertEqual(untranslated('<input placeholder="Search">'), ["[attribute] Search"])
+        self.assertEqual(untranslated('<input placeholder="{% translate "Search" %}">'), [])
+        self.assertEqual(untranslated("<script>const a = 'text';</script><p>{{ host.name }}</p>"), [])
+
+    def test_translated_templates_have_no_bare_text(self):
+        for rel in TRANSLATED_TEMPLATES:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIn("{% load i18n", text, f"{rel} must load i18n")
+            self.assertEqual(untranslated(text), [], f"{rel} has text outside translate tags")

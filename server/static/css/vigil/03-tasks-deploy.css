@@ -624,3 +624,27 @@
 .community-submit-actions.community-submit-actions-tall { margin-top: 18px; }
 .modal.modal-column { max-height: 80vh; display: flex; flex-direction: column; }
 
+/* ── Inline styles moved out of vigil-tasks.js (S6 08i) ────────────────── */
+/* The deploy-preview dialog's input table, built by vigil-tasks.js. No part of
+   the stylesheet gives any of these elements a look and `.mono` on its own is
+   nothing but the monospace face, so each span carries one class for the size
+   and colour it drew from an inline style — the caption among them, which needs
+   two because `.preview-heading` is also the dialog's 22px serif heading. */
+.preview-inputs { margin-top: 18px; }
+.preview-heading.preview-heading-sm { font-size: 14px; }
+.preview-input-list {
+  background: var(--s2); border-radius: var(--r-sm);
+  margin-top: 8px; border: 1px solid var(--border);
+}
+.preview-input-row {
+  display: flex; gap: 10px; font-size: 12px; padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.preview-input-id { color: var(--sky-ink); min-width: 120px; }
+.preview-input-type { color: var(--text-3); min-width: 60px; }
+.preview-input-label { color: var(--text-2); flex: 1; }
+.preview-input-sample { color: var(--text-3); }
+
+/* The task history pager: vigil-tasks.js shows it with display:flex once there
+   is more than one page; this is the rest of the look it used to carry inline. */
+.task-history-pager { align-items: center; justify-content: center; gap: 14px; padding: 14px 0; }

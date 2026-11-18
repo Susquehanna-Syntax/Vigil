@@ -73,6 +73,15 @@ SCRIPT_BATCH_2 = {
     "static/js/vigil-rollout.js": 7,
 }
 
+# SCRIPT_BATCH_3 is done to nothing but the one alert dot, which stays in the
+# baseline at 1: its colour comes from the alert's severity, so a class could
+# not work it out per render.
+SCRIPT_BATCH_3 = [
+    "static/js/vigil-alerts.js",
+    "static/js/vigil-instance-settings.js",
+    "static/js/vigil-tasks.js",
+]
+
 # Phase 08h: the dashboard widget and Community scripts. What the widgets
 # still write inline is worked out per render (a state colour, a bar width).
 SCRIPT_BATCH_4 = [
@@ -242,6 +251,12 @@ class InlineStyleRatchetTests(SimpleTestCase):
                              f"{rel} was moved into classes in phase 08g; only "
                              "a state colour worked out per render may remain.")
 
+    def test_the_third_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_3:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08i; only "
+                             "a state colour worked out per render may remain.")
+
     def test_base_is_done(self):
         self.assertEqual(_leftover_styles("templates/base.html", script=False), [],
                          "templates/base.html was moved into classes in phases "
@@ -267,3 +282,19 @@ class InlineStyleRatchetTests(SimpleTestCase):
                              f"{rel} was moved into classes in phase 08k; only "
                              'style="display:none;" or a value worked out per '
                              "render may remain.")
+
+    def test_templates_carry_only_display_none(self):
+        # Phase 08m: the last per-render template values moved to scripts and
+        # classes. A display:none stays because scripts show those elements by
+        # clearing element.style.display; the CSP allows exactly that string by
+        # hash ('unsafe-hashes'), so nothing else may appear.
+        for path in sorted(ROOT.glob(TEMPLATE_GLOB)):
+            rel = str(path.relative_to(ROOT))
+            self.assertEqual(_leftover_styles(rel, script=False), [],
+                             f"{rel}: only style=\"display:none;\" may remain")
+
+    def test_every_style_block_carries_the_csp_nonce(self):
+        for path in sorted(ROOT.glob(TEMPLATE_GLOB)):
+            for tag in re.findall(r"<style\b[^>]*>", path.read_text(encoding="utf-8")):
+                self.assertIn('nonce="{{ request.csp_nonce }}"', tag,
+                              f"{path.relative_to(ROOT)}: a <style> block without the CSP nonce")

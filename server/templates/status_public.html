@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
-  <style>
+  <style nonce="{{ request.csp_nonce }}">
     :root {
       --surface: #1E1E2E;
       --card: #27273A;
@@ -170,7 +170,7 @@
 
     <ul id="cards">
       {% for h in hosts %}
-      <li class="card card--{% if h.up %}up{% else %}down{% endif %}" data-host-id="{{ h.id }}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
+      <li class="card card--{% if h.up %}up{% else %}down{% endif %}" data-host-id="{{ h.id }}">
         <div class="card-top">
           <span class="card-name">{{ h.hostname }}</span>
           <span class="card-uptime">{% if h.uptime_pct %}{{ h.uptime_pct }}% uptime{% endif %}</span>
@@ -209,6 +209,12 @@
   <script nonce="{{ request.csp_nonce }}">
     // Poll for fresh status instead of a full-page meta-refresh, so the entry
     // animations don't replay every minute — only the changed values update.
+    // Each card rises 60ms after the one before it. Set here rather than in a
+    // style attribute, which the CSP refuses; this runs before the first paint.
+    document.querySelectorAll('#cards .card').forEach(function (card, i) {
+      card.style.animationDelay = (i * 60) + 'ms';
+    });
+
     (function () {
       var POLL_MS = 60000;
 

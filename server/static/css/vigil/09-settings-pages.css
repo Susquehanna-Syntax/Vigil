@@ -627,7 +627,8 @@ td.agent-hostname { font-weight: 600; }
    vigil-api-keys.js. The look this screen carries outright: nothing else gives
    these elements a margin or a width, so one class settles each of them the way
    the inline style did. `.muted`, which the intro and the empty line already
-   wear for its size and colour, is in a later part and never sets either. */
+   wear for its size and colour, is in a later part and never sets either; it is
+   how vigil-instance-settings.js draws its own key rows too. */
 .ak-pane-intro { margin-bottom: 14px; }
 .ak-cards-below { margin-top: 16px; }
 .ak-empty-below { margin-top: 14px; }
@@ -637,6 +638,15 @@ td.agent-hostname { font-weight: 600; }
 .wh-name-field { flex: 1; min-width: 140px; }
 .wh-url-field { flex: 2; min-width: 220px; }
 .ak-sites-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ── Settings: instance panes (Settings → AI, Identity, Relays, …) ─────── */
+/* The pane bodies are built by vigil-instance-settings.js. `.totp-sub` sizes a
+   group's help line and the API & Webhooks pane's own `.ak-*` classes already
+   cover its key rows and its copy-once dialog; nothing else puts a margin under
+   that help line or above the ticket total, so one class each settles them. */
+.totp-sub.is-help-below { margin-bottom: 16px; }
+.is-tickets-count { margin-top: 12px; }
+
 
 /* Waves (Deployments → Waves), markup built by vigil-waves.js and vigil-tags.js
    (08j). Nothing else gives a bare <span> in a card a colour, or one of these

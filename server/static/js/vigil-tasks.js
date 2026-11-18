@@ -328,17 +328,17 @@ function renderEditorPreview(spec) {
       const sample = i.type === 'choice'
         ? (i.choices || []).map(c => c.value).join(' | ')
         : (i.default !== undefined && i.default !== '' ? String(i.default) : '');
-      return `<div style="display:flex;gap:10px;font-size:12px;padding:6px 10px;border-bottom:1px solid var(--border);">
-        <span class="mono" style="color:var(--sky-ink);min-width:120px;">${escHtml(i.id)}</span>
-        <span style="color:var(--text-3);min-width:60px;">${escHtml(i.type)}</span>
-        <span style="color:var(--text-2);flex:1;">${escHtml(i.label || '')}</span>
-        <span class="mono" style="color:var(--text-3);">${escHtml(sample)}</span>
+      return `<div class="preview-input-row">
+        <span class="mono preview-input-id">${escHtml(i.id)}</span>
+        <span class="preview-input-type">${escHtml(i.type)}</span>
+        <span class="preview-input-label">${escHtml(i.label || '')}</span>
+        <span class="mono preview-input-sample">${escHtml(sample)}</span>
       </div>`;
     }).join('');
     inputsHtml = `
-      <div style="margin-top:18px;">
-        <div class="preview-heading" style="font-size:14px;">Inputs (asked at deploy time)</div>
-        <div style="background:var(--s2);border-radius:var(--r-sm);margin-top:8px;border:1px solid var(--border);">${rows}</div>
+      <div class="preview-inputs">
+        <div class="preview-heading preview-heading-sm">Inputs (asked at deploy time)</div>
+        <div class="preview-input-list">${rows}</div>
       </div>`;
   }
   const warnings = spec.warnings || [];

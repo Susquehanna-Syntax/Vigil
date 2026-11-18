@@ -214,3 +214,8 @@
 .alerts-tab-count { opacity: 0.6; }
 /* Smaller than .btn svg's default, for the chevron on an ack-menu button. */
 .btn .alerts-chevron { width: 11px; height: 11px; }
+
+/* ── Inline styles moved out of vigil-alerts.js (S6 08i) ───────────────── */
+/* A resolved alert's title is dimmer than a firing one's, and `.alert-title`
+   sizes that same div two rules above, so the colour carries its class twice. */
+.alert-title.alert-title-muted { color: var(--text-2); }
