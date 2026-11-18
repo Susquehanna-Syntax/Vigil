@@ -48,6 +48,7 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/pages/_stack_editor.html",
     "templates/status_public.html",
     "templates/ui_kit.html",
+    "templates/base.html",
 ]
 
 _DROP = [
@@ -104,5 +105,5 @@ class TranslationReadyTests(SimpleTestCase):
     def test_translated_templates_have_no_bare_text(self):
         for rel in TRANSLATED_TEMPLATES:
             text = (ROOT / rel).read_text(encoding="utf-8")
-            self.assertIn("{% load i18n", text, f"{rel} must load i18n")
+            self.assertRegex(text, r"\{%\s*load\s[^%]*\bi18n\b", f"{rel} must load i18n")
             self.assertEqual(untranslated(text), [], f"{rel} has text outside translate tags")

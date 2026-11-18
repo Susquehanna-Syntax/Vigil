@@ -505,7 +505,7 @@ settings before deciding anything.
 <div class="modal-overlay" id="rollout-detail-overlay" data-act="closeRolloutDetail"></div>
 <div class="modal modal-wide" id="rollout-detail-modal">
   <div class="modal-title">
-    <span id="rollout-detail-title">Rollout</span>
+    <span id="rollout-detail-title">{% translate "Rollout" %}</span>
     <button class="modal-close" data-act="closeRolloutDetail">
       <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -518,46 +518,46 @@ settings before deciding anything.
 <div class="modal-overlay" id="rollout-start-overlay" data-act="closeRolloutStart"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
   <div class="modal-title">
-    Start Rollout
+    {% translate "Start Rollout" %}
     <button class="modal-close" data-act="closeRolloutStart">
       <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div class="modal-scroll-body">
     <div class="totp-sub totp-sub-tight">
-      Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the
-      failure limit, and sit out its validation window.<br>
-      Which hosts land in which wave comes from the wave's tags &mdash; change the tags to change
-      who gets patched.
+      {% translate "Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the" %}
+      {% translate "failure limit, and sit out its validation window." %}<br>
+      {% translate "Which hosts land in which wave comes from the wave's tags &mdash; change the" %}
+      {% translate "tags to change who gets patched." %}
     </div>
     <div class="form-group form-group-12">
-      <label class="form-label">Task definition</label>
+      <label class="form-label">{% translate "Task definition" %}</label>
       <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
-        <span id="rollout-start-def-label">Choose a task or playbook…</span>
+        <span id="rollout-start-def-label">{% translate "Choose a task or playbook…" %}</span>
       </button>
       <input type="hidden" id="rollout-start-def">
-      <div class="confirm-hint confirm-hint-flush" id="rollout-start-def-hint">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
+      <div class="confirm-hint confirm-hint-flush" id="rollout-start-def-hint">{% translate "Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching." %}</div>
     </div>
     <div id="rollout-start-inputs" class="inputs-form" hidden></div>
     <div class="form-group form-group-tight">
-      <label class="form-label">Wave groups <span class="form-label-optional">(none picked = every enabled wave)</span></label>
-      <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="Wave groups"></div>
-      <div class="confirm-hint confirm-hint-flush" id="rollout-start-group-hint">Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it.</div>
+      <label class="form-label">{% translate "Wave groups" %} <span class="form-label-optional">{% translate "(none picked = every enabled wave)" %}</span></label>
+      <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="{% translate "Wave groups" %}"></div>
+      <div class="confirm-hint confirm-hint-flush" id="rollout-start-group-hint">{% translate "Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it." %}</div>
     </div>
     <div class="rollout-start-pair">
       <div class="form-group">
-        <label class="form-label">Halt above failure&nbsp;%</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all.">?</span>
+        <label class="form-label">{% translate "Halt above failure&nbsp;%" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all." %}">?</span>
         <input type="number" class="form-control" id="rollout-start-threshold" min="0" max="100" value="10">
       </div>
       <div class="form-group">
-        <label class="form-label">Min results before halt</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately.">?</span>
+        <label class="form-label">{% translate "Min results before halt" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately." %}">?</span>
         <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
       </div>
     </div>
   </div>
   <div class="rollout-start-actions">
-    <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">Cancel</button>
-    <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">Start rollout</button>
+    <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">{% translate "Cancel" %}</button>
+    <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">{% translate "Start rollout" %}</button>
   </div>
 </div>
 
@@ -565,31 +565,31 @@ settings before deciding anything.
 <div class="modal-overlay" id="community-submit-overlay" data-act="closeCommunitySubmit"></div>
 <div class="modal" id="community-submit-modal">
   <div class="modal-title">
-    Submit to Community
+    {% translate "Submit to Community" %}
     <button class="modal-close" data-act="closeCommunitySubmit">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div class="totp-sub totp-sub-tight">
-    The Vigil community catalog lives on GitHub at
-    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" class="community-catalog-link">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
-    Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR.
+    {% translate "The Vigil community catalog lives on GitHub at" %}
+    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" class="community-catalog-link">{% translate "Susquehanna-Syntax/Vigil-Approved-Scripts" %}</a>.
+    {% translate "Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR." %}
   </div>
   <div class="totp-sub totp-sub-loose">
-    <strong>How submission works:</strong>
+    <strong>{% translate "How submission works:" %}</strong>
     <ol class="community-submit-steps">
-      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" class="code-tight">task.yaml</code> under <code class="code-tight">tasks/</code>.</li>
-      <li>Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account.</li>
-      <li>Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.</li>
-      <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry.</li>
+      <li>{% blocktranslate %}Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" class="code-tight">task.yaml</code> under <code class="code-tight">tasks/</code>.{% endblocktranslate %}</li>
+      <li>{% translate "Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account." %}</li>
+      <li>{% blocktranslate %}Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.{% endblocktranslate %}</li>
+      <li>{% translate "A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry." %}</li>
     </ol>
   </div>
   <div class="totp-sub totp-sub-loose totp-sub-fine">
-    <strong>Auto-added to your YAML</strong> if you haven't set them: <code class="code-tight-sm">author</code> (your Vigil username) and <code class="code-tight-sm">created</code> (today's date). Required by the catalog so every entry is attributed.
+    <strong>{% translate "Auto-added to your YAML" %}</strong> {% blocktranslate %}if you haven't set them: <code class="code-tight-sm">author</code> (your Vigil username) and <code class="code-tight-sm">created</code> (today's date). Required by the catalog so every entry is attributed.{% endblocktranslate %}
   </div>
   <div class="community-submit-actions">
-    <button class="btn btn-ghost" data-act="copyCommunityYaml">Copy YAML</button>
-    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" data-act="closeCommunitySubmit">Open GitHub PR</a>
+    <button class="btn btn-ghost" data-act="copyCommunityYaml">{% translate "Copy YAML" %}</button>
+    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" data-act="closeCommunitySubmit">{% translate "Open GitHub PR" %}</a>
   </div>
 </div>
 
@@ -599,27 +599,27 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="ssh-overlay" data-act="closeSshModal"></div>
 <div class="modal" id="ssh-modal">
   <div class="modal-title">
-    <span id="ssh-modal-title">SSH to host</span>
+    <span id="ssh-modal-title">{% translate "SSH to host" %}</span>
     <button class="modal-close" data-act="closeSshModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div class="totp-sub totp-sub-mid">
-    Opens a normal SSH session in your own terminal. Copy the command below, or use the
-    <code class="code-tight-sm">ssh://</code>
-    link if your OS has a handler registered. Vigil doesn't connect to the host for you.
+    {% translate "Opens a normal SSH session in your own terminal. Copy the command below, or use the" %}
+    <code class="code-tight-sm">{% translate "ssh://" %}</code>
+    {% translate "link if your OS has a handler registered. Vigil doesn't connect to the host for you." %}
   </div>
   <div class="form-group">
-    <label class="form-label" for="ssh-user">Username</label>
-    <input type="text" class="form-control" id="ssh-user" placeholder="root" data-input="updateSshCommand">
+    <label class="form-label" for="ssh-user">{% translate "Username" %}</label>
+    <input type="text" class="form-control" id="ssh-user" placeholder="{% translate "root" %}" data-input="updateSshCommand">
   </div>
   <div class="ssh-cmd-row">
-    <code class="ssh-cmd" id="ssh-cmd">ssh host</code>
-    <button class="btn btn-sky btn-sm" data-act="copySshCommand">Copy</button>
+    <code class="ssh-cmd" id="ssh-cmd">{% translate "ssh host" %}</code>
+    <button class="btn btn-sky btn-sm" data-act="copySshCommand">{% translate "Copy" %}</button>
   </div>
   <div class="community-submit-actions community-submit-actions-tall">
-    <a id="ssh-uri-link" class="btn btn-ghost" href="#">Open ssh://</a>
-    <button class="btn btn-ghost" data-act="closeSshModal">Close</button>
+    <a id="ssh-uri-link" class="btn btn-ghost" href="#">{% translate "Open ssh://" %}</a>
+    <button class="btn btn-ghost" data-act="closeSshModal">{% translate "Close" %}</button>
   </div>
 </div>
 
@@ -627,85 +627,85 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="device-overlay" data-act="closeDeviceModal"></div>
 <div class="modal" id="device-modal">
   <div class="modal-title">
-    <span id="device-modal-title">Add Device</span>
+    <span id="device-modal-title">{% translate "Add Device" %}</span>
     <button class="modal-close" data-act="closeDeviceModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <input type="hidden" id="device-id">
   <div class="form-group">
-    <label class="form-label" for="device-name">Name</label>
-    <input type="text" class="form-control" id="device-name" placeholder="e.g. Core Switch" maxlength="200">
+    <label class="form-label" for="device-name">{% translate "Name" %}</label>
+    <input type="text" class="form-control" id="device-name" placeholder="{% translate "e.g. Core Switch" %}" maxlength="200">
   </div>
   <div class="form-group" id="device-site-field" hidden>
-    <label class="form-label" for="device-site">Site</label>
+    <label class="form-label" for="device-site">{% translate "Site" %}</label>
     <select class="form-control" id="device-site"></select>
-    <div class="confirm-hint detail-hint-below">Who may see and change it.</div>
+    <div class="confirm-hint detail-hint-below">{% translate "Who may see and change it." %}</div>
   </div>
   <div class="device-editor-pair">
     <div class="form-group">
-      <label class="form-label" for="device-type">Type</label>
+      <label class="form-label" for="device-type">{% translate "Type" %}</label>
       <select class="form-control" id="device-type">
-        <option value="router">Router</option>
-        <option value="switch">Switch</option>
-        <option value="firewall">Firewall</option>
-        <option value="access_point">Access Point</option>
-        <option value="printer">Printer</option>
-        <option value="nas">NAS</option>
-        <option value="server">Server</option>
-        <option value="workstation">Workstation</option>
-        <option value="camera">Camera</option>
-        <option value="ups">UPS</option>
-        <option value="iot">IoT Device</option>
-        <option value="other" selected>Other</option>
+        <option value="router">{% translate "Router" %}</option>
+        <option value="switch">{% translate "Switch" %}</option>
+        <option value="firewall">{% translate "Firewall" %}</option>
+        <option value="access_point">{% translate "Access Point" %}</option>
+        <option value="printer">{% translate "Printer" %}</option>
+        <option value="nas">{% translate "NAS" %}</option>
+        <option value="server">{% translate "Server" %}</option>
+        <option value="workstation">{% translate "Workstation" %}</option>
+        <option value="camera">{% translate "Camera" %}</option>
+        <option value="ups">{% translate "UPS" %}</option>
+        <option value="iot">{% translate "IoT Device" %}</option>
+        <option value="other" selected>{% translate "Other" %}</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="device-ip">IP Address</label>
+      <label class="form-label" for="device-ip">{% translate "IP Address" %}</label>
       <input type="text" class="form-control" id="device-ip" placeholder="10.0.0.1">
     </div>
   </div>
   <div class="device-editor-pair">
     <div class="form-group">
-      <label class="form-label" for="device-mac">MAC Address</label>
-      <input type="text" class="form-control" id="device-mac" placeholder="aa:bb:cc:dd:ee:ff" maxlength="17">
+      <label class="form-label" for="device-mac">{% translate "MAC Address" %}</label>
+      <input type="text" class="form-control" id="device-mac" placeholder='{% translate "aa:bb:cc:dd:ee:ff" %}' maxlength="17">
     </div>
     <div class="form-group">
-      <label class="form-label" for="device-vendor">Vendor</label>
-      <input type="text" class="form-control" id="device-vendor" placeholder="Ubiquiti" maxlength="120">
+      <label class="form-label" for="device-vendor">{% translate "Vendor" %}</label>
+      <input type="text" class="form-control" id="device-vendor" placeholder="{% translate "Ubiquiti" %}" maxlength="120">
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-location">Location</label>
-    <input type="text" class="form-control" id="device-location" placeholder="Rack 1 / Office" maxlength="160">
+    <label class="form-label" for="device-location">{% translate "Location" %}</label>
+    <input type="text" class="form-control" id="device-location" placeholder="{% translate "Rack 1 / Office" %}" maxlength="160">
   </div>
   <div class="device-editor-pair">
     <div class="form-group">
-      <label class="form-label" for="device-serial">Serial</label>
-      <input type="text" class="form-control" id="device-serial" placeholder="SN-0001" maxlength="120">
+      <label class="form-label" for="device-serial">{% translate "Serial" %}</label>
+      <input type="text" class="form-control" id="device-serial" placeholder="{% translate "SN-0001" %}" maxlength="120">
     </div>
     <div class="form-group">
-      <label class="form-label" for="device-warranty">Warranty ends</label>
+      <label class="form-label" for="device-warranty">{% translate "Warranty ends" %}</label>
       <input type="date" class="form-control" id="device-warranty">
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-owner">Owner</label>
-    <input type="text" class="form-control" id="device-owner" placeholder="A name or an email address" maxlength="200">
+    <label class="form-label" for="device-owner">{% translate "Owner" %}</label>
+    <input type="text" class="form-control" id="device-owner" placeholder="{% translate "A name or an email address" %}" maxlength="200">
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-extra">Extra facts</label>
-    <textarea class="form-control" id="device-extra" rows="3" placeholder="One fact per line, as Key: value"></textarea>
+    <label class="form-label" for="device-extra">{% translate "Extra facts" %}</label>
+    <textarea class="form-control" id="device-extra" rows="3" placeholder="{% translate "One fact per line, as Key: value" %}"></textarea>
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-notes">Notes</label>
-    <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
+    <label class="form-label" for="device-notes">{% translate "Notes" %}</label>
+    <textarea class="form-control" id="device-notes" placeholder="{% translate "Anything worth remembering about this device" %}"></textarea>
   </div>
   <div class="device-editor-foot">
-    <button class="btn btn-ghost device-delete-btn" id="device-delete-btn" style="display:none;" data-act="deleteDeviceFromModal">Delete</button>
+    <button class="btn btn-ghost device-delete-btn" id="device-delete-btn" style="display:none;" data-act="deleteDeviceFromModal">{% translate "Delete" %}</button>
     <div class="device-editor-foot-actions">
-      <button class="btn btn-ghost" data-act="closeDeviceModal">Cancel</button>
-      <button class="btn btn-sky" data-act="saveDevice">Save Device</button>
+      <button class="btn btn-ghost" data-act="closeDeviceModal">{% translate "Cancel" %}</button>
+      <button class="btn btn-sky" data-act="saveDevice">{% translate "Save Device" %}</button>
     </div>
   </div>
 </div>
@@ -714,19 +714,19 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="task-detail-overlay" data-act="closeTaskDetail"></div>
 <div class="modal modal-wide modal-column" id="task-detail-modal">
   <div class="modal-title modal-title-tight">
-    <span id="task-detail-title">Task Run</span>
+    <span id="task-detail-title">{% translate "Task Run" %}</span>
     <button class="modal-close" data-act="closeTaskDetail">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div id="task-detail-meta" class="task-detail-meta"></div>
   <div id="task-detail-jackil" style="display:none;" class="task-detail-jackil">
-    <div class="detail-section-title">Related in Jackil</div>
+    <div class="detail-section-title">{% translate "Related in Jackil" %}</div>
     <div id="task-detail-jackil-body"></div>
   </div>
   <div id="task-detail-steps" class="task-detail-steps"></div>
   <div class="confirm-actions" id="task-detail-actions" hidden>
-    <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">Open hunt results</button>
+    <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">{% translate "Open hunt results" %}</button>
   </div>
 </div>
 
@@ -734,7 +734,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="enroll-overlay" data-act="closeEnrollWizard"></div>
 <div class="modal modal-wide modal-column" id="enroll-modal">
   <div class="modal-title modal-title-tight">
-    <span id="enroll-title">Add Host</span>
+    <span id="enroll-title">{% translate "Add Host" %}</span>
     <button class="modal-close" data-act="closeEnrollWizard">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -746,48 +746,48 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <div class="auth-step-pill" id="enroll-pip-2">2</div>
     <div class="auth-step-pill" id="enroll-pip-3">3</div>
     <div class="auth-step-pill" id="enroll-pip-4">4</div>
-    <div class="enroll-step-label" id="enroll-step-label">Generate token</div>
+    <div class="enroll-step-label" id="enroll-step-label">{% translate "Generate token" %}</div>
   </div>
 
   {# Step 1: token + install command #}
   <div id="enroll-s1" class="enroll-step-body">
-    <div class="totp-sub totp-sub-mid">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
+    <div class="totp-sub totp-sub-mid">{% translate "A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here." %}</div>
     <div class="tab-bar tab-bar-tight">
-      <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">Linux &amp; macOS</button>
-      <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">Windows</button>
+      <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">{% translate "Linux &amp; macOS" %}</button>
+      <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">{% translate "Windows" %}</button>
     </div>
     <div class="enroll-profile-field">
-      <label class="deploy-input-label" for="enroll-profile">Agent profile</label>
+      <label class="deploy-input-label" for="enroll-profile">{% translate "Agent profile" %}</label>
       <select class="form-control" id="enroll-profile" data-change="enrollUseProfile"></select>
-      <div class="confirm-hint confirm-hint-flush">Start from a saved profile, adjust anything below, then create the command.</div>
+      <div class="confirm-hint confirm-hint-flush">{% translate "Start from a saved profile, adjust anything below, then create the command." %}</div>
     </div>
     <div id="enroll-config"></div>
     <div class="enroll-command-actions">
-      <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">Create install command</button>
-      <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">Save as profile</button>
+      <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">{% translate "Create install command" %}</button>
+      <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">{% translate "Save as profile" %}</button>
     </div>
     <div class="confirm-hint apf-error" id="enroll-stale" hidden></div>
     <div class="confirm-hint" id="enroll-notes" hidden></div>
     <div class="enroll-cmd-block" id="enroll-cmd-block" hidden>
-      <label class="deploy-input-label">One-liner install command</label>
-      <div class="code-block mono enroll-cmd" id="enroll-cmd" data-act="copyEnrollCmd" title="Click to copy"></div>
-      <div class="confirm-hint confirm-hint-flush">Valid for 24 hours, once.</div>
+      <label class="deploy-input-label">{% translate "One-liner install command" %}</label>
+      <div class="code-block mono enroll-cmd" id="enroll-cmd" data-act="copyEnrollCmd" title="{% translate "Click to copy" %}"></div>
+      <div class="confirm-hint confirm-hint-flush">{% translate "Valid for 24 hours, once." %}</div>
     </div>
     <div class="enroll-cmd-copy">
-      <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">Copy command</button>
+      <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">{% translate "Copy command" %}</button>
       <button class="btn btn-sky btn-sm" data-act="enrollGoStep2">
-        I ran the command — Next
+        {% translate "I ran the command — Next" %}
         <svg viewBox="0 0 24 24" class="btn-icon-xs"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
     </div>
-    <div class="confirm-hint" id="enroll-cmd-hint">Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.</div>
+    <div class="confirm-hint" id="enroll-cmd-hint">{% translate "Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below." %}</div>
   </div>
 
   {# Step 2: polling #}
   <div id="enroll-s2" class="enroll-step-body enroll-step-centered" style="display:none;">
     <div class="enroll-step-icon"><svg viewBox="0 0 24 24" class="enroll-icon-clock"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div class="enroll-step-title">Waiting for agent to connect…</div>
-    <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
+    <div class="enroll-step-title">{% translate "Waiting for agent to connect…" %}</div>
+    <div class="totp-sub">{% translate "The agent will appear here within a few seconds of running the command." %}</div>
     <div class="enroll-pulse-row">
       <div class="status-dot pending enroll-pulse-dot"></div>
     </div>
@@ -795,7 +795,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 3: approve #}
   <div id="enroll-s3" class="enroll-step-body" style="display:none;">
-    <div class="enroll-step-title enroll-step-title-mid enroll-step-title-mint">Agent detected!</div>
+    <div class="enroll-step-title enroll-step-title-mid enroll-step-title-mint">{% translate "Agent detected!" %}</div>
     <div class="enroll-card enroll-card-below">
       <div class="status-dot pending"></div>
       <div class="enroll-info">
@@ -804,19 +804,19 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
         <div class="enroll-meta enroll-replaces" id="enroll-replaces" style="display:none;"></div>
       </div>
     </div>
-    <div class="totp-sub totp-sub-tight">Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks.</div>
+    <div class="totp-sub totp-sub-tight">{% translate "Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks." %}</div>
     <div class="enroll-approve-actions">
-      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">Approve &amp; Activate</button>
-      <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">Cancel</button>
+      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">{% translate "Approve &amp; Activate" %}</button>
+      <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">{% translate "Cancel" %}</button>
     </div>
   </div>
 
   {# Step 4: done #}
   <div id="enroll-s4" class="enroll-step-body enroll-step-centered" style="display:none;">
     <div class="enroll-step-icon"><svg viewBox="0 0 24 24" class="enroll-icon-check"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-    <div class="enroll-step-title enroll-step-title-done enroll-step-title-mint">Host enrolled successfully</div>
-    <div class="totp-sub totp-sub-wide" id="enroll-done-msg">The agent is now online and monitoring.</div>
-    <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">Done</button>
+    <div class="enroll-step-title enroll-step-title-done enroll-step-title-mint">{% translate "Host enrolled successfully" %}</div>
+    <div class="totp-sub totp-sub-wide" id="enroll-done-msg">{% translate "The agent is now online and monitoring." %}</div>
+    <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">{% translate "Done" %}</button>
   </div>
 </div>
 
@@ -826,9 +826,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 {# Bridge: passes server-rendered config to JS. Source: vigil/urls.py dashboard() view. #}
 {# Security: only non-secret values that Django has already rendered to the page. #}
 {#   No CSRF token here — vigil-utils.js getCsrf() reads from the cookie/DOM. #}
-{# Inline, and nonced: apps/accounts/csp.py mints request.csp_nonce per   #}
-{#   request, so script-src carries no 'unsafe-inline'. The <script src>  #}
-{#   tags below need no nonce — script-src 'self' already covers them.    #}
+{# Inline, and nonced: apps/accounts/csp.py mints request.csp_nonce per     #}
+{#   request, so script-src carries no 'unsafe-inline'. The tags with a src  #}
+{#   attribute below need no nonce — 'self' already covers them.            #}
 {% block config %}
 <script nonce="{{ request.csp_nonce }}">
   window.VIGIL_CONFIG = {
@@ -840,6 +840,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 {% endblock %}
 
 <!-- vigil-utils.js — getCsrf, apiPost/apiJson, showToast, escHtml, formatBytes, groupByLabel, computeRates. Load first: every other script depends on this. -->
+{# Django's translation catalog: gettext/ngettext for t() and tn() in vigil-utils.js. #}
+<script src="{% url 'javascript-catalog' %}"></script>
 <script src="{% static 'js/vigil-utils.js' %}"></script>
 <!-- vigil-modal.js — focus, Esc, focus trap, inert page and stacking for every dialog -->
 <script src="{% static 'js/vigil-modal.js' %}"></script>
