@@ -54,22 +54,23 @@ function _waveProgress(r) {
   return (r.waves || []).map(wave => {
     const color = WAVE_STATUS_COLOR[wave.status] || 'var(--text-3)';
     const count = wave.tasks_total
-      ? `${wave.tasks_done + wave.tasks_failed}/${wave.tasks_total} reported`
-      : (wave.hosts ? 'queued' : 'no hosts');
-    const validation = wave.validation_hours ? ` · validation ${wave.validation_hours}h` : '';
+      ? t('{done}/{total} reported', { done: wave.tasks_done + wave.tasks_failed, total: wave.tasks_total })
+      : (wave.hosts ? t('queued') : t('no hosts'));
+    const validation = wave.validation_hours
+      ? ' · ' + t('validation {hours}h', { hours: wave.validation_hours }) : '';
     // A wave that dispatched anything is worth opening: the counts say how many
     // failed, never which machines or why.
     const openable = wave.tasks_total > 0;
     const failed = wave.tasks_failed
-      ? `<span class="chip rlt-chip-failed">${wave.tasks_failed} failed</span>`
+      ? `<span class="chip rlt-chip-failed">${escHtml(t('{n} failed', { n: wave.tasks_failed }))}</span>`
       : '<span></span>';
     return `<div class="rlt-wave">
       ${_waveDot(wave.status)}
       <span class="rlt-wave-name" data-css="color:${color};">${escHtml(wave.name)}</span>
-      <span class="rlt-wave-count">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
+      <span class="rlt-wave-count">${escHtml(tn('{n} host', '{n} hosts', wave.hosts))} · ${escHtml(count)}${escHtml(validation)}</span>
       <span class="rlt-wave-failed">${failed}</span>
       <span class="rlt-wave-tags">${(wave.tags || []).map(escHtml).join(', ')}</span>
-      <span class="rlt-wave-act">${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : '<span></span>'}</span>
+      <span class="rlt-wave-act">${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">${escHtml(t('Machines'))}</button>` : '<span></span>'}</span>
     </div>`;
   }).join('');
 }
@@ -80,13 +81,13 @@ function _waveProgress(r) {
 async function openWaveHosts(rolloutId, waveId) {
   const rollout = (_rolloutState.items || []).find(r => String(r.id) === String(rolloutId));
   const wave = ((rollout || {}).waves || []).find(w => String(w.id) === String(waveId));
-  const waveName = wave ? wave.name : 'Wave';
+  const waveName = wave ? wave.name : t('Wave');
   const m = mountModal('wave-hosts', { xwide: true });
-  m.setBody(`<div class="modal-title"><span>Wave: ${escHtml(waveName)}</span>
-      <button class="modal-close" id="wh-x" aria-label="Close">
+  m.setBody(`<div class="modal-title"><span>${escHtml(t('Wave:'))} ${escHtml(waveName)}</span>
+      <button class="modal-close" id="wh-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
-    <div id="wh-body"><span class="muted-note">Loading…</span></div>`);
+    <div id="wh-body"><span class="muted-note">${escHtml(t('Loading…'))}</span></div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#wh-x')).onclick = m.close;
   m.open();
 
@@ -95,7 +96,7 @@ async function openWaveHosts(rolloutId, waveId) {
     data = await apiJson(`/api/v1/rollouts/${rolloutId}/waves/${waveId}/hosts/`);
   } catch (e) {
     document.getElementById('wh-body').innerHTML =
-      `<span class="bad">${escHtml(e.message || 'Could not load this wave')}</span>`;
+      `<span class="bad">${escHtml(e.message || t('Could not load this wave'))}</span>`;
     return;
   }
 
@@ -107,22 +108,22 @@ async function openWaveHosts(rolloutId, waveId) {
       <td><strong>${escHtml(h.hostname)}</strong>
         <div class="muted-note">${escHtml(h.ip_address || '')}</div></td>
       <td class="rlt-host-state" data-css="color:${stateColor};">${escHtml(h.state)}</td>
-      <td>${h.completed_at ? escHtml(new Date(h.completed_at).toLocaleString()) : '—'}</td>
+      <td>${h.completed_at ? escHtml(new Date(h.completed_at).toLocaleString()) : '—' /* i18n-ignore */}</td>
       <td>${output
         ? `<pre class="rlt-host-output">${escHtml(output)}</pre>`
-        : '<span class="muted-note">no output</span>'}</td>
+        : `<span class="muted-note">${escHtml(t('no output'))}</span>`}</td>
     </tr>`;
   }).join('');
 
   document.getElementById('wh-body').innerHTML = `
     <div class="muted-note rlt-summary-below">
-      ${data.total} machine${data.total === 1 ? '' : 's'} ·
-      <span class="rlt-failed-count" data-css="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};">${data.failed} failed</span>
+      ${escHtml(tn('{n} machine', '{n} machines', data.total))} ·
+      <span class="rlt-failed-count" data-css="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};">${escHtml(t('{n} failed', { n: data.failed }))}</span>
     </div>
     <div class="rlt-hosts-scroll">
       <table class="vuln-table">
-        <thead><tr><th>Machine</th><th>State</th><th>Finished</th><th>Output</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" class="muted-note">Nothing dispatched in this wave.</td></tr>'}</tbody>
+        <thead><tr><th>${escHtml(t('Machine'))}</th><th>${escHtml(t('State'))}</th><th>${escHtml(t('Finished'))}</th><th>${escHtml(t('Output'))}</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="4" class="muted-note">${escHtml(t('Nothing dispatched in this wave.'))}</td></tr>`}</tbody>
       </table>
     </div>`;
 }
@@ -132,31 +133,31 @@ function _rolloutCard(r) {
   const active = r.state === 'running' || r.state === 'validating';
   let actions = '';
   if (active) {
-    actions = `<button class="btn btn-ghost btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop>Halt now</button>`;
+    actions = `<button class="btn btn-ghost btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop>${escHtml(t('Halt now'))}</button>`;
   } else if (r.state === 'halted') {
-    actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>Resume</button>`;
+    actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>${escHtml(t('Resume'))}</button>`;
   }
   const reason = r.halted_reason
     ? `<div class="rlt-halted">
-        <strong>Halted:</strong> ${escHtml(r.halted_reason)}
-        ${r.halted_by_name ? `<span class="rlt-halted-by">by ${escHtml(r.halted_by_name)}</span>` : ''}
+        <strong>${escHtml(t('Halted:'))}</strong> ${escHtml(r.halted_reason)}
+        ${r.halted_by_name ? `<span class="rlt-halted-by">${escHtml(t('by {name}', { name: r.halted_by_name }))}</span>` : ''}
        </div>`
     : '';
   return `<div class="def-card rlt-card"
        data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
     <div class="rlt-body">
       <div class="rlt-head">
-        <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
+        <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ` <span class="chip">${escHtml(t('playbook'))}</span>` : ''}
         <span class="rlt-state" data-css="color:${color};">${escHtml(r.state)}</span>
-        ${r.current_wave_name ? `<span class="rlt-wave-count">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
-        <span class="rlt-head-meta">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
+        ${r.current_wave_name ? `<span class="rlt-wave-count">${escHtml(t('wave:'))} ${escHtml(r.current_wave_name)}</span>` : ''}
+        <span class="rlt-head-meta">${escHtml(r.created_by_name || '')} · ${escHtml(t('started'))} ${_fmtTs(r.started_at)}</span>
       </div>
       ${reason}
       <div class="rlt-waves">${_waveProgress(r)}</div>
       <div class="rlt-gate">
         <span class="rlt-gate-text">
-          gate: halt above ${r.failure_threshold_pct}% · min ${r.min_results_before_halt} results
-          ${r.resumed_by_name ? ` · resumed by ${escHtml(r.resumed_by_name)}` : ''}
+          ${escHtml(t('gate: halt above {pct}% · min {min} results', { pct: r.failure_threshold_pct, min: r.min_results_before_halt }))}
+          ${r.resumed_by_name ? ` · ${escHtml(t('resumed by {name}', { name: r.resumed_by_name }))}` : ''}
         </span>
         ${actions}
       </div>
@@ -223,11 +224,11 @@ function _batchCard(rs) {
   return `<div class="def-card rlt-card rlt-batch">
     <div class="rlt-body">
       <div class="rlt-head">
-        <strong>${escHtml(rs[0].target_name || rs[0].definition_name || rs[0].playbook_name || '(deleted)')}</strong>${rs[0].action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
-        <span class="chip chip-muted">parallel · ${rs.length} groups</span>
+        <strong>${escHtml(rs[0].target_name || rs[0].definition_name || rs[0].playbook_name || '(deleted)')}</strong>${rs[0].action_kind === 'playbook' ? ` <span class="chip">${escHtml(t('playbook'))}</span>` : ''}
+        <span class="chip chip-muted">${escHtml(tn('parallel · {n} group', 'parallel · {n} groups', rs.length))}</span>
         <span class="rlt-state" data-css="color:${ROLLOUT_STATE_COLOR[overall] || 'var(--text-3)'};">${escHtml(overall)}</span>
-        <span class="rlt-head-meta">${escHtml(rs[0].created_by_name || '')} · started ${_fmtTs(rs[0].started_at)}</span>
-        ${anyActive ? `<button class="btn btn-ghost btn-xs" data-rlt-batch="${escAttr(batch)}" data-rlt-act="halt-batch" data-stop title="Stop every group now">Halt all</button>` : ''}
+        <span class="rlt-head-meta">${escHtml(rs[0].created_by_name || '')} · ${escHtml(t('started'))} ${_fmtTs(rs[0].started_at)}</span>
+        ${anyActive ? `<button class="btn btn-ghost btn-xs" data-rlt-batch="${escAttr(batch)}" data-rlt-act="halt-batch" data-stop title="${escAttr(t('Stop every group now'))}">${escHtml(t('Halt all'))}</button>` : ''}
       </div>
       <div class="rlt-lanes">${rs.map(_batchLane).join('')}</div>
     </div>
@@ -236,9 +237,9 @@ function _batchCard(rs) {
 
 function _batchLane(r) {
   const actions = r.state === 'halted'
-    ? `<button class="btn btn-ghost btn-xs" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop title="Clear the halt and continue from this wave">Resume</button>`
+    ? `<button class="btn btn-ghost btn-xs" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop title="${escAttr(t('Clear the halt and continue from this wave'))}">${escHtml(t('Resume'))}</button>`
     : (RLT_ACTIVE.includes(r.state)
-      ? `<button class="btn btn-ghost btn-xs" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop title="Stop this group now">Halt</button>`
+      ? `<button class="btn btn-ghost btn-xs" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop title="${escAttr(t('Stop this group now'))}">${escHtml(t('Halt'))}</button>`
       : '');
   return `<div class="rlt-lane">
     <div class="rlt-lane-head" data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
@@ -257,8 +258,8 @@ function _renderRollouts() {
   const items = _filterRollouts();
   if (!items.length) {
     box.innerHTML = `<div class="empty-state rlt-empty-compact">
-      <div class="empty-state-title">${_rolloutState.items.length ? 'No rollouts match that search' : 'No rollouts yet'}</div>
-      <div class="rlt-empty-note">${_rolloutState.items.length ? 'Clear the search to see them all.' : 'Start one from a task definition — it fans out wave by wave and halts itself on failure.'}</div>
+      <div class="empty-state-title">${_rolloutState.items.length ? escHtml(t('No rollouts match that search')) : escHtml(t('No rollouts yet'))}</div>
+      <div class="rlt-empty-note">${_rolloutState.items.length ? escHtml(t('Clear the search to see them all.')) : escHtml(t('Start one from a task definition — it fans out wave by wave and halts itself on failure.'))}</div>
     </div>`;
   } else {
     box.innerHTML = _groupRollouts(items)
@@ -308,7 +309,7 @@ async function openRolloutStart() {
   if (!modal) return;
   // Cleared on every open so a previous pick can't be submitted by accident.
   /** @type {HTMLSelectElement} */ (document.getElementById('rollout-start-def')).value = '';
-  document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
+  document.getElementById('rollout-start-def-label').textContent = t('Choose a task or playbook…');
   // The chips need no reset beyond clearing the pick: they are re-fetched and
   // repainted on every open.
   _rolloutState.groups = [];
@@ -325,13 +326,13 @@ async function _renderRolloutGroupChips() {
   const box = document.getElementById('rollout-start-groups');
   if (!box) return;
   _rolloutState.groupChoices = [];
-  box.innerHTML = '<span class="muted-note">Loading wave groups…</span>';
+  box.innerHTML = `<span class="muted-note">${escHtml(t('Loading wave groups…'))}</span>`;
   try {
     const data = await apiJson('/api/v1/wave-groups/');
     _rolloutState.groupChoices = (data.groups || []).filter(g => g.enabled_waves > 0);
     _paintRolloutGroupChips();
   } catch (e) {
-    box.innerHTML = `<span class="bad">Could not load wave groups: ${escHtml(e.message || 'Request failed')}</span>`;
+    box.innerHTML = `<span class="bad">${escHtml(t('Could not load wave groups: {msg}', { msg: e.message || 'Request failed' }))}</span>`;
   }
 }
 
@@ -340,12 +341,12 @@ function _paintRolloutGroupChips() {
   if (!box) return;
   const groups = _rolloutState.groupChoices || [];
   if (!groups.length) {
-    box.innerHTML = '<span class="muted-note">No wave groups defined — every enabled wave is one ladder.</span>';
+    box.innerHTML = `<span class="muted-note">${escHtml(t('No wave groups defined — every enabled wave is one ladder.'))}</span>`;
     return;
   }
   box.innerHTML = groups.map(g => {
     const at = _rolloutState.groups.indexOf(g.tag);
-    const waves = g.enabled_waves === 1 ? '1 wave' : `${g.enabled_waves} waves`;
+    const waves = tn('{n} wave', '{n} waves', g.enabled_waves);
     return `<button type="button" class="chip rlt-group-chip" data-rlt-group="${escAttr(g.tag)}" aria-pressed="${at >= 0}">
       ${escHtml(g.tag)}<span class="rlt-group-chip-count">${escHtml(waves)}</span>
       ${at >= 0 ? `<span class="rlt-group-chip-order">${at + 1}</span>` : ''}
@@ -367,7 +368,7 @@ delegateClick('[data-rlt-group]', (el) => {
 function pickRolloutTarget() {
   openPicker({
     type: 'rollout_target',
-    title: 'Pick a task or playbook to roll out',
+    title: t('Pick a task or playbook to roll out'),
     allowAdd: false,
     onSelect: (item) => {
       /** @type {HTMLSelectElement} */ (document.getElementById('rollout-start-def')).value = item.key;
@@ -403,7 +404,7 @@ async function _loadRolloutStartInputs() {
   } catch (e) {
     // The form is a convenience here; starting the rollout without it is the
     // server's call to make, so say what failed and let the pick stand.
-    showToast(`Could not load this target's inputs: ${e.message || 'Request failed'}`, 'error');
+    showToast(t("Could not load this target's inputs: {msg}", { msg: e.message || t('Request failed') }), 'error');
   }
 }
 
@@ -417,7 +418,7 @@ async function submitRolloutStart() {
   const threshold = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('rollout-start-threshold')).value, 10);
   const minResults = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('rollout-start-min')).value, 10);
   const btn = /** @type {HTMLButtonElement} */ (document.getElementById('rollout-start-submit'));
-  if (!sel.value) { showToast('Pick something to roll out first', 'error'); return; }
+  if (!sel.value) { showToast(t('Pick something to roll out first'), 'error'); return; }
   const inputBox = document.getElementById('rollout-start-inputs');
   const withInputs = !!(inputBox && !inputBox.hidden);
   let values = null;
@@ -427,8 +428,8 @@ async function submitRolloutStart() {
     values = read.values;
   }
   const picked = _rolloutState.groups;
-  const totp = await totpPrompt('Wave 1 starts as soon as you confirm.',
-    { title: 'Start rollout', confirmText: 'Start rollout' });
+  const totp = await totpPrompt(t('Wave 1 starts as soon as you confirm.'),
+    { title: t('Start rollout'), confirmText: t('Start rollout') });
   if (!totp) return;
   btn.disabled = true;
   try {
@@ -453,17 +454,17 @@ async function submitRolloutStart() {
     });
     closeRolloutStart();
     if (r && r.batch) {
-      showToast(`Started ${r.rollouts.length} rollouts in parallel`, 'success');
+      showToast(t('Started {n} rollouts in parallel', { n: r.rollouts.length }), 'success');
     } else {
-      showToast(`Rollout started — wave 1 dispatched (${r.waves?.[0]?.tasks_total ?? 0} host(s))`, 'success');
+      showToast(t('Rollout started — wave 1 dispatched ({n} host(s))', { n: r.waves?.[0]?.tasks_total ?? 0 }), 'success');
     }
     refreshRollouts();
   } catch (e) {
-    const msg = e.message || 'Request failed';
+    const msg = e.message || t('Request failed');
     if (/TOTP|two-factor/i.test(msg)) {
-      showToast('TOTP code rejected — check your authenticator', 'error');
+      showToast(t('TOTP code rejected — check your authenticator'), 'error');
     } else {
-      showToast('Could not start rollout: ' + msg, 'error');
+      showToast(t('Could not start rollout: {msg}', { msg }), 'error');
     }
   } finally {
     btn.disabled = false;
@@ -481,22 +482,20 @@ async function promptRolloutAction(/** @type {HTMLElement|null} */ btn, /** @typ
   // Inside a lane the group's own name reads better than the shared target.
   const name = lane && lane.querySelector('strong')
     ? lane.querySelector('strong').textContent
-    : (r ? (r.target_name || r.definition_name || r.playbook_name) : 'the rollout');
+    : (r ? (r.target_name || r.definition_name || r.playbook_name) : t('the rollout'));
   const lanes = card ? card.querySelectorAll('.rlt-lane').length : 0;
-  const batchName = (card && card.querySelector('strong')?.textContent) || 'the rollout';
-  const title = kind === 'halt' ? 'Halt rollout'
-    : kind === 'resume' ? 'Resume rollout'
-    : kind === 'halt-batch' ? 'Halt every group'
-    : 'Skip the validation window';
+  const batchName = (card && card.querySelector('strong')?.textContent) || t('the rollout');
+  const title = kind === 'halt' ? t('Halt rollout')
+    : kind === 'resume' ? t('Resume rollout')
+    : kind === 'halt-batch' ? t('Halt every group')
+    : t('Skip the validation window');
   const message = kind === 'halt'
-    ? `Stop ${name} now? The current wave keeps running; nothing new is dispatched.`
+    ? t('Stop {name} now? The current wave keeps running; nothing new is dispatched.', { name })
     : kind === 'resume'
-      ? `Restart ${name} at its current wave? Failed tasks on the wave are re-queued and the gate re-evaluates.`
+      ? t('Restart {name} at its current wave? Failed tasks on the wave are re-queued and the gate re-evaluates.', { name })
       : kind === 'halt-batch'
-        ? `Stop all ${lanes} groups of ${batchName} now? Every group keeps its current wave; nothing new is dispatched.`
-        : `End this wave's validation window for ${name} and move to the next wave now? `
-          + `The window exists so a slow failure has time to show up, so only do this if you have `
-          + `checked the wave yourself. The failure gate still applies.`;
+        ? t('Stop all {lanes} groups of {batch} now? Every group keeps its current wave; nothing new is dispatched.', { lanes, batch: batchName })
+        : t("End this wave's validation window for {name} and move to the next wave now? The window exists so a slow failure has time to show up, so only do this if you have checked the wave yourself. The failure gate still applies.", { name });
   const totp = await totpPrompt(message, { title, confirmText: title });
   if (!totp) return;
   try {
@@ -508,27 +507,27 @@ async function promptRolloutAction(/** @type {HTMLElement|null} */ btn, /** @typ
         method: 'POST',
         body: JSON.stringify({ totp }),
       });
-      note = `Halted ${res.halted} rollouts`;
+      note = t('Halted {n} rollouts', { n: res.halted });
     } else {
       await apiJson(`/api/v1/rollouts/${rolloutId}/${kind}/`, {
         method: 'POST',
         body: JSON.stringify({ totp }),
       });
-      note = kind === 'halt' ? 'Rollout halted'
-        : kind === 'resume' ? 'Rollout resumed'
-        : 'Validation window skipped — moving to the next wave';
+      note = kind === 'halt' ? t('Rollout halted')
+        : kind === 'resume' ? t('Rollout resumed')
+        : t('Validation window skipped — moving to the next wave');
     }
     closeRolloutDetail();
     showToast(note, 'success');
     refreshRollouts();
   } catch (e) {
-    const msg = e.message || 'Request failed';
+    const msg = e.message || t('Request failed');
     if (/TOTP|two-factor/i.test(msg)) {
-      showToast('TOTP code rejected — check your authenticator', 'error');
+      showToast(t('TOTP code rejected — check your authenticator'), 'error');
     } else if (/admin|permission/i.test(msg)) {
-      showToast('Halting a rollout requires an admin account', 'error');
+      showToast(t('Halting a rollout requires an admin account'), 'error');
     } else {
-      showToast('Action failed: ' + msg, 'error');
+      showToast(t('Action failed: {msg}', { msg }), 'error');
     }
   }
 }
@@ -587,49 +586,51 @@ async function openRolloutDetail(rolloutId) {
   if (!modal) return;
 
   document.getElementById('rollout-detail-title').textContent =
-    r.target_name || r.definition_name || r.playbook_name || 'Rollout';
+    r.target_name || r.definition_name || r.playbook_name || t('Rollout');
 
-  const gate = `halts above ${r.failure_threshold_pct}% failures, once at least ` +
-               `${r.min_results_before_halt} host${r.min_results_before_halt === 1 ? '' : 's'} have reported`;
+  const gate = t('halts above {pct}% failures, once at least {n} have reported', {
+    pct: r.failure_threshold_pct,
+    n: tn('{n} host', '{n} hosts', r.min_results_before_halt),
+  });
 
   document.getElementById('rollout-detail-body').innerHTML = `
     ${r.halted_reason ? `<div class="rlt-detail-halted">
-        <strong>Halted:</strong> ${escHtml(r.halted_reason)}</div>` : ''}
+        <strong>${escHtml(t('Halted:'))}</strong> ${escHtml(r.halted_reason)}</div>` : ''}
     <div class="rlt-detail-waves">${_waveProgress(r)}</div>
-    ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'playbook' ? ' (playbook)' : ' (task)'))}
-    ${_detailRow('State', r.state)}
-    ${r.batch && r.wave_group_tag ? _detailRow('Wave group', r.wave_group_tag) : ''}
-    ${_detailRow('Current wave', r.current_wave_name)}
-    ${_detailRow('Failure gate', gate)}
-    ${_detailRow('Started', _fmtTs(r.started_at))}
-    ${_detailRow('This wave started', _fmtTs(r.wave_started_at))}
-    ${_detailRow('Finished', _fmtTs(r.finished_at))}
-    ${_detailRow('Started by', r.created_by_name)}
-    ${_detailRow('Halted by', r.halted_by_name)}
-    ${_detailRow('Resumed by', r.resumed_by_name)}`;
+    ${_detailRow(t('What is rolling out'), (r.target_name || '') + ` ${r.action_kind === 'playbook' ? t('(playbook)') : t('(task)')}`)}
+    ${_detailRow(t('State'), r.state)}
+    ${r.batch && r.wave_group_tag ? _detailRow(t('Wave group'), r.wave_group_tag) : ''}
+    ${_detailRow(t('Current wave'), r.current_wave_name)}
+    ${_detailRow(t('Failure gate'), gate)}
+    ${_detailRow(t('Started'), _fmtTs(r.started_at))}
+    ${_detailRow(t('This wave started'), _fmtTs(r.wave_started_at))}
+    ${_detailRow(t('Finished'), _fmtTs(r.finished_at))}
+    ${_detailRow(t('Started by'), r.created_by_name)}
+    ${_detailRow(t('Halted by'), r.halted_by_name)}
+    ${_detailRow(t('Resumed by'), r.resumed_by_name)}`;
 
   // Which actions apply depends entirely on state, so build them per open
   // rather than showing greyed buttons that cannot do anything.
   const acts = [];
   if (r.state === 'validating') {
     acts.push(`<button class="btn btn-mint btn-sm" data-rlt="${escAttr(r.id)}"
-      data-rlt-act="skip-validation">Skip validation, continue now</button>`);
+      data-rlt-act="skip-validation">${escHtml(t('Skip validation, continue now'))}</button>`);
   }
   if (r.state === 'running' || r.state === 'validating') {
     acts.push(`<button class="btn btn-ghost btn-sm rlt-act-halt" data-rlt="${escAttr(r.id)}"
-      data-rlt-act="halt">Halt now</button>`);
+      data-rlt-act="halt">${escHtml(t('Halt now'))}</button>`);
   }
   if (r.state === 'halted') {
     acts.push(`<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}"
-      data-rlt-act="resume">Resume from this wave</button>`);
+      data-rlt-act="resume">${escHtml(t('Resume from this wave'))}</button>`);
   }
   const hint = r.state === 'validating'
-    ? 'Skipping ends this wave\'s validation window now. The failure gate still applies — a wave that failed will not advance.'
+    ? t("Skipping ends this wave's validation window now. The failure gate still applies — a wave that failed will not advance.")
     : r.state === 'halted'
-      ? 'Resuming re-queues the failed hosts on this wave and re-checks the gate.'
+      ? t('Resuming re-queues the failed hosts on this wave and re-checks the gate.')
       : r.state === 'running'
-        ? 'This wave is still reporting. Halting stops the rollout where it is.'
-        : 'This rollout has finished — nothing left to do.';
+        ? t('This wave is still reporting. Halting stops the rollout where it is.')
+        : t('This rollout has finished — nothing left to do.');
   document.getElementById('rollout-detail-actions').innerHTML =
     `<div class="confirm-hint rlt-detail-hint">${escHtml(hint)}</div>` + acts.join(' ');
 
@@ -658,29 +659,24 @@ async function _refreshRolloutGroupHint() {
   if (!hint) return;
   const picked = _rolloutState.groups;
   if (!picked.length) {
-    hint.textContent = 'Every enabled wave, in order.';
+    hint.textContent = t('Every enabled wave, in order.');
     return;
   }
   if (picked.length > 1) {
-    hint.textContent = `${picked.length} groups in parallel — each walks its own waves; `
-      + 'nothing waits for another group. A machine on more than one picked group '
-      + 'goes with the first one you picked.';
+    hint.textContent = t('{n} groups in parallel — each walks its own waves; nothing waits for another group. A machine on more than one picked group goes with the first one you picked.', { n: picked.length });
     return;
   }
   try {
     const waves = await apiJson(`/api/v1/waves/?group=${encodeURIComponent(picked[0])}`);
     const live = waves.filter(w => w.enabled);
     if (!live.length) {
-      hint.innerHTML = `<span class="bad">No enabled wave is tagged `
-        + `<strong>${escHtml(picked[0])}</strong> — the rollout would be refused.</span>`;
+      hint.innerHTML = `<span class="bad">${t('No enabled wave is tagged {tag} — the rollout would be refused.', { tag: `<strong>${escHtml(picked[0])}</strong>` })}</span>`;
       return;
     }
     const machines = live.reduce((n, w) => n + (w.exclusive_host_count || 0), 0);
-    hint.textContent = `${live.length} wave${live.length === 1 ? '' : 's'} · `
-      + `${machines} machine${machines === 1 ? '' : 's'}, walked in order. `
-      + `Nothing outside this group is touched.`;
+    hint.textContent = t('{waves} · {machines}, walked in order. Nothing outside this group is touched.', { waves: tn('{n} wave', '{n} waves', live.length), machines: tn('{n} machine', '{n} machines', machines) });
   } catch (e) {
-    hint.textContent = 'Send this to one ladder only.';
+    hint.textContent = t('Send this to one ladder only.');
   }
 }
 

@@ -13,11 +13,9 @@
   "static/js/vigil-playbooks.js": 95,
   "static/js/vigil-policies.js": 31,
   "static/js/vigil-reprovision.js": 71,
-  "static/js/vigil-rollout.js": 51,
   "static/js/vigil-settings.js": 113,
   "static/js/vigil-stacks.js": 65,
   "static/js/vigil-store.js": 30,
-  "static/js/vigil-tasks.js": 45,
   "static/js/vigil-utils.js": 12,
   "static/js/vigil-vulns.js": 30,
   "static/js/vigil-widgets.js": 39

@@ -204,7 +204,7 @@ class NotApplicableUiMapsTests(TestCase):
 
         tasks_js = (static_js / "vigil-tasks.js").read_text()
         self.assertIn("not_applicable: 'var(--lavender)'", tasks_js)
-        self.assertIn("not_applicable: 'Not applicable'", tasks_js)
+        self.assertIn("not_applicable: t('Not applicable')", tasks_js)
 
         hunts_js = (static_js / "vigil-hunts.js").read_text()
         self.assertIn("not_applicable: 'lav'", hunts_js)
