@@ -118,7 +118,11 @@
 .dash-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
 
 .dash-stat { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.dash-stat-gap10 { gap: 10px; }
 .dash-stat-value { font-size: 34px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); }
+.dash-stat-value-22 { font-size: 22px; }
+/* The denominator beside a coverage figure. */
+.dash-stat-suffix { font-size: 18px; color: var(--text-3); }
 .dash-stat-label { font-size: 12px; color: var(--text-3); margin-top: 4px; }
 
 .dash-hosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
@@ -270,6 +274,8 @@
 .dash-host-cards .host-card-actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
 .dash-host-cards .host-card-actions .btn { padding: 4px 10px; font-size: 11px; }
 .dash-host-cards .host-checkin { margin-right: auto; }
+/* A pending-enrollment row's two buttons, pushed to the end of the line. */
+.dash-alert-actions { margin-left: auto; display: flex; gap: 6px; }
 
 /* ── Process and GPU widgets ────────────────────────────────────────────── */
 /* A proportional bar under the name, scaled to the busiest row rather than to
@@ -387,6 +393,8 @@
 @media (max-width: 900px) { .dash-rail { width: 100vw; } }
 .dash-cover-bar { height: 6px; border-radius: 3px; background: var(--s3); margin-top: 10px; overflow: hidden; }
 .dash-cover-bar span { display: block; height: 100%; background: var(--mint); transition: width .4s var(--ease-out-expo); }
+/* The widget-settings dialog's own description line (08h). */
+.muted-note.widget-settings-desc { margin-bottom: 14px; }
 .dash-note-head { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
 .dash-note-body { font-size: 12px; color: var(--text-2); line-height: 1.6; white-space: pre-wrap; }
 .dash-uptime { display: flex; gap: 2px; align-items: flex-end; height: 42px; margin-bottom: 8px; }

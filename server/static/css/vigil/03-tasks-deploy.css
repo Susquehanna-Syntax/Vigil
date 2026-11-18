@@ -104,6 +104,29 @@
   font-size: 12px;
   white-space: nowrap;
 }
+/* The Community page's own looks, moved out of vigil-community.js (08h). */
+.community-requires {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.community-require-row { display: flex; justify-content: space-between; gap: 10px; }
+.community-require-count { color: var(--text-3); margin-bottom: 5px; }
+.community-requires-held { color: var(--mint-ink); }
+.community-require-name { color: var(--text-2); }
+.community-require-held { color: var(--mint-ink); }
+.community-require-will { color: var(--sky-ink); }
+/* `.btn-ghost` sets a colour of its own and is loaded earlier, so naming both
+   classes keeps the tie that the inline used to break. */
+.btn.community-github-link { color: var(--text-3); text-decoration: none; }
+/* No other rule touches `grid-column` here, so it sits on a class of its own;
+   the `padding` beside it needs `.empty-state` named too, to beat the 80px 40px
+   that rule gives the same element. */
+.community-grid-banner { grid-column: 1/-1; }
+.community-grid-banner-tight { grid-column: 1/-1; }
+.empty-state.community-grid-banner { padding: 18px; }
+.empty-state.community-grid-banner-tight { padding: 14px; }
+.community-serving-toggle { margin-left: 8px; }
 
 /* ═══════════════════════════════════════════
    YAML EDITOR PAGE

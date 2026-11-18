@@ -51,6 +51,14 @@ THIRD_BATCH = [
     "templates/pages/_playbooks.html",
 ]
 
+# The scripts whose generated markup went into classes in 08h. What they still
+# write inline is worked out per render — a state colour, a bar width — and only
+# a later batch can class it; see `stray_script_styles`.
+SCRIPT_BATCH_2 = [
+    "static/js/vigil-community.js",
+    "static/js/vigil-widgets.js",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
@@ -60,6 +68,34 @@ def stray_styles(text: str) -> list[str]:
     return [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
             if not _ALLOWED_LEFTOVER.match(m.group(0))
             and "{{" not in m.group(0) and "{%" not in m.group(0)]
+
+
+# Same idea for a script, with one difference: a fixed declaration written next
+# to an interpolation stays with it, because the two are one look whose colour or
+# width does not exist until render time. See `_per_render_spans`.
+def _per_render_spans(attribute: str) -> list[str]:
+    """The declarations of one script style attribute whose value is built at
+    render time: each runs to the next ';' and holds `${` inside that span, so
+    an attribute written over several source lines cannot hide a fixed width
+    sitting beside an interpolated colour."""
+    return [chunk for chunk in attribute[len('style="'):-1].split(";")
+            if ":" in chunk and "${" in chunk]
+
+
+def stray_script_styles(text: str) -> list[str]:
+    """Every style attribute left in a finished script's markup that is neither
+    a bare display:none nor carries a `${...}` value."""
+    stray = []
+    for m in re.finditer(r'style="[^"]*"', text, re.DOTALL):
+        attribute = m.group(0)
+        if _ALLOWED_LEFTOVER.match(attribute.strip()):
+            continue
+        if "${" in attribute and _per_render_spans(attribute):
+            # Half of this look only exists at render time; keep the rest next
+            # to the value it belongs to rather than splitting them apart.
+            continue
+        stray.append(attribute)
+    return stray
 
 
 def scanned_files() -> list[Path]:
@@ -83,6 +119,12 @@ class InlineStyleRatchetTests(SimpleTestCase):
         baseline = load_baseline()
         for path in scanned_files():
             rel = str(path.relative_to(ROOT))
+            if rel in SCRIPT_BATCH_2:
+                # Those two keep per-render attributes by design, so the count
+                # here would say nothing. test_the_second_script_batch_is_done
+                # holds them instead, and fails on an attribute that is neither
+                # display:none nor built from `${...}`.
+                continue
             counted = count_inline_styles(path)
             allowed = baseline.get(rel, 0)
             self.assertLessEqual(
@@ -137,6 +179,14 @@ class InlineStyleRatchetTests(SimpleTestCase):
 
     def test_base_is_done(self):
         assert_batch_is_clean(self, "templates/base.html")
+
+    def test_the_second_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_2:
+            body = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertEqual(
+                stray_script_styles(body), [],
+                f"{rel} was moved into classes in phase 08h; only "
+                'style="display:none;" or a `${...}` value may remain.')
 
 
 def assert_batch_is_clean(case, rel: str) -> None:
