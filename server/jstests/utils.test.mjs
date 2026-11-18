@@ -96,3 +96,33 @@ test('yamlToHtml highlights and escapes', () => {
   assert.ok(!html.includes('<x>'));
   assert.ok(html.includes('<span class="y-comment"># c</span>'));
 });
+
+test('data-css keeps layout and colour declarations and drops everything else', () => {
+  const pairs = (t) => Array.from(w.parseDataCss(t), ([p, v]) => `${p}:${v}`);
+  assert.deepEqual(pairs('width:42%; color: var(--mint) ;left:10px;top:4px'),
+    ['width:42%', 'color:var(--mint)', 'left:10px', 'top:4px']);
+  assert.deepEqual(pairs('--sz:32px;box-shadow:0 0 6px var(--sky)'), ['--sz:32px', 'box-shadow:0 0 6px var(--sky)']);
+  // A property outside the list, a value that could load something, and junk.
+  assert.deepEqual(pairs('position:fixed;inset:0;z-index:9999'), []);
+  assert.deepEqual(pairs('background:url(https://evil.example/x.png)'), []);
+  assert.deepEqual(pairs('background:image-set("a.png" 1x)'), []);
+  assert.deepEqual(pairs(String.raw`color:red\;position:fixed`), []);
+  assert.deepEqual(pairs(':;width:;;nonsense'), []);
+  assert.deepEqual(pairs(null), []);
+});
+
+test('applyDataCss sets each allowed declaration once and removes the attribute', () => {
+  const set = [];
+  const el = {
+    nodeType: 1, attrs: { 'data-css': 'width:5%;position:fixed' },
+    style: { setProperty: (p, v) => set.push(`${p}=${v}`) },
+    matches: (s) => s === '[data-css]' && 'data-css' in el.attrs,
+    querySelectorAll: () => [],
+    getAttribute: (k) => el.attrs[k] ?? null,
+    removeAttribute: (k) => { delete el.attrs[k]; },
+  };
+  w.applyDataCss(el);
+  w.applyDataCss(el);
+  assert.deepEqual(set, ['width=5%']);
+  assert.equal(el.getAttribute('data-css'), null);
+});
