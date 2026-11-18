@@ -298,3 +298,11 @@ class InlineStyleRatchetTests(SimpleTestCase):
             for tag in re.findall(r"<style\b[^>]*>", path.read_text(encoding="utf-8")):
                 self.assertIn('nonce="{{ request.csp_nonce }}"', tag,
                               f"{path.relative_to(ROOT)}: a <style> block without the CSP nonce")
+
+    def test_no_template_uses_data_css_for_anything_else(self):
+        # applyDataCss (vigil-utils.js) consumes and removes every data-css it
+        # finds, so a template that used the name for something else - the
+        # terminal stylesheet's URL once did - would lose it on page load.
+        for path in sorted(ROOT.glob(TEMPLATE_GLOB)):
+            self.assertNotIn("data-css=", path.read_text(encoding="utf-8"),
+                             f"{path.relative_to(ROOT)}: data-css is reserved for applyDataCss")

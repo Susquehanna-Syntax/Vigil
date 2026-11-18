@@ -836,7 +836,7 @@ function loadTerminalAssets() {
   _termAssets = (async () => {
     const src = document.getElementById('vigil-term-assets');
     if (!src) throw new Error('terminal assets not found');
-    _appendStylesheet(src.dataset.css);
+    _appendStylesheet(src.dataset.xtermCss);
     await _appendScript(src.dataset.xterm);
     await _appendScript(src.dataset.fit);
     await _appendScript(src.dataset.js);

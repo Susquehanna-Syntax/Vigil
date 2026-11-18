@@ -25,6 +25,18 @@
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}
 <script nonce="{{ request.csp_nonce }}">
+  // A style element a script creates (xterm.js themes each terminal that
+  // way) needs this page's nonce, or style-src refuses it.
+  (function () {
+    var nonce = document.currentScript && document.currentScript.nonce;
+    if (!nonce) return;
+    var create = document.createElement.bind(document);
+    document.createElement = function (tag, options) {
+      var el = create(tag, options);
+      if (String(tag).toLowerCase() === 'style') el.nonce = nonce;
+      return el;
+    };
+  })();
   // Apply the saved theme and density before first paint to avoid a flash.
   (function () {
     try {
