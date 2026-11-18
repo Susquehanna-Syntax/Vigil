@@ -645,3 +645,6 @@
 .preview-input-label { color: var(--text-2); flex: 1; }
 .preview-input-sample { color: var(--text-3); }
 
+/* The task history pager: vigil-tasks.js shows it with display:flex once there
+   is more than one page; this is the rest of the look it used to carry inline. */
+.task-history-pager { align-items: center; justify-content: center; gap: 14px; padding: 14px 0; }

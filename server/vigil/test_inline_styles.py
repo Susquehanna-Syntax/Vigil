@@ -255,3 +255,19 @@ class InlineStyleRatchetTests(SimpleTestCase):
                              f"{rel} was moved into classes in phase 08k; only "
                              'style="display:none;" or a value worked out per '
                              "render may remain.")
+
+    def test_templates_carry_only_display_none(self):
+        # Phase 08m: the last per-render template values moved to scripts and
+        # classes. A display:none stays because scripts show those elements by
+        # clearing element.style.display; the CSP allows exactly that string by
+        # hash ('unsafe-hashes'), so nothing else may appear.
+        for path in sorted(ROOT.glob(TEMPLATE_GLOB)):
+            rel = str(path.relative_to(ROOT))
+            self.assertEqual(_leftover_styles(rel, script=False), [],
+                             f"{rel}: only style=\"display:none;\" may remain")
+
+    def test_every_style_block_carries_the_csp_nonce(self):
+        for path in sorted(ROOT.glob(TEMPLATE_GLOB)):
+            for tag in re.findall(r"<style\b[^>]*>", path.read_text(encoding="utf-8")):
+                self.assertIn('nonce="{{ request.csp_nonce }}"', tag,
+                              f"{path.relative_to(ROOT)}: a <style> block without the CSP nonce")

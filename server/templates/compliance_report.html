@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Patch compliance — {{ product }}</title>
-<style>
+<style nonce="{{ request.csp_nonce }}">
   :root { --accent: {{ accent }}; --ink: #1d1b22; --muted: #6e6b76; --rule: #dcd9e0;
           --pass: rgba(126, 221, 181, 0.22); --fail: rgba(243, 139, 168, 0.22); }
   * { box-sizing: border-box; }
