@@ -1137,8 +1137,8 @@ function termPlain(text, opts) {
 }
 
 // ── Per-render styles without inline style attributes ────────────────────
-// The CSP refuses inline style attributes in markup, so a value worked out per render (a
-// bar's width, a state colour, a node's position) is written as
+// The CSP refuses an inline style attribute in markup, so a value worked out
+// per render (a bar's width, a state colour, a node's position) is written as
 // `data-css="width:42%;color:var(--mint)"` and applied here through
 // `element.style`, which the CSP does not govern. Only the properties below
 // are accepted and no value may load anything, so markup injected past the

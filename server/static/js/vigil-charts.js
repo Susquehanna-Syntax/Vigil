@@ -58,7 +58,7 @@ function donutHtml(segments, { size = 104, center = '', filterKind = '', legend 
     </svg>`;
   if (!legend) return `<span class="donut-mini">${svg}</span>`;
   const rows = segments.map(s => `<button type="button" class="donut-key" data-filter-kind="${escAttr(filterKind)}" data-filter="${escAttr(s.key)}" aria-pressed="false">
-      <span class="donut-swatch" style="background:${s.color}"></span>
+      <span class="donut-swatch" data-css="background:${s.color}"></span>
       <span class="donut-label">${escHtml(s.label)}</span>
       <span class="donut-value">${s.value}</span>
       <span class="donut-pct">${Math.round((s.value / total) * 100)}%</span>
@@ -207,7 +207,7 @@ function _hostRunTaskHtml(t) {
       <div class="host-run-head">
         <span class="host-run-step">${escHtml(t.step_label || t.action || '')}</span>
         <span class="host-run-action">${escHtml(t.action || '')}</span>
-        <span class="host-run-state" style="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[t.state] || t.state || '')}</span>
+        <span class="host-run-state" data-css="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[t.state] || t.state || '')}</span>
       </div>
       <dl class="host-run-meta">${meta.map(([k, v]) =>
         `<dt>${escHtml(k)}</dt><dd>${escHtml(String(v))}</dd>`).join('')}</dl>

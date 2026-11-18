@@ -474,10 +474,10 @@ function renderProcTable(tableId, points, metricName) {
     return `<tr>
       <td class="proc-name">${escHtml(name)}</td>
       <td class="proc-pid">${pid}</td>
-      <td class="proc-val" style="color:${accentColor};">
+      <td class="proc-val" data-css="color:${accentColor};">
         <div class="proc-val-row">
           <div class="proc-bar-track">
-            <div style="height:100%;width:${barW}%;background:${accentColor};border-radius:2px;"></div>
+            <div class="proc-bar-fill" data-css="width:${barW}%;background:${accentColor};"></div>
           </div>
           ${val}%
         </div>
@@ -516,8 +516,8 @@ function renderDiskBars(diskData) {
     const color = pct > 90 ? 'var(--rose)' : pct > 75 ? 'var(--lemon)' : 'var(--mint)';
     return `<div class="disk-row">
       <div class="disk-mount" title="${mount}">${mount}</div>
-      <div class="disk-bar-track"><div class="disk-bar-fill" style="width:${pct}%;background:${color};"></div></div>
-      <div class="disk-pct" style="color:${color};">${Math.round(pct)}%</div>
+      <div class="disk-bar-track"><div class="disk-bar-fill" data-css="width:${pct}%;background:${color};"></div></div>
+      <div class="disk-pct" data-css="color:${color};">${Math.round(pct)}%</div>
     </div>`;
   }).join('');
 }

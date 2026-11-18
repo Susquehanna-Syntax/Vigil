@@ -45,9 +45,9 @@ function _storeIcon(c, size) {
   let h = 0;
   for (const ch of c.package_id || c.name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const tint = _STORE_TINTS[h % _STORE_TINTS.length];
-  const tile = `<span class="store-tile store-tile-${tint}" style="--sz:${size}px" aria-hidden="true">${letter}</span>`;
+  const tile = `<span class="store-tile store-tile-${tint}" data-css="--sz:${size}px" aria-hidden="true">${letter}</span>`;
   if (!c.icon) return tile;
-  return `<span class="store-icon-wrap" style="--sz:${size}px">${tile}
+  return `<span class="store-icon-wrap" data-css="--sz:${size}px">${tile}
     <img class="store-icon" src="/api/v1/catalog/${encodeURIComponent(c.id)}/icon/" alt="" loading="lazy" width="${size}" height="${size}"></span>`;
 }
 

@@ -103,7 +103,7 @@ class MonitorPageTests(SimpleTestCase):
 
     def test_the_terminal_assets_are_named_for_on_demand_loading(self):
         for attr in ('data-js="{% static', 'data-xterm="{% static',
-                     'data-fit="{% static', 'data-css="{% static'):
+                     'data-fit="{% static', 'data-xterm-css="{% static'):
             self.assertIn(attr, self.html)
         self.assertIn("vigil-term-assets", self.html)
 

@@ -1,12 +1,5 @@
 {
-  "static/js/vigil-charts.js": 2,
-  "static/js/vigil-host-cards.js": 1,
-  "static/js/vigil-jackil-shapes.js": 2,
-  "static/js/vigil-monitor.js": 4,
-  "static/js/vigil-playbook-flow.js": 10,
-  "static/js/vigil-store.js": 2,
   "static/js/vigil-utils.js": 2,
-  "static/js/vigil-widgets.js": 11,
   "templates/base.html": 13,
   "templates/login_verify.html": 1,
   "templates/pages/_firewall.html": 4,

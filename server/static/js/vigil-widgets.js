@@ -161,7 +161,7 @@ async function _renderStatTile(body, settings) {
   const stat = stats[settings.stat] || stats.hosts;
   body.innerHTML =
     `<div class="dash-stat">
-       <div class="dash-stat-value" style="color:${stat.color};">${stat.value}</div>
+       <div class="dash-stat-value" data-css="color:${stat.color};">${stat.value}</div>
        <div class="dash-stat-label">${escHtml(stat.label)}</div>
      </div>`;
 }
@@ -383,7 +383,7 @@ async function _renderVulnScore(body) {
                : score >= 50 ? 'var(--lemon)' : 'var(--rose)';
   body.innerHTML =
     `<div class="dash-stat">
-       <div class="dash-stat-value" style="color:${colour};">${escHtml(String(score))}</div>
+       <div class="dash-stat-value" data-css="color:${colour};">${escHtml(String(score))}</div>
        <div class="dash-stat-label">Fleet vulnerability score</div>
      </div>`;
 }
@@ -474,7 +474,7 @@ async function _renderGauge(body, settings) {
                 stroke-dasharray="${circumference.toFixed(1)}"
                 stroke-dashoffset="${offset.toFixed(1)}" class="gauge-fill"/>
       </svg>
-      <div class="dash-gauge-text" style="color:${colour};">${Math.round(value)}%</div>
+      <div class="dash-gauge-text" data-css="color:${colour};">${Math.round(value)}%</div>
       <div class="dash-stat-label">${escHtml(settings.metric || '')}</div>
     </div>`;
 }
@@ -555,7 +555,7 @@ async function _renderTopProcesses(body, settings) {
       <div class="dash-card-main">
         <div class="dash-card-title">${escHtml(name)}</div>
         <div class="dash-proc-bar">
-          <div class="dash-proc-fill" style="width:${(100 * value / peak).toFixed(1)}%;
+          <div class="dash-proc-fill" data-css="width:${(100 * value / peak).toFixed(1)}%;
                background:var(--${colour});"></div>
         </div>
       </div>
@@ -659,7 +659,7 @@ async function _renderGpuStatus(body, settings) {
       <div class="host-metric-label">${label}</div>
       <div class="host-metric-value">${escHtml(text)}</div>
       <div class="host-metric-bar">
-        <div class="host-metric-fill" style="width:${Math.max(0, Math.min(100, pct)).toFixed(0)}%;
+        <div class="host-metric-fill" data-css="width:${Math.max(0, Math.min(100, pct)).toFixed(0)}%;
              background:var(--${colour});"></div>
       </div>
     </div>`;
@@ -795,7 +795,7 @@ async function _renderDiskPressure(body, settings) {
     const colour = value >= 90 ? 'var(--rose)' : value >= 75 ? 'var(--lemon)' : 'var(--mint)';
     return `<div class="dash-proc">
       <span class="dash-proc-name">${escHtml(host.hostname)}</span>
-      <span class="dash-proc-value" style="color:${colour};">${value.toFixed(0)}%</span>
+      <span class="dash-proc-value" data-css="color:${colour};">${value.toFixed(0)}%</span>
     </div>`;
   }).join('') + `</div>`;
 }
@@ -904,10 +904,10 @@ async function _renderPlaybookCoverage(body, settings) {
   const pct = matching.length ? Math.round(ran.length / matching.length * 100) : 0;
   body.innerHTML = `
     <div class="dash-stat">
-      <div class="dash-stat-value" style="color:${pct === 100 ? 'var(--mint)' : 'var(--lemon)'};">
+      <div class="dash-stat-value" data-css="color:${pct === 100 ? 'var(--mint)' : 'var(--lemon)'};">
         ${ran.length}<span class="dash-stat-suffix">/${matching.length}</span></div>
       <div class="dash-stat-label">${escHtml(book.name)}${done ? '' : ' — no completion tag set'}</div>
-      <div class="dash-cover-bar"><span style="width:${pct}%;"></span></div>
+      <div class="dash-cover-bar"><span data-css="width:${pct}%;"></span></div>
     </div>`;
 }
 
@@ -970,7 +970,7 @@ async function _renderFirewallStatus(body, settings) {
   const active = payload.enabled ?? payload.active;
   body.innerHTML = `
     <div class="dash-stat">
-      <div class="dash-stat-value dash-stat-value-22" style="color:${active === false ? 'var(--rose)' : 'var(--mint)'};">
+      <div class="dash-stat-value dash-stat-value-22" data-css="color:${active === false ? 'var(--rose)' : 'var(--mint)'};">
         ${escHtml(String(backend))}</div>
       <div class="dash-stat-label">${rules.length} rule${rules.length === 1 ? '' : 's'}${
         active === false ? ' · inactive' : ''}</div>
@@ -1001,7 +1001,7 @@ async function _renderWindowsPatches(body) {
         ${escHtml(host.hostname)}
         ${host.reboot_required ? '<span class="chip">reboot</span>' : ''}
       </span>
-      <span class="dash-proc-value" style="color:${colour};"
+      <span class="dash-proc-value" data-css="color:${colour};"
             title="${escAttr(detail)}">${u.pending}</span>
     </div>`;
   }).join('') + `</div>`;
@@ -1061,7 +1061,7 @@ async function _renderUptimeBars(body, settings) {
       ${rows.map(r => {
         const colour = r.uptime >= 99 ? 'var(--mint)'
                      : r.uptime >= 90 ? 'var(--lemon)' : 'var(--rose)';
-        return `<span class="dash-uptime-bar" style="background:${colour};"
+        return `<span class="dash-uptime-bar" data-css="background:${colour};"
                       title="${escAttr(r.day)} · ${r.uptime}%"></span>`;
       }).join('')}
     </div>

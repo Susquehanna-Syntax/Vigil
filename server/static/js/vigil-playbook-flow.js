@@ -647,7 +647,7 @@ function _flStepNodeHtml(ln, num, opts) {
   const cls = ['fcn', 'fcn-step', _flowColorClass(s.color), why ? 'fcn-bad' : '',
     st && !st.total ? 'fcn-unreached' : '', selected === ln.at ? 'is-sel' : ''].filter(Boolean).join(' ');
   const tag = ctx ? 'button type="button"' : 'div';
-  return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
+  return `<${tag} class="${cls}" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
       data-sid="${escAttr(s.sid)}"${ctx ? ` data-flow-sel="${escAttr(ln.at)}"` : ''} title="${escAttr(tip)}">
     <span class="fcn-row"><span class="flow-num">${num}</span><span class="fcn-name">${escHtml(name)}</span></span>
     <span class="fcn-row fcn-sub"><code>${escHtml(s.sid)}</code>${flags.map(f => `<span class="flow-flag">${escHtml(f)}</span>`).join('')}</span>
@@ -670,10 +670,10 @@ function _flIfNodeHtml(ln, opts) {
     ? arms.map((arm, k) => {
         const side = arm.key === 'then' ? 'then' : arm.key === 'else' ? 'else' : 'elif';
         const label = arm.key === 'then' ? 'true' : arm.key === 'else' ? 'otherwise' : `or if ${arm.key.slice(4)}`;
-        return `<span class="fcn-port p-${side}" style="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${label}${took ? ` <b>${took[arm.key] || 0}</b>` : ''}</span>`;
+        return `<span class="fcn-port p-${side}" data-css="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${label}${took ? ` <b>${took[arm.key] || 0}</b>` : ''}</span>`;
       }).join('')
     : `${port('then', 'true')}${port('else', 'otherwise')}`;
-  return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
+  return `<${tag} class="${cls}" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
       ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(cond ? `if ${cond}` : 'No condition yet')}">
     <span class="fcn-if-mark">if</span>
     <span class="fcn-cond">${cond ? escHtml(flowCondSummary(cond)) : '<em>add a condition</em>'}</span>
@@ -693,7 +693,7 @@ function _flGotoNodeHtml(ln, opts) {
   const sub = jumped && jumped.jumped != null
     ? `${jumped.jumped} jumped`
     : ln.back ? `back, up to ${escHtml(max)} times` : 'jump ahead';
-  return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
+  return `<${tag} class="${cls}" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
       ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(target ? `go to ${target}` : 'Choose a step for this go to')}">
     <span class="fcn-row"><span class="fcn-goto-mark">go to</span><code>${escHtml(target || '?')}</code></span>
     <span class="fcn-row fcn-sub">${sub}</span>
@@ -727,8 +727,8 @@ function flowCanvasHtml(tree, opts = {}) {
     if (ln.type === 'step') { num += 1; return _flStepNodeHtml(ln, num, opts); }
     if (ln.type === 'if') return _flIfNodeHtml(ln, opts);
     if (ln.type === 'goto') return _flGotoNodeHtml(ln, opts);
-    if (ln.type === 'join') return `<span class="fcn-join" style="left:${ln.x}px;top:${ln.y}px"></span>`;
-    return `<span class="fcn-pill" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px">${ln.type === 'start' ? 'Start' : 'End'}</span>`;
+    if (ln.type === 'join') return `<span class="fcn-join" data-css="left:${ln.x}px;top:${ln.y}px"></span>`;
+    return `<span class="fcn-pill" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px">${ln.type === 'start' ? 'Start' : 'End'}</span>`;
   }).join('');
   const faded = (e) => {
     if (!stats) return false;
@@ -738,17 +738,17 @@ function flowCanvasHtml(tree, opts = {}) {
   const paths = (lay.edges.map(e => `<path class="fce t-${e.tone}${faded(e) || e.afterGoto ? ' fce-off' : ''}" d="${_flEdgePath(e.a, e.b)}"/>`).join('')
     + lay.jumps.map(j => `<path class="fce fce-jump${j.back ? ' fce-back' : ''}" d="${_flJumpPath(j.a, j.b, j.apexY)}"/>`).join(''));
   const adds = edit ? lay.edges.filter(e => e.insert).map(e => `<button type="button" class="fce-add t-${e.tone}" data-flow-insert="${escAttr(e.insert)}"
-      style="left:${(e.a.x + e.b.x) / 2}px;top:${(e.a.y + e.b.y) / 2}px" aria-label="Add a step here" title="Add a task or an if / else here">+</button>`).join('') : '';
+      data-css="left:${(e.a.x + e.b.x) / 2}px;top:${(e.a.y + e.b.y) / 2}px" aria-label="Add a step here" title="Add a task or an if / else here">+</button>`).join('') : '';
   const jumpLabels = lay.jumps.map((j) => {
     const max = _flowGotoNodeAt(tree, j.at).max;
-    return `<span class="fcj-label" style="left:${(j.a.x + j.b.x) / 2}px;top:${j.apexY}px">`
+    return `<span class="fcj-label" data-css="left:${(j.a.x + j.b.x) / 2}px;top:${j.apexY}px">`
       + `${j.back ? `back ×${escHtml(max)}` : 'go to'}</span>`;
   }).join('');
   // Tall enough to show the flow at the smallest scale a fit will use.
   const [lo, hi] = edit ? [320, 620] : [140, 420];
   const height = Math.round(Math.min(Math.max(lay.h * FLOW_MIN_FIT + 16, lo), opts.maxHeight || hi));
-  return `<div class="fcv${edit ? ' fcv-edit' : ''}" style="height:${height}px" data-w="${lay.w}" data-h="${lay.h}" data-anchor="${lay.anchor}">
-    <div class="fcv-world" style="width:${lay.w}px;height:${lay.h}px">
+  return `<div class="fcv${edit ? ' fcv-edit' : ''}" data-css="height:${height}px" data-w="${lay.w}" data-h="${lay.h}" data-anchor="${lay.anchor}">
+    <div class="fcv-world" data-css="width:${lay.w}px;height:${lay.h}px">
       <svg class="fcv-edges" width="${lay.w}" height="${lay.h}" aria-hidden="true">${paths}</svg>
       ${nodes}${jumpLabels}${adds}
     </div>
@@ -767,6 +767,7 @@ function flowCanvasHtml(tree, opts = {}) {
 function flowCanvasMount(vp, view) {
   if (!vp || vp.dataset.mounted) return null;
   vp.dataset.mounted = '1';
+  applyDataCss(vp);
   const world = vp.querySelector('.fcv-world');
   const W = +vp.dataset.w;
   const H = +vp.dataset.h;

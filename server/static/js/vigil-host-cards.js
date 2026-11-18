@@ -142,7 +142,7 @@ async function renderJackilRelated(section, body, kind, id, stillCurrent) {
   let html = '';
   for (const link of links) {
     const status = link.status
-      ? `<div class="jackil-link-status" style="color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
+      ? `<div class="jackil-link-status" data-css="color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
       : '';
     html += `<div>${escHtml(link.relation)} · ${_jackilLink(link.url, link.label)}</div>${status}`;
   }
@@ -836,7 +836,7 @@ function loadTerminalAssets() {
   _termAssets = (async () => {
     const src = document.getElementById('vigil-term-assets');
     if (!src) throw new Error('terminal assets not found');
-    _appendStylesheet(src.dataset.css);
+    _appendStylesheet(src.dataset.xtermCss);
     await _appendScript(src.dataset.xterm);
     await _appendScript(src.dataset.fit);
     await _appendScript(src.dataset.js);

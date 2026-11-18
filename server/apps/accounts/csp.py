@@ -4,14 +4,16 @@
 server-side nonce. Phases 07a's three injection findings are all contained by
 one, so it is worth having now rather than after the last rough edge is gone.
 
-What this policy does NOT do, stated plainly: it keeps `'unsafe-inline'` for
-styles. Templates and JavaScript-generated markup still carry inline `style`
-attributes, and a strict `style-src 'self'` would flatten every page that uses
-one. `vigil/test_inline_styles.py` ratchets that count down batch by batch, so
-the number can only fall; when the last one is gone the directive can go too.
-Setting `element.style` from a script is not governed by `style-src` and stays
-the right way to express a value that changes per render — the metric bars and
-gauges keep doing exactly that.
+Styles carry no `'unsafe-inline'` either (S6 08m). The only style attribute
+left in markup is the exact string `display:none;`, which scripts undo with
+`element.style.display = ''`; `'unsafe-hashes'` plus that one hash allows it
+and nothing else. A value worked out per render goes through `data-css` and
+`applyDataCss` (vigil-utils.js), which set it through `element.style` - not
+governed by `style-src` - from a short allowlist of properties.
+`vigil/test_inline_styles.py` keeps both rules. The two inline `<style>` blocks
+(status page, compliance report) carry the nonce, and base.html gives the
+nonce to every `<style>` element a script creates, which is how xterm.js
+themes a terminal.
 
 What it does do is real: an injected `<script src>` pointing anywhere off-site
 is blocked, `object-src 'none'` kills plugin vectors, `base-uri 'self'` stops a
@@ -28,6 +30,10 @@ import secrets
 
 from django.conf import settings
 
+#: sha256 of the only inline style attribute value the markup may carry,
+#: `display:none;` (see vigil/test_inline_styles.py).
+DISPLAY_NONE_HASH = "sha256-0EZqoz+oBhx7gF4nvY2bSqoGyy4zLjNF+SDQXGp/ZrY="
+
 #: Sources the app legitimately loads from. Vigil vendors its JavaScript and
 #: CSS rather than using a CDN, so 'self' covers everything except the data:
 #: URIs the OS logos and favicons use.
@@ -39,13 +45,14 @@ from django.conf import settings
 #: between a policy that documents an intention and one that stops an injected
 #: <script> from running.
 #:
-#: style-src keeps 'unsafe-inline' deliberately: the dashboard positions metric
-#: bars and gauges with inline style="width:NN%", which is the correct way to
-#: express a value that changes per render, and no injection reaches it.
+#: style-src: this sheet, nonced <style> blocks, and the one inline attribute
+#: the markup still writes - display:none; - by its hash. An injected style
+#: attribute or <style> element is refused, so injected markup cannot restyle
+#: the page into a convincing fake.
 _POLICY_TEMPLATE = (
     "default-src 'self'; "
     "script-src 'self' 'nonce-{nonce}'; "
-    "style-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'nonce-{nonce}' 'unsafe-hashes' '" + DISPLAY_NONE_HASH + "'; "
     "img-src 'self' data:; "
     "font-src 'self' data:; "
     "connect-src 'self'; "
