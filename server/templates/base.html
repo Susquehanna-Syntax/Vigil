@@ -1,9 +1,9 @@
-{% load static tz %}<!DOCTYPE html>
+{% load static tz i18n %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Vigil — Dashboard{% endblock %}</title>
+<title>{% block title %}{% translate "Vigil — Dashboard" %}{% endblock %}</title>
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
 
@@ -68,88 +68,88 @@
 
   {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
   <nav class="sidebar">
-    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil"></div>
+    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="{% translate "Vigil" %}"></div>
     {# Header site switcher (S1 04g). Logic: vigil-siteswitch.js; hidden unless the user sees more than one site. #}
-    <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="Sites"
-      role="button" tabindex="0" aria-label="Choose the sites to show" hidden>
+    <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="{% translate "Sites" %}"
+      role="button" tabindex="0" aria-label="{% translate "Choose the sites to show" %}" hidden>
       <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       <span class="site-switch-count" id="site-switch-count" hidden></span>
-      <span class="sidebar-label" id="site-switch-label">Sites</span>
+      <span class="sidebar-label" id="site-switch-label">{% translate "Sites" %}</span>
     </div>
 
-    <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
+    <div class="sidebar-icon active" data-page="dashboard" data-tip="{% translate "Dashboard" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="search" data-tip="Search (Ctrl+K)">
+    <div class="sidebar-icon" data-page="search" data-tip="{% translate "Search (Ctrl+K)" %}">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
+    <div class="sidebar-icon" data-page="inventory" data-tip="{% translate "Inventory" %}">
       <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="apps" data-tip="Apps">
+    <div class="sidebar-icon" data-page="apps" data-tip="{% translate "Apps" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6"/><circle cx="8.5" cy="6.5" r=".6"/><rect x="7" y="12" width="4" height="4" rx="1"/><line x1="13" y1="13" x2="17" y2="13"/><line x1="13" y1="15.5" x2="16" y2="15.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="store" data-tip="Store">
+    <div class="sidebar-icon" data-page="store" data-tip="{% translate "Store" %}">
       <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="policies" data-tip="Policies">
+    <div class="sidebar-icon" data-page="policies" data-tip="{% translate "Policies" %}">
       <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
+    <div class="sidebar-icon" data-page="tasks" data-tip="{% translate "Tasks" %}">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="playbooks" data-tip="Deployments">
+    <div class="sidebar-icon" data-page="playbooks" data-tip="{% translate "Deployments" %}">
       <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="reports" data-tip="Reports">
+    <div class="sidebar-icon" data-page="reports" data-tip="{% translate "Reports" %}">
       <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="12" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="11" rx="0.5"/><rect x="16" y="10" width="3" height="8" rx="0.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
+    <div class="sidebar-icon" data-page="vulns" data-tip="{% translate "Vulnerabilities" %}">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="firewall" data-tip="Firewall">
+    <div class="sidebar-icon" data-page="firewall" data-tip="{% translate "Firewall" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="3" y1="14.5" x2="21" y2="14.5"/><line x1="9" y1="4" x2="9" y2="9.5"/><line x1="15" y1="9.5" x2="15" y2="14.5"/><line x1="9" y1="14.5" x2="9" y2="20"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="reprovision" data-tip="Reprovision">
+    <div class="sidebar-icon" data-page="reprovision" data-tip="{% translate "Reprovision" %}">
       <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="6" r="0.6"/><rect x="2" y="15" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="18" r="0.6"/><path d="M12 9v10"/><polyline points="9 16 12 19 15 16"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
+    <div class="sidebar-icon" data-page="monitor" data-tip="{% translate "Monitor" %}">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="containers" data-tip="Containers">
+    <div class="sidebar-icon" data-page="containers" data-tip="{% translate "Containers" %}">
       <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="topology" data-tip="Topology">
+    <div class="sidebar-icon" data-page="topology" data-tip="{% translate "Topology" %}">
       <svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7" y1="7.5" x2="10.5" y2="16"/><line x1="17" y1="7.5" x2="13.5" y2="16"/><line x1="7.5" y1="6" x2="16.5" y2="6"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
+    <div class="sidebar-icon" data-page="alerts" data-tip="{% translate "Alerts" %}">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       {% if alert_count %}<div class="badge-dot badge-dot--alert"></div>{% endif %}
     </div>
-    <div class="sidebar-icon" data-page="statuspages" data-tip="Status Pages">
+    <div class="sidebar-icon" data-page="statuspages" data-tip="{% translate "Status Pages" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="community" data-tip="Community">
+    <div class="sidebar-icon" data-page="community" data-tip="{% translate "Community" %}">
       <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="settings" data-tip="Settings">
+    <div class="sidebar-icon" data-page="settings" data-tip="{% translate "Settings" %}">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       {% if pending_count %}<div class="badge-dot badge-dot--pending"></div>{% endif %}
     </div>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-icon sidebar-toggle" id="sidebar-toggle" data-act="toggleSidebar" data-tip="Show page names"
-      role="button" tabindex="0" aria-label="Show page names" aria-expanded="false">
+    <div class="sidebar-icon sidebar-toggle" id="sidebar-toggle" data-act="toggleSidebar" data-tip="{% translate "Show page names" %}"
+      role="button" tabindex="0" aria-label="{% translate "Show page names" %}" aria-expanded="false">
       <svg viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
     </div>
-    <div class="sidebar-icon" data-tip="Theme: Dark" id="theme-toggle" data-act="toggleTheme">
+    <div class="sidebar-icon" data-tip="{% translate "Theme: Dark" %}" id="theme-toggle" data-act="toggleTheme">
       <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="about" data-tip="About">
+    <div class="sidebar-icon" data-page="about" data-tip="{% translate "About" %}">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
     </div>
-    <a class="sidebar-icon" data-tip="Sign out" href="/logout/" title="Sign out">
+    <a class="sidebar-icon" data-tip="{% translate "Sign out" %}" href="/logout/" title="{% translate "Sign out" %}">
       <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
     </a>
     <div class="sidebar-avatar">V</div>
@@ -182,59 +182,59 @@
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Status</div>
+    <div class="detail-section-title">{% translate "Status" %}</div>
     <div class="detail-status-row">
       <div class="status-dot" id="detail-status-dot"></div>
       <span id="detail-status-text" class="detail-status-text">—</span>
       <span class="mode-badge" id="detail-mode-badge">—</span>
     </div>
     <div class="detail-sub-line">
-      Last check-in: <span class="mono" id="detail-last-checkin">—</span>
+      {% translate "Last check-in:" %} <span class="mono" id="detail-last-checkin">—</span>
     </div>
     <div class="detail-sub-line detail-agent-line">
-      Agent: <span class="mono" id="detail-agent-version">—</span>
+      {% translate "Agent:" %} <span class="mono" id="detail-agent-version">—</span>
       <button class="btn btn-ghost btn-sm detail-agent-btn" id="detail-update-agent-btn"
               style="display:none;"
-              data-act="forceUpdateAgent">Update</button>
+              data-act="forceUpdateAgent">{% translate "Update" %}</button>
     </div>
   </div>
 
   <div class="detail-section" id="detail-jackil-section" style="display:none;">
-    <div class="detail-section-title">Related in Jackil</div>
+    <div class="detail-section-title">{% translate "Related in Jackil" %}</div>
     <div id="detail-jackil-body" class="detail-jackil-body"></div>
   </div>
 
   <div class="detail-section" id="detail-score-section" style="display:none;">
-    <div class="detail-section-title">Security score</div>
+    <div class="detail-section-title">{% translate "Security score" %}</div>
     <div class="detail-score-row">
       <span class="mono detail-score" id="detail-score">—</span>
       <span class="detail-sub-line">/ 100</span>
     </div>
     <div class="detail-sub-line detail-sub-line-below">
-      Last scan: <span class="mono" id="detail-last-scan">never</span>
+      {% translate "Last scan:" %} <span class="mono" id="detail-last-scan">{% translate "never" %}</span>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Resources</div>
+    <div class="detail-section-title">{% translate "Resources" %}</div>
     <div class="metric-grid">
       <div class="metric-card">
-        <div class="metric-card-label">CPU Usage</div>
+        <div class="metric-card-label">{% translate "CPU Usage" %}</div>
         <div class="metric-card-value metric-card-value-sky">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-sky"></div></div>
       </div>
       <div class="metric-card">
-        <div class="metric-card-label">Memory</div>
+        <div class="metric-card-label">{% translate "Memory" %}</div>
         <div class="metric-card-value metric-card-value-lavender">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-lavender"></div></div>
       </div>
       <div class="metric-card">
-        <div class="metric-card-label">Disk</div>
+        <div class="metric-card-label">{% translate "Disk" %}</div>
         <div class="metric-card-value metric-card-value-mint">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-mint"></div></div>
       </div>
       <div class="metric-card">
-        <div class="metric-card-label">Swap</div>
+        <div class="metric-card-label">{% translate "Swap" %}</div>
         <div class="metric-card-value metric-card-value-peach">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-peach"></div></div>
       </div>
@@ -242,37 +242,37 @@
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">CPU History (1h)</div>
+    <div class="detail-section-title">{% translate "CPU History (1h)" %}</div>
     <div class="detail-chart-box">
       <canvas id="detail-chart-cpu"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Network I/O</div>
+    <div class="detail-section-title">{% translate "Network I/O" %}</div>
     <div class="detail-chart-box">
       <canvas id="detail-chart-net"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Docker Containers</div>
+    <div class="detail-section-title">{% translate "Docker Containers" %}</div>
     <div class="detail-containers-empty">
-      Container metrics will appear here once reported by the agent.
+      {% translate "Container metrics will appear here once reported by the agent." %}
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Tags</div>
+    <div class="detail-section-title">{% translate "Tags" %}</div>
     <div id="detail-tags-row" class="host-tag-row detail-tags-gap"></div>
     <div class="host-tag-add-row">
-      <input type="text" class="form-control detail-tag-input" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40">
+      <input type="text" class="form-control detail-tag-input" id="detail-tag-input" placeholder="{% translate "Add a tag: type to search or create" %}" aria-label="{% translate "Add a tag" %}" maxlength="40">
     </div>
-    <div class="confirm-hint detail-hint-below">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
+    <div class="confirm-hint detail-hint-below">{% translate "Server-side tags. Agent.yml tags are merged in (server values always win)." %}</div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Quick Actions</div>
+    <div class="detail-section-title">{% translate "Quick Actions" %}</div>
     <div class="detail-actions" id="detail-actions">
       <!-- populated by JS based on host mode -->
     </div>
@@ -282,9 +282,9 @@
     <button type="button" class="btn btn-outline btn-rose-ghost detail-delete-btn" id="detail-delete-btn"
             data-act="deleteHostFromDetailPanel" data-a1="$el">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-      Remove Agent
+      {% translate "Remove Agent" %}
     </button>
-    <div class="confirm-hint detail-hint-below">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
+    <div class="confirm-hint detail-hint-below">{% translate "Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running." %}</div>
   </div>
 </div>
 
@@ -292,7 +292,7 @@
 <div class="modal-overlay" id="deploy-overlay" data-act="closeDeployModal"></div>
 <div class="modal modal-xwide" id="deploy-modal">
   <div class="modal-title">
-    <span id="deploy-modal-title">Deploy Task</span>
+    <span id="deploy-modal-title">{% translate "Deploy Task" %}</span>
     <button class="modal-close" data-act="closeDeployModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -303,11 +303,11 @@
       <!-- LEFT: tabbed view of definition / inputs / policy -->
       <div>
         <div class="deploy-tabs" role="tablist">
-          <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">YAML</button>
-          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Inputs</button>
-          <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">Schedule</button>
-          <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">Retry</button>
-          <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">Success</button>
+          <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">{% translate "YAML" %}</button>
+          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">{% translate "Inputs" %}</button>
+          <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">{% translate "Schedule" %}</button>
+          <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">{% translate "Retry" %}</button>
+          <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">{% translate "Success" %}</button>
         </div>
 
         <div class="deploy-tab-panels">
@@ -327,20 +327,20 @@
           <div class="deploy-panel" data-panel="schedule">
             <label class="deploy-run-now">
               <input type="checkbox" id="deploy-schedule-run-now" checked data-change="_onRunNowToggle">
-              Run now (no schedule window — dispatch on next check-in)
+              {% translate "Run now (no schedule window — dispatch on next check-in)" %}
             </label>
-            <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
+            <div class="deploy-policy-help">{% blocktranslate %}When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.{% endblocktranslate %}</div>
             <div class="deploy-policy-grid deploy-policy-grid-top" id="deploy-schedule-fields">
               <div>
-                <label class="deploy-input-label">Start time</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing.">?</span>
+                <label class="deploy-input-label">{% translate "Start time" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing." %}">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
               </div>
               <div>
-                <label class="deploy-input-label">End time (inclusive)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The latest time of day this task is allowed to start. A task already running is not interrupted when the window closes.">?</span>
+                <label class="deploy-input-label">{% translate "End time (inclusive)" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "The latest time of day this task is allowed to start. A task already running is not interrupted when the window closes." %}">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-end" value="17:00" disabled>
               </div>
               <div class="full">
-                <label class="deploy-input-label">Allowed days</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Which days of the week the window applies to. Leave them all on for every day.">?</span>
+                <label class="deploy-input-label">{% translate "Allowed days" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "Which days of the week the window applies to. Leave them all on for every day." %}">?</span>
                 <div class="deploy-day-row" id="deploy-day-chips"></div>
               </div>
             </div>
@@ -348,14 +348,14 @@
 
           <!-- Retry (on-failure policy) -->
           <div class="deploy-panel" data-panel="retry">
-            <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
+            <div class="deploy-policy-help">{% translate "When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries." %}</div>
             <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
-                <label class="deploy-input-label">Retry attempts</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many extra times to try a step that fails. 0 means one attempt and no retries.">?</span>
+                <label class="deploy-input-label">{% translate "Retry attempts" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "How many extra times to try a step that fails. 0 means one attempt and no retries." %}">?</span>
                 <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
               </div>
               <div>
-                <label class="deploy-input-label">Delay between retries (seconds)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How long to wait before trying again. Useful when the thing you are waiting on takes a moment to settle, like a service restarting.">?</span>
+                <label class="deploy-input-label">{% translate "Delay between retries (seconds)" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "How long to wait before trying again. Useful when the thing you are waiting on takes a moment to settle, like a service restarting." %}">?</span>
                 <input type="number" min="0" max="3600" class="form-control" id="deploy-retry-delay" value="30">
               </div>
             </div>
@@ -363,20 +363,20 @@
 
           <!-- Success Criteria -->
           <div class="deploy-panel" data-panel="criteria">
-            <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
+            <div class="deploy-policy-help">{% translate "Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them." %}</div>
             <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
-                <label class="deploy-input-label">Expected exit code</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The exit code that counts as success. Usually 0. Anything else marks the step failed.">?</span>
+                <label class="deploy-input-label">{% translate "Expected exit code" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "The exit code that counts as success. Usually 0. Anything else marks the step failed." %}">?</span>
                 <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
               </div>
               <div></div>
               <div class="full">
-                <label class="deploy-input-label">Output must contain</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Plain text that has to appear in the command's output for the step to count as successful. Leave blank to skip this check.">?</span>
-                <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="(optional)">
+                <label class="deploy-input-label">{% translate "Output must contain" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "Plain text that has to appear in the command's output for the step to count as successful. Leave blank to skip this check." %}">?</span>
+                <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="{% translate "(optional)" %}">
               </div>
               <div class="full">
-                <label class="deploy-input-label">Output must match regex</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives.">?</span>
-                <input type="text" class="form-control deploy-criteria-regex" id="deploy-criteria-regex" placeholder="(optional)">
+                <label class="deploy-input-label">{% translate "Output must match regex" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives." %}">?</span>
+                <input type="text" class="form-control deploy-criteria-regex" id="deploy-criteria-regex" placeholder="{% translate "(optional)" %}">
               </div>
             </div>
           </div>
@@ -386,32 +386,32 @@
       <!-- RIGHT: searchable host table OR tag picker -->
       <div class="deploy-right-col">
         <div class="deploy-target-head">
-          <div class="deploy-col-title deploy-col-title-flush">Target</div>
+          <div class="deploy-col-title deploy-col-title-flush">{% translate "Target" %}</div>
           <div class="deploy-tabs deploy-tabs-flush">
-            <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">Hosts</button>
-            <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">By Tag</button>
+            <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">{% translate "Hosts" %}</button>
+            <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">{% translate "By Tag" %}</button>
           </div>
         </div>
 
         <div id="deploy-target-hosts">
-          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" data-input="filterDeployHosts">
+          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="{% translate "Search hosts by hostname, IP, or mode…" %}" data-input="filterDeployHosts">
           <div class="deploy-host-table">
             <div class="deploy-host-head">
               <div><input type="checkbox" class="deploy-select-all" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked"></div>
-              <div>Hostname</div>
-              <div>Mode</div>
+              <div>{% translate "Hostname" %}</div>
+              <div>{% translate "Mode" %}</div>
             </div>
             <div id="deploy-host-rows">
-              <div class="host-pick-empty">No online, executable hosts available.</div>
+              <div class="host-pick-empty">{% translate "No online, executable hosts available." %}</div>
             </div>
           </div>
-          <div class="confirm-hint confirm-hint-tight" id="deploy-host-summary">Select one or more hosts.</div>
+          <div class="confirm-hint confirm-hint-tight" id="deploy-host-summary">{% translate "Select one or more hosts." %}</div>
         </div>
 
         <div id="deploy-target-tags" style="display:none;">
-          <div class="deploy-policy-help deploy-tag-help">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
+          <div class="deploy-policy-help deploy-tag-help">{% translate "Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag." %}</div>
           <div class="deploy-day-row" id="deploy-tag-chips"></div>
-          <div class="confirm-hint confirm-hint-wide" id="deploy-tag-summary">No tags selected.</div>
+          <div class="confirm-hint confirm-hint-wide" id="deploy-tag-summary">{% translate "No tags selected." %}</div>
         </div>
       </div>
 
@@ -420,16 +420,16 @@
     <!-- Hosts whose agent allowlist would refuse this task (M7): skipped unless ticked. -->
     <div class="deploy-refusals" id="deploy-refusals" hidden>
       <span id="deploy-refusals-text"></span>
-      <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> Send to them anyway</label>
+      <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> {% translate "Send to them anyway" %}</label>
     </div>
 
     <div class="deploy-footer">
       <span id="deploy-risk-label"></span>
       <div class="deploy-footer-actions">
-        <button type="button" class="btn btn-ghost" data-act="closeDeployModal">Cancel</button>
+        <button type="button" class="btn btn-ghost" data-act="closeDeployModal">{% translate "Cancel" %}</button>
         <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-          Deploy
+          {% translate "Deploy" %}
         </button>
       </div>
     </div>
@@ -440,60 +440,60 @@
 <div class="modal-overlay" id="wave-editor-overlay" data-act="closeWaveEditor"></div>
 <div class="modal" id="wave-editor-modal">
   <div class="modal-title">
-    <span id="wave-editor-title">New Wave</span>
+    <span id="wave-editor-title">{% translate "New Wave" %}</span>
     <button class="modal-close" data-act="closeWaveEditor">
       <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div class="wave-editor-body">
     <div class="form-group">
-      <label class="form-label">Name</label>
-      <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
+      <label class="form-label">{% translate "Name" %}</label>
+      <input type="text" class="form-control" id="wave-name" placeholder="{% translate "Canary, Broad, Rest of fleet…" %}" maxlength="120">
     </div>
     <div class="form-group" id="wave-site-field" hidden>
-      <label class="form-label" for="wave-site">Site</label>
+      <label class="form-label" for="wave-site">{% translate "Site" %}</label>
       <select class="form-control" id="wave-site"></select>
-      <div class="muted-note muted-note-below-field">Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists.</div>
+      <div class="muted-note muted-note-below-field">{% translate "Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists." %}</div>
     </div>
     <div class="form-group">
-      <label class="form-label">Groups <span class="form-label-optional">(comma-separated; blank = ungrouped)</span></label>
-      <input type="text" class="form-control" id="wave-group-tags" placeholder="servers, workstations">
+      <label class="form-label">{% translate "Groups" %} <span class="form-label-optional">{% translate "(comma-separated; blank = ungrouped)" %}</span></label>
+      <input type="text" class="form-control" id="wave-group-tags" placeholder="{% translate "servers, workstations" %}">
       <div class="muted-note muted-note-below-field">
-        A group is just a tag. A rollout walks one group's waves in order, so
-        keep separate ladders for machines that should not patch together. A
-        wave can sit on more than one ladder — a canary wave is often the first
-        rung of both. Order only has to be unique within a group.
+        {% translate "A group is just a tag. A rollout walks one group's waves in order, so" %}
+        {% translate "keep separate ladders for machines that should not patch together. A" %}
+        {% translate "wave can sit on more than one ladder — a canary wave is often the first" %}
+        {% translate "rung of both. Order only has to be unique within a group." %}
       </div>
     </div>
     <div class="wave-row">
       <div class="form-group">
-        <label class="form-label">Order</label>
+        <label class="form-label">{% translate "Order" %}</label>
         <input type="number" class="form-control" id="wave-order" min="1" value="1">
-        <div class="confirm-hint confirm-hint-flush">Lower numbers patch first.</div>
+        <div class="confirm-hint confirm-hint-flush">{% translate "Lower numbers patch first." %}</div>
       </div>
       <div class="form-group">
-        <label class="form-label">Validation window (hours)</label>
+        <label class="form-label">{% translate "Validation window (hours)" %}</label>
         <input type="number" class="form-control" id="wave-validation" min="0" max="720" value="24">
-        <div class="confirm-hint confirm-hint-flush">How long to wait after this wave before starting the next. 0 advances immediately.</div>
+        <div class="confirm-hint confirm-hint-flush">{% translate "How long to wait after this wave before starting the next. 0 advances immediately." %}</div>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Host tags</label>
-      <input type="text" class="form-control" id="wave-tags" placeholder="canary, staging">
+      <label class="form-label">{% translate "Host tags" %}</label>
+      <input type="text" class="form-control" id="wave-tags" placeholder="{% translate "canary, staging" %}">
       <div class="confirm-hint confirm-hint-flush">
-        Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
-        Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
+        {% translate "Comma-separated. Any host carrying" %} <em>{% translate "any" %}</em> {% translate "of these tags is in the wave." %}
+        {% translate "Tags are edited on the host itself &mdash; this only chooses which ones the wave matches." %}
       </div>
       <div class="confirm-hint confirm-hint-tight wave-match-preview" id="wave-match-preview"></div>
     </div>
     <label class="form-check wave-enabled-check">
       <input type="checkbox" id="wave-enabled" checked>
-      <span>Enabled &mdash; a disabled wave is skipped entirely</span>
+      <span>{% translate "Enabled &mdash; a disabled wave is skipped entirely" %}</span>
     </label>
   </div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" data-act="closeWaveEditor">Cancel</button>
-    <button class="btn btn-mint" id="wave-save-btn" data-act="saveWave">Save wave</button>
+    <button class="btn btn-ghost" data-act="closeWaveEditor">{% translate "Cancel" %}</button>
+    <button class="btn btn-mint" id="wave-save-btn" data-act="saveWave">{% translate "Save wave" %}</button>
   </div>
 </div>
 
