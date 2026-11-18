@@ -198,3 +198,51 @@
 .d5 { animation-delay: 0.25s; }
 .d6 { animation-delay: 0.3s; }
 
+/* The device editor, task-run detail dialog and enrollment wizard's own looks,
+   moved out of base.html (08f). A rule that repeats a declaration the element's
+   shared class already makes — `.tab-bar`'s bottom margin, `.enroll-card`'s,
+   `.enroll-meta`'s and `.confirm-hint`'s margins — carries that shared class
+   too, so it beats it as the inline used to. */
+.tab-bar.tab-bar-tight { margin-bottom: 14px; }
+.device-editor-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.device-editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.device-editor-foot-actions { display: flex; gap: 10px; margin-left: auto; }
+.btn-ghost.device-delete-btn { color: var(--rose-ink); }
+.modal-title.modal-title-tight { flex-shrink: 0; }
+.task-detail-meta {
+  font-size: 12px; color: var(--text-3); margin-bottom: 16px; flex-shrink: 0;
+  display: flex; gap: 12px; flex-wrap: wrap;
+}
+.task-detail-jackil { flex-shrink: 0; margin-bottom: 12px; font-size: 13px; }
+.task-detail-steps { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.enroll-steps { display: flex; gap: 8px; margin-bottom: 20px; flex-shrink: 0; }
+.enroll-step-label { font-size: 12px; color: var(--text-3); margin-left: 4px; align-self: center; }
+.enroll-step-body { flex: 1; overflow-y: auto; }
+.enroll-step-centered { text-align: center; padding: 32px 0; }
+.enroll-profile-field { margin-bottom: 14px; }
+.enroll-command-actions { display: flex; gap: 8px; margin: 14px 0; }
+.enroll-cmd-block { margin-bottom: 12px; }
+.enroll-cmd { cursor: pointer; user-select: all; word-break: break-all; }
+/* Smaller than `.btn svg`'s default size, so the rule names the button. */
+.btn .btn-icon-xs { width: 13px; height: 13px; }
+.enroll-step-icon { margin-bottom: 16px; }
+.enroll-icon-clock {
+  width: 32px; height: 32px; stroke: var(--sky-ink); fill: none;
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+}
+.enroll-icon-check {
+  width: 36px; height: 36px; stroke: var(--mint-ink); fill: none;
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+}
+.enroll-step-title { font-weight: 600; font-size: 15px; margin-bottom: 8px; }
+.enroll-step-title-mid { margin-bottom: 16px; }
+.enroll-step-title-done { font-size: 16px; }
+.enroll-step-title-mint { color: var(--mint-ink); }
+.enroll-pulse-row { margin-top: 20px; }
+/* Alone, so `.status-dot.pending`'s slower animation cannot win the tie, exactly
+   as the inline `animation` used to. */
+.enroll-pulse-dot { display: inline-block; animation: pulse 1.5s infinite; }
+.enroll-card.enroll-card-below { margin-bottom: 20px; }
+.enroll-meta.enroll-replaces { margin-top: 6px; }
+.enroll-approve-actions { display: flex; gap: 8px; }
+

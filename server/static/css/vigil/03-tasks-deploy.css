@@ -578,3 +578,25 @@
 .wave-row > .form-group { flex: 1; }
 .form-check.wave-enabled-check { margin-bottom: 4px; }
 
+/* The rollout start and submit-to-community dialogs' own looks, moved out of
+   base.html (08f). A rule that repeats a declaration the element's shared class
+   already makes — `.modal-actions`' gap, `.form-group`'s bottom margin — carries
+   that shared class too, or sits as its child selector, so it beats it as the
+   inline used to. */
+.modal-scroll-body { overflow-y: auto; }
+.modal-actions.modal-actions-centered { align-items: center; gap: 10px; }
+.rollout-start-pair { display: flex; gap: 12px; margin-bottom: 14px; }
+/* As `.wave-row > .form-group` does for the wave editor's two columns. */
+.rollout-start-pair > .form-group { flex: 1; margin-bottom: 0; }
+.form-group-tight { margin-bottom: 14px; }
+.rollout-start-actions {
+  display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+}
+.community-catalog-link { color: var(--sky-ink); }
+.community-submit-steps { margin: 6px 0 0 18px; padding: 0; line-height: 1.7; }
+.community-submit-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+}
+.community-submit-actions.community-submit-actions-tall { margin-top: 18px; }
+.modal.modal-column { max-height: 80vh; display: flex; flex-direction: column; }
+

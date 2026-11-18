@@ -135,15 +135,8 @@ class InlineStyleRatchetTests(SimpleTestCase):
         for rel in THIRD_BATCH:
             assert_batch_is_clean(self, rel)
 
-    def test_the_first_half_of_base_is_done(self):
-        """08e cleared base.html's shell, sidebar, deploy dialog and wave
-        editor; everything from the rollout-detail overlay down belongs to the
-        next batch and stays as it is."""
-        text = (ROOT / "templates/base.html").read_text(encoding="utf-8")
-        head = text.split('id="rollout-detail-overlay"')[0]
-        self.assertEqual(stray_styles(head), [],
-                         "The first half of base.html was moved into classes in "
-                         'phase 08e; only style="display:none;" may remain.')
+    def test_base_is_done(self):
+        assert_batch_is_clean(self, "templates/base.html")
 
 
 def assert_batch_is_clean(case, rel: str) -> None:
