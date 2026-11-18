@@ -1,9 +1,9 @@
-{% load static %}<!DOCTYPE html>
+{% load static %}{% load i18n %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% if branding.product_name %}{{ branding.product_name }}{% else %}Vigil{% endif %} — Sign In</title>
+<title>{% if branding.product_name %}{{ branding.product_name }}{% else %}{% translate "Vigil" %}{% endif %} — {% translate "Sign In" %}</title>
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
 {% include "_stylesheets.html" %}
@@ -19,13 +19,13 @@
     {% if branding.product_name %}
     <div class="auth-wordmark">{{ branding.product_name }}<span class="auth-wordmark-dot">.</span></div>
     {% else %}
-    <div class="auth-wordmark">Vigil<span class="auth-wordmark-dot">.</span></div>
+    <div class="auth-wordmark">{% translate "Vigil" %}<span class="auth-wordmark-dot">.</span></div>
     {% endif %}
-    <div class="auth-headline">Welcome back</div>
-    <div class="auth-sub">Sign in to your {{ branding.product_name|default:"Vigil" }} instance</div>
+    <div class="auth-headline">{% translate "Welcome back" %}</div>
+    <div class="auth-sub">{% blocktranslate with name=branding.product_name|default:"Vigil" %}Sign in to your {{ name }} instance{% endblocktranslate %}</div>
 
-    {% if request.GET.expired == "idle" %}<div class="auth-error">You were signed out after a period of inactivity. Sign in to pick up where you left off.</div>{% endif %}
-    {% if request.GET.expired == "max" %}<div class="auth-error">Your sign-in reached its time limit. Sign in again to continue.</div>{% endif %}
+    {% if request.GET.expired == "idle" %}<div class="auth-error">{% translate "You were signed out after a period of inactivity. Sign in to pick up where you left off." %}</div>{% endif %}
+    {% if request.GET.expired == "max" %}<div class="auth-error">{% translate "Your sign-in reached its time limit. Sign in again to continue." %}</div>{% endif %}
 
     {% if error %}
     <div class="auth-error">{{ error }}</div>
@@ -34,21 +34,21 @@
     <form method="post" action="{% url 'login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">
       {% csrf_token %}
       <div class="form-group">
-        <label class="form-label">Username</label>
+        <label class="form-label">{% translate "Username" %}</label>
         <input type="text" name="username" class="form-control" autocomplete="username" autofocus required>
       </div>
       <div class="form-group">
-        <label class="form-label">Password</label>
+        <label class="form-label">{% translate "Password" %}</label>
         <input type="password" name="password" class="form-control" autocomplete="current-password" required>
       </div>
-      <button type="submit" class="btn btn-mint auth-submit">Sign in</button>
+      <button type="submit" class="btn btn-mint auth-submit">{% translate "Sign in" %}</button>
     </form>
     {% if civil_enabled %}
-    {% if request.GET.civil == "failed" %}<div class="auth-error">Civil sign-in didn't complete — use your local account or try again.</div>{% endif %}
-    <a class="btn btn-outline auth-alt" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">Sign in with Civil</a>
+    {% if request.GET.civil == "failed" %}<div class="auth-error">{% translate "Civil sign-in didn't complete — use your local account or try again." %}</div>{% endif %}
+    <a class="btn btn-outline auth-alt" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">{% translate "Sign in with Civil" %}</a>
     {% endif %}
   </div>
-  <div class="auth-footer">{% if branding.footer_text %}{{ branding.footer_text }}{% else %}Vigil &mdash; A Susquehanna Syntax product{% endif %}</div>
+  <div class="auth-footer">{% if branding.footer_text %}{{ branding.footer_text }}{% else %}{% translate "Vigil &mdash; A Susquehanna Syntax product" %}{% endif %}</div>
 </div>
 </body>
 </html>

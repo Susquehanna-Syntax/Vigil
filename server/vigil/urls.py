@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import include, path
+from django.views.i18n import JavaScriptCatalog
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -135,6 +136,9 @@ admin.site.login = _admin_login
 
 urlpatterns = [
     path("", dashboard, name="dashboard"),
+    # Translations for strings scripts build (t() / tn() in vigil-utils.js).
+    # Only English ships, so the catalog is empty until a locale is added.
+    path("jsi18n/", JavaScriptCatalog.as_view(), name="javascript-catalog"),
     path("ui-kit/", ui_kit, name="ui-kit"),
     path("setup/", setup_view, name="setup"),
     path("login/", login_view, name="login"),

@@ -126,3 +126,17 @@ test('applyDataCss sets each allowed declaration once and removes the attribute'
   assert.deepEqual(set, ['width=5%']);
   assert.equal(el.getAttribute('data-css'), null);
 });
+
+test('t() fills named placeholders and passes English through', () => {
+  assert.equal(w.t('Saved'), 'Saved');
+  assert.equal(w.t('Restart {host}?', { host: 'web-01' }), 'Restart web-01?');
+  assert.equal(w.t('{a} then {b}', { b: 2, a: 1 }), '1 then 2');
+  assert.equal(w.t('Keep {missing}', {}), 'Keep {missing}');
+  assert.equal(w.t('{x}', { x: '<b>' }), '<b>');   // t() never escapes: escHtml at the sink
+});
+
+test('tn() picks the form for the count and fills {n}', () => {
+  assert.equal(w.tn('{n} host', '{n} hosts', 1), '1 host');
+  assert.equal(w.tn('{n} host', '{n} hosts', 3), '3 hosts');
+  assert.equal(w.tn('{n} host in {site}', '{n} hosts in {site}', 0, { site: 'HQ' }), '0 hosts in HQ');
+});

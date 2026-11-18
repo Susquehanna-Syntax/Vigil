@@ -1,20 +1,20 @@
-{# Reprovision page section #}
+{% load i18n %}{# Reprovision page section #}
 {# Logic: static/js/vigil-reprovision.js | Data: client-side fetch /api/v1/reprovision/... #}
     <section id="page-reprovision" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Reprovision<span>.</span></div>
-          <div class="page-sub">Fetch and hold OS images, author install profiles, and rebuild hosts</div>
+          <div class="page-title">{% translate "Reprovision" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Fetch and hold OS images, author install profiles, and rebuild hosts" %}</div>
         </div>
       </div>
 
       <div class="tab-bar" data-tab-group="reprovision">
-        <div class="tab t-mint active" data-tab="repro-tab-library">Image library</div>
-        <div class="tab t-sky" data-tab="repro-tab-add">Add an image</div>
-        <div class="tab t-lav" data-tab="repro-tab-profiles">Install profiles</div>
-        <div class="tab t-peach" data-tab="repro-tab-agentprofiles">Agent profiles</div>
-        <div class="tab t-rose" data-tab="repro-tab-jobs">Rebuild jobs</div>
+        <div class="tab t-mint active" data-tab="repro-tab-library">{% translate "Image library" %}</div>
+        <div class="tab t-sky" data-tab="repro-tab-add">{% translate "Add an image" %}</div>
+        <div class="tab t-lav" data-tab="repro-tab-profiles">{% translate "Install profiles" %}</div>
+        <div class="tab t-peach" data-tab="repro-tab-agentprofiles">{% translate "Agent profiles" %}</div>
+        <div class="tab t-rose" data-tab="repro-tab-jobs">{% translate "Rebuild jobs" %}</div>
       </div>
 
       <div id="repro-tab-library" class="tab-content active">
@@ -35,13 +35,10 @@
         {% endcomment %}
 
         <div class="repro-add-section">
-          <div class="section-label repro-catalog-label">Pull from the catalog</div>
+          <div class="section-label repro-catalog-label">{% translate "Pull from the catalog" %}</div>
           <div class="repro-add-card">
             <p class="muted-note repro-add-lede">
-              Images Vigil can fetch and verify on its own — the checksum is
-              published by the distro, so there is nothing to type. Anything
-              already in your library is marked as such; the same bytes are
-              never fetched twice.
+              {% translate "Images Vigil can fetch and verify on its own — the checksum is published by the distro, so there is nothing to type. Anything already in your library is marked as such; the same bytes are never fetched twice." %}
             </p>
             {% comment %}
               Cards rather than a dropdown: a dropdown shows one option at a
@@ -51,46 +48,33 @@
             {% endcomment %}
             <div id="repro-catalog-grid" class="repro-catalog-grid"></div>
             <div id="repro-catalog-empty" class="muted-note repro-catalog-empty" style="display:none;">
-              Catalog is unavailable — you may not have permission to view it, or
-              nothing is configured.
+              {% translate "Catalog is unavailable — you may not have permission to view it, or nothing is configured." %}
             </div>
           </div>
         </div>
 
         <div class="repro-add-section">
-          <div class="section-label">Images Vigil can't fetch for you</div>
+          <div class="section-label">{% translate "Images Vigil can't fetch for you" %}</div>
           <div class="repro-add-card">
             <p class="muted-note repro-add-lede">
-              These need something Vigil doesn't have — a subscription, or a
-              pipeline that isn't built yet. Both buttons set up the form
-              below; you supply the file.
+              {% translate "These need something Vigil doesn't have — a subscription, or a pipeline that isn't built yet. Both buttons set up the form below; you supply the file." %}
             </p>
             <div class="repro-preset-row">
-              <button class="btn btn-sky btn-sm" id="repro-rhel-btn" type="button">Get RHEL family image</button>
-              <button class="btn btn-outline btn-sm" id="repro-windows-btn" type="button" disabled title="Windows images can't be imported yet — see the note below.">Get Windows image (not yet supported)</button>
+              <button class="btn btn-sky btn-sm" id="repro-rhel-btn" type="button">{% translate "Get RHEL family image" %}</button>
+              <button class="btn btn-outline btn-sm" id="repro-windows-btn" type="button" disabled title="{% translate "Windows images can't be imported yet — see the note below." %}">{% translate "Get Windows image (not yet supported)" %}</button>
             </div>
             <div class="muted-note repro-add-note">
-              RHEL proper needs an active Red Hat subscription — Vigil cannot
-              fetch it anonymously the way it fetches the catalog images
-              above. Get the ISO yourself from a source you're entitled to
-              use, then either upload it below or, if it's already hosted
-              somewhere Vigil's server can reach, paste the URL and its
-              SHA-256 instead. Legitimate source:
-              <a href="https://access.redhat.com/downloads" target="_blank" rel="noopener noreferrer">Red Hat Customer Portal</a>.
+              {% blocktranslate %}RHEL proper needs an active Red Hat subscription — Vigil cannot fetch it anonymously the way it fetches the catalog images above. Get the ISO yourself from a source you're entitled to use, then either upload it below or, if it's already hosted somewhere Vigil's server can reach, paste the URL and its SHA-256 instead. Legitimate source:
+              <a href="https://access.redhat.com/downloads" target="_blank" rel="noopener noreferrer">Red Hat Customer Portal</a>.{% endblocktranslate %}
             </div>
             <div class="muted-note repro-add-note repro-note-warn">
-              Windows images can't be imported yet — Vigil extracts a PXE
-              kernel/initrd pair from the ISO, and a Windows installer needs a
-              different pipeline (<code>boot.wim</code>/<code>bootmgr</code>)
-              that doesn't exist here yet. Support for it is planned; until
-              then, uploading or pulling a Windows ISO is refused rather than
-              accepted and failed after the transfer.
+              {% blocktranslate %}Windows images can't be imported yet — Vigil extracts a PXE kernel/initrd pair from the ISO, and a Windows installer needs a different pipeline (<code>boot.wim</code>/<code>bootmgr</code>) that doesn't exist here yet. Support for it is planned; until then, uploading or pulling a Windows ISO is refused rather than accepted and failed after the transfer.{% endblocktranslate %}
             </div>
           </div>
         </div>
 
         <div class="repro-add-section">
-          <div class="section-label">Register your own image</div>
+          <div class="section-label">{% translate "Register your own image" %}</div>
           <div class="repro-add-card">
 
             {% comment %}
@@ -100,19 +84,19 @@
             {% endcomment %}
             <div class="repro-step-head">
               <span class="repro-step-num">1</span>
-              <span>Describe the image</span>
+              <span>{% translate "Describe the image" %}</span>
             </div>
             <div class="repro-field-grid">
               <div class="form-group">
-                <label class="form-label" for="repro-custom-name">Name</label>
-                <input type="text" class="form-control" id="repro-custom-name" placeholder="e.g. RHEL 9.4 (internal mirror)" maxlength="160">
+                <label class="form-label" for="repro-custom-name">{% translate "Name" %}</label>
+                <input type="text" class="form-control" id="repro-custom-name" placeholder="{% translate "e.g. RHEL 9.4 (internal mirror)" %}" maxlength="160">
               </div>
               <div class="form-group">
-                <label class="form-label" for="repro-custom-family">OS family</label>
+                <label class="form-label" for="repro-custom-family">{% translate "OS family" %}</label>
                 <select class="form-control" id="repro-custom-family">
-                  <option value="ubuntu">Ubuntu</option>
-                  <option value="debian">Debian</option>
-                  <option value="rhel">RHEL family</option>
+                  <option value="ubuntu">{% translate "Ubuntu" %}</option>
+                  <option value="debian">{% translate "Debian" %}</option>
+                  <option value="rhel">{% translate "RHEL family" %}</option>
                 </select>
                 {% comment %}
                   No "windows" option: OSImage.Family and images.KERNEL_PATHS
@@ -125,56 +109,48 @@
             </div>
             <div class="repro-field-grid repro-field-grid-wide">
               <div class="form-group">
-                <label class="form-label" for="repro-custom-version">Version</label>
-                <input type="text" class="form-control" id="repro-custom-version" placeholder="optional" maxlength="40">
+                <label class="form-label" for="repro-custom-version">{% translate "Version" %}</label>
+                <input type="text" class="form-control" id="repro-custom-version" placeholder="{% translate "optional" %}" maxlength="40">
               </div>
               <div class="form-group">
-                <label class="form-label" for="repro-custom-sha256">SHA-256</label>
-                <input type="text" class="form-control mono" id="repro-custom-sha256" placeholder="64 hex characters">
+                <label class="form-label" for="repro-custom-sha256">{% translate "SHA-256" %}</label>
+                <input type="text" class="form-control mono" id="repro-custom-sha256" placeholder="{% translate "64 hex characters" %}">
               </div>
             </div>
 
             <div class="repro-step-head repro-step-head-spaced">
               <span class="repro-step-num">2</span>
-              <span>Choose how Vigil gets it</span>
+              <span>{% translate "Choose how Vigil gets it" %}</span>
             </div>
 
             <div class="repro-method-grid">
               <div class="repro-method">
-                <div class="repro-method-title">Upload the file</div>
+                <div class="repro-method-title">{% translate "Upload the file" %}</div>
                 <div class="form-group">
-                  <label class="form-label" for="repro-custom-file">ISO file</label>
+                  <label class="form-label" for="repro-custom-file">{% translate "ISO file" %}</label>
                   <input type="file" class="form-control" id="repro-custom-file" accept=".iso">
                 </div>
                 <div class="muted-note repro-add-note">
-                  Streamed straight to the server and verified against the
-                  SHA-256 above — nothing else to trust or reach. Large ISOs can
-                  take a while; keep this tab open until it finishes. A reverse
-                  proxy in front of Vigil (nginx, Cloudflare Tunnel, ...) may cap
-                  upload size below what a full ISO needs — if the upload fails
-                  immediately, use the URL option instead.
+                  {% translate "Streamed straight to the server and verified against the SHA-256 above — nothing else to trust or reach. Large ISOs can take a while; keep this tab open until it finishes. A reverse proxy in front of Vigil (nginx, Cloudflare Tunnel, ...) may cap upload size below what a full ISO needs — if the upload fails immediately, use the URL option instead." %}
                 </div>
-                <button class="btn btn-mint btn-sm" id="repro-upload-submit" type="button" disabled>Upload and import</button>
+                <button class="btn btn-mint btn-sm" id="repro-upload-submit" type="button" disabled>{% translate "Upload and import" %}</button>
               </div>
 
               <div class="repro-method">
-                <div class="repro-method-title">Fetch from a URL</div>
+                <div class="repro-method-title">{% translate "Fetch from a URL" %}</div>
                 <div class="repro-risk-box">
-                  <strong>Before you paste a URL here:</strong>
-                  Vigil fetches this URL from inside your network, not from your
-                  browser — the request comes from the Vigil server, which can
-                  reach hosts, internal mirrors, and management networks your own
-                  workstation cannot. Point this only at a source you trust.
+                  <strong>{% translate "Before you paste a URL here:" %}</strong>
+                  {% translate "Vigil fetches this URL from inside your network, not from your browser — the request comes from the Vigil server, which can reach hosts, internal mirrors, and management networks your own workstation cannot. Point this only at a source you trust." %}
                 </div>
                 <div class="form-group">
-                  <label class="form-label" for="repro-custom-url">URL Vigil should fetch</label>
-                  <input type="text" class="form-control" id="repro-custom-url" placeholder="https://mirror.example.com/image.iso">
+                  <label class="form-label" for="repro-custom-url">{% translate "URL Vigil should fetch" %}</label>
+                  <input type="text" class="form-control" id="repro-custom-url" placeholder="{% translate "https://mirror.example.com/image.iso" %}">
                 </div>
                 <label class="repro-ack">
                   <input type="checkbox" id="repro-custom-ack">
-                  <span>I understand Vigil will fetch this URL from inside my network, and I trust the source.</span>
+                  <span>{% translate "I understand Vigil will fetch this URL from inside my network, and I trust the source." %}</span>
                 </label>
-                <button class="btn btn-mint btn-sm" id="repro-custom-submit" disabled>Register and download</button>
+                <button class="btn btn-mint btn-sm" id="repro-custom-submit" disabled>{% translate "Register and download" %}</button>
               </div>
             </div>
           </div>
@@ -184,13 +160,11 @@
 
       <div id="repro-tab-profiles" class="tab-content">
       <div class="repro-profiles-head">
-        <div class="section-label repro-head-label">Install profiles</div>
-        <button class="btn btn-mint btn-sm" id="repro-profile-new-btn" type="button">+ New profile</button>
+        <div class="section-label repro-head-label">{% translate "Install profiles" %}</div>
+        <button class="btn btn-mint btn-sm" id="repro-profile-new-btn" type="button">{% translate "+ New profile" %}</button>
       </div>
       <p class="muted-note repro-add-lede">
-        The answers the installer needs so a rebuild runs unattended: which
-        image and disk, how the machine gets on the network, and who can log
-        in afterwards.
+        {% translate "The answers the installer needs so a rebuild runs unattended: which image and disk, how the machine gets on the network, and who can log in afterwards." %}
       </p>
       <div class="repro-list-panel">
         <div id="repro-profiles-list"></div>
@@ -200,13 +174,11 @@
 
       <div id="repro-tab-agentprofiles" class="tab-content">
       <div class="repro-profiles-head">
-        <div class="section-label repro-head-label">Agent profiles</div>
-        <button class="btn btn-peach btn-sm" id="ap-new-btn" type="button" data-act="openAgentProfileEditor">+ New agent profile</button>
+        <div class="section-label repro-head-label">{% translate "Agent profiles" %}</div>
+        <button class="btn btn-peach btn-sm" id="ap-new-btn" type="button" data-act="openAgentProfileEditor">{% translate "+ New agent profile" %}</button>
       </div>
       <p class="muted-note repro-add-lede">
-        How an agent behaves once it is installed: its mode, the tasks it may
-        run, where it checks in, and whether anyone may open a session on it.
-        Applied at install and at rebuild — never to a running agent.
+        {% translate "How an agent behaves once it is installed: its mode, the tasks it may run, where it checks in, and whether anyone may open a session on it. Applied at install and at rebuild — never to a running agent." %}
       </p>
       <div class="repro-list-panel">
         <div id="agent-profiles-list"></div>
@@ -216,8 +188,8 @@
 
       <div id="repro-tab-jobs" class="tab-content">
       <div class="repro-profiles-head">
-        <div class="section-label repro-head-label">Rebuild jobs</div>
-        <button class="btn btn-rose btn-sm" id="repro-rebuild-btn" type="button">Rebuild a host…</button>
+        <div class="section-label repro-head-label">{% translate "Rebuild jobs" %}</div>
+        <button class="btn btn-rose btn-sm" id="repro-rebuild-btn" type="button">{% translate "Rebuild a host…" %}</button>
       </div>
       {% comment %}
         Same ceremony the host drawer opens — image, profile, preflight,
@@ -226,9 +198,9 @@
         confirmation.
       {% endcomment %}
       <p class="muted-note repro-add-lede">
-        Reinstalls a host's operating system from an image in the library.
+        {% blocktranslate %}Reinstalls a host's operating system from an image in the library.
         <strong>This destroys everything on the target disk</strong> and cannot
-        be undone once the installer starts.
+        be undone once the installer starts.{% endblocktranslate %}
       </p>
       <div class="repro-jobs-panel">
         <div id="repro-jobs-list"></div>
@@ -245,164 +217,161 @@
 <div class="modal-overlay" id="repro-profile-overlay"></div>
 <div class="modal modal-wide" id="repro-profile-modal" data-editing="">
   <div class="modal-header">
-    <span id="repro-profile-title">New install profile</span>
-    <button class="modal-close" id="repro-profile-close" aria-label="Close">
+    <span id="repro-profile-title">{% translate "New install profile" %}</span>
+    <button class="modal-close" id="repro-profile-close" aria-label="{% translate "Close" %}">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
 
-  <div class="repro-prof-step">Image and disk</div>
+  <div class="repro-prof-step">{% translate "Image and disk" %}</div>
   <div class="repro-field-grid">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-name">Profile name</label>
-      <input type="text" class="form-control" id="repro-prof-name" placeholder="e.g. Web server, Ubuntu 24.04" maxlength="120">
+      <label class="form-label" for="repro-prof-name">{% translate "Profile name" %}</label>
+      <input type="text" class="form-control" id="repro-prof-name" placeholder="{% translate "e.g. Web server, Ubuntu 24.04" %}" maxlength="120">
     </div>
     <div class="form-group" id="repro-prof-site-field" hidden>
-      <label class="form-label" for="repro-prof-site">Site</label>
+      <label class="form-label" for="repro-prof-site">{% translate "Site" %}</label>
       <select class="form-control" id="repro-prof-site"></select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-image">Image</label>
+      <label class="form-label" for="repro-prof-image">{% translate "Image" %}</label>
       <select class="form-control" id="repro-prof-image"></select>
       <div class="muted-note repro-prof-hint" id="repro-prof-image-hint"></div>
     </div>
   </div>
   <div class="repro-field-grid">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-disk">Target disk</label>
-      <input type="text" class="form-control mono" id="repro-prof-disk" placeholder="/dev/sda" maxlength="120">
-      <div class="muted-note repro-prof-hint">Wiped completely. Name the device, not a partition.</div>
+      <label class="form-label" for="repro-prof-disk">{% translate "Target disk" %}</label>
+      <input type="text" class="form-control mono" id="repro-prof-disk" placeholder="{% translate "/dev/sda" %}" maxlength="120">
+      <div class="muted-note repro-prof-hint">{% translate "Wiped completely. Name the device, not a partition." %}</div>
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-partition">Partitioning</label>
+      <label class="form-label" for="repro-prof-partition">{% translate "Partitioning" %}</label>
       <select class="form-control" id="repro-prof-partition">
-        <option value="lvm">LVM</option>
-        <option value="plain">Plain</option>
+        <option value="lvm">{% translate "LVM" %}</option>
+        <option value="plain">{% translate "Plain" %}</option>
       </select>
     </div>
   </div>
   <div class="repro-field-grid">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-fs">Filesystem</label>
+      <label class="form-label" for="repro-prof-fs">{% translate "Filesystem" %}</label>
       <select class="form-control" id="repro-prof-fs">
-        <option value="ext4">ext4</option>
-        <option value="xfs">xfs</option>
-        <option value="btrfs">btrfs</option>
+        <option value="ext4">{% translate "ext4" %}</option>
+        <option value="xfs">{% translate "xfs" %}</option>
+        <option value="btrfs">{% translate "btrfs" %}</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-deadline">Deadline (minutes)</label>
+      <label class="form-label" for="repro-prof-deadline">{% translate "Deadline (minutes)" %}</label>
       <input type="number" class="form-control" id="repro-prof-deadline" min="5" max="1440" value="60">
-      <div class="muted-note repro-prof-hint">A rebuild that has not reported by then is marked failed.</div>
+      <div class="muted-note repro-prof-hint">{% translate "A rebuild that has not reported by then is marked failed." %}</div>
     </div>
   </div>
 
-  <div class="repro-prof-step">Network</div>
+  <div class="repro-prof-step">{% translate "Network" %}</div>
   <div class="repro-field-grid">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-netmode">Addressing</label>
+      <label class="form-label" for="repro-prof-netmode">{% translate "Addressing" %}</label>
       <select class="form-control" id="repro-prof-netmode">
-        <option value="dhcp">DHCP</option>
-        <option value="static">Static</option>
+        <option value="dhcp">{% translate "DHCP" %}</option>
+        <option value="static">{% translate "Static" %}</option>
       </select>
     </div>
     <div class="form-group repro-prof-static">
-      <label class="form-label" for="repro-prof-address">Address / CIDR</label>
-      <input type="text" class="form-control mono" id="repro-prof-address" placeholder="192.168.1.50/24" maxlength="64">
+      <label class="form-label" for="repro-prof-address">{% translate "Address / CIDR" %}</label>
+      <input type="text" class="form-control mono" id="repro-prof-address" placeholder="{% translate "192.168.1.50/24" %}" maxlength="64">
     </div>
   </div>
   <div class="repro-field-grid repro-prof-static">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-gateway">Gateway</label>
-      <input type="text" class="form-control mono" id="repro-prof-gateway" placeholder="192.168.1.1" maxlength="64">
+      <label class="form-label" for="repro-prof-gateway">{% translate "Gateway" %}</label>
+      <input type="text" class="form-control mono" id="repro-prof-gateway" placeholder="{% translate "192.168.1.1" %}" maxlength="64">
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-dns">DNS servers</label>
-      <input type="text" class="form-control mono" id="repro-prof-dns" placeholder="1.1.1.1, 9.9.9.9" maxlength="160">
+      <label class="form-label" for="repro-prof-dns">{% translate "DNS servers" %}</label>
+      <input type="text" class="form-control mono" id="repro-prof-dns" placeholder="{% translate "1.1.1.1, 9.9.9.9" %}" maxlength="160">
     </div>
   </div>
 
-  <div class="repro-prof-step">Locale</div>
+  <div class="repro-prof-step">{% translate "Locale" %}</div>
   <div class="repro-field-grid repro-field-grid-three">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-timezone">Timezone</label>
+      <label class="form-label" for="repro-prof-timezone">{% translate "Timezone" %}</label>
       <input type="text" class="form-control" id="repro-prof-timezone" value="UTC" maxlength="64">
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-locale">Locale</label>
+      <label class="form-label" for="repro-prof-locale">{% translate "Locale" %}</label>
       <input type="text" class="form-control" id="repro-prof-locale" value="en_US.UTF-8" maxlength="32">
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-keyboard">Keyboard</label>
+      <label class="form-label" for="repro-prof-keyboard">{% translate "Keyboard" %}</label>
       <input type="text" class="form-control" id="repro-prof-keyboard" value="us" maxlength="32">
     </div>
   </div>
 
-  <div class="repro-prof-step">Access</div>
+  <div class="repro-prof-step">{% translate "Access" %}</div>
   {% comment %}
     The serializer refuses a profile with neither a key nor a password hash:
     it produces a machine nobody can log into, discovered after the disk is
     already wiped. Said here so it is read before that happens.
   {% endcomment %}
   <div class="muted-note repro-prof-hint repro-prof-access-note">
-    Set at least one of these. A profile with neither leaves a rebuilt
-    machine nobody can log into.
+    {% translate "Set at least one of these. A profile with neither leaves a rebuilt machine nobody can log into." %}
   </div>
   <div class="repro-field-grid">
     <div class="form-group">
-      <label class="form-label" for="repro-prof-user">Admin username</label>
-      <input type="text" class="form-control" id="repro-prof-user" placeholder="admin" maxlength="64">
+      <label class="form-label" for="repro-prof-user">{% translate "Admin username" %}</label>
+      <input type="text" class="form-control" id="repro-prof-user" placeholder="{% translate "admin" %}" maxlength="64">
     </div>
     <div class="form-group">
-      <label class="form-label" for="repro-prof-password">Admin password <em>hash</em></label>
-      <input type="text" class="form-control mono" id="repro-prof-password" placeholder="$6$rounds=…" autocomplete="new-password">
+      <label class="form-label" for="repro-prof-password">{% translate "Admin password" %} <em>{% translate "hash" %}</em></label>
+      <input type="text" class="form-control mono" id="repro-prof-password" placeholder="{% translate "$6$rounds=…" %}" autocomplete="new-password">
       <div class="muted-note repro-prof-hint" id="repro-prof-password-hint">
-        A crypt hash, never a plaintext password — the answer file carries
-        it verbatim. Generate one with <code>mkpasswd -m sha-512</code>.
+        {% blocktranslate %}A crypt hash, never a plaintext password — the answer file carries
+        it verbatim. Generate one with <code>mkpasswd -m sha-512</code>.{% endblocktranslate %}
       </div>
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="repro-prof-keys">SSH authorized keys</label>
-    <textarea class="form-control mono" id="repro-prof-keys" rows="3" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea>
+    <label class="form-label" for="repro-prof-keys">{% translate "SSH authorized keys" %}</label>
+    <textarea class="form-control mono" id="repro-prof-keys" rows="3" placeholder="{% translate "ssh-ed25519 AAAA… you@laptop" %}"></textarea>
   </div>
 
-  <div class="repro-prof-step">After the rebuild</div>
+  <div class="repro-prof-step">{% translate "After the rebuild" %}</div>
   <div class="form-group">
-    <label class="form-label" for="repro-prof-agentprofile">Agent profile</label>
+    <label class="form-label" for="repro-prof-agentprofile">{% translate "Agent profile" %}</label>
     <select class="form-control" id="repro-prof-agentprofile"></select>
     <div class="muted-note repro-prof-hint">
-      How the reinstalled agent should behave — its mode, the tasks it may run,
-      where it checks in. Applied by the installer; a running agent is never
-      changed by it.
+      {% translate "How the reinstalled agent should behave — its mode, the tasks it may run, where it checks in. Applied by the installer; a running agent is never changed by it." %}
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="repro-prof-tags">Tag the host with</label>
-    <input type="text" class="form-control" id="repro-prof-tags" placeholder="role:web, env:lab">
+    <label class="form-label" for="repro-prof-tags">{% translate "Tag the host with" %}</label>
+    <input type="text" class="form-control" id="repro-prof-tags" placeholder="{% translate "role:web, env:lab" %}">
     <div class="muted-note repro-prof-hint">
-      Comma-separated, applied when the rebuilt machine checks back in — so
+      {% blocktranslate %}Comma-separated, applied when the rebuilt machine checks back in — so
       playbooks and alert rules that target these tags pick it up on its own.
-      The <code>agent:</code> prefix is reserved.
+      The <code>agent:</code> prefix is reserved.{% endblocktranslate %}
     </div>
   </div>
 
-  <div class="repro-prof-step">Extras</div>
+  <div class="repro-prof-step">{% translate "Extras" %}</div>
   <div class="form-group">
-    <label class="form-label" for="repro-prof-packages">Extra packages</label>
-    <input type="text" class="form-control mono" id="repro-prof-packages" placeholder="curl, vim, htop">
-    <div class="muted-note repro-prof-hint">Comma-separated. Installed by the installer, before first boot.</div>
+    <label class="form-label" for="repro-prof-packages">{% translate "Extra packages" %}</label>
+    <input type="text" class="form-control mono" id="repro-prof-packages" placeholder="{% translate "curl, vim, htop" %}">
+    <div class="muted-note repro-prof-hint">{% translate "Comma-separated. Installed by the installer, before first boot." %}</div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="repro-prof-raw">Appended verbatim to the answer file</label>
-    <textarea class="form-control mono" id="repro-prof-raw" rows="3" placeholder="Optional. Escape hatch for anything the fields above don't cover."></textarea>
+    <label class="form-label" for="repro-prof-raw">{% translate "Appended verbatim to the answer file" %}</label>
+    <textarea class="form-control mono" id="repro-prof-raw" rows="3" placeholder="{% translate "Optional. Escape hatch for anything the fields above don't cover." %}"></textarea>
     <div class="muted-note repro-prof-hint">
-      Not validated. A syntax error here fails the install after the disk is wiped.
+      {% translate "Not validated. A syntax error here fails the install after the disk is wiped." %}
     </div>
   </div>
 
   <div class="modal-actions">
-    <button class="btn btn-ghost" id="repro-profile-cancel" type="button">Cancel</button>
-    <button class="btn btn-mint" id="repro-profile-save" type="button">Save profile</button>
+    <button class="btn btn-ghost" id="repro-profile-cancel" type="button">{% translate "Cancel" %}</button>
+    <button class="btn btn-mint" id="repro-profile-save" type="button">{% translate "Save profile" %}</button>
   </div>
 </div>

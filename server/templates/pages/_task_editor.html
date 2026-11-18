@@ -1,42 +1,42 @@
-{# Task editor page section — YAML textarea + structured preview #}
+{% load i18n %}{# Task editor page section — YAML textarea + structured preview #}
 {# Logic: static/js/vigil-tasks.js (openDefinitionEditor / validateEditor / saveDefinitionFromEditor) | Styles: css/vigil/*.css .editor-*, .preview-* | Data: client-side fetch /api/v1/tasks/definitions/{id,validate}/ #}
     <section id="page-task-editor" class="page">
       <div class="editor-toolbar">
         <div>
-          <div class="page-title" id="editor-page-title">New Task<span>.</span></div>
-          <div class="page-sub">Write the YAML on the left. The preview updates as you type.</div>
+          <div class="page-title" id="editor-page-title">{% translate "New Task" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Write the YAML on the left. The preview updates as you type." %}</div>
         </div>
         <div class="right">
           <button class="btn btn-outline picker-btn" id="editor-template-btn" type="button">
-            <span>Start from template…</span>
+            <span>{% translate "Start from template…" %}</span>
           </button>
-          <button class="btn btn-ghost" data-act="navigateTo" data-a1="tasks">Cancel</button>
-          <button class="btn btn-outline" id="editor-publish-btn" data-act="openCommunitySubmit" title="Open a GitHub PR to share this task with the Vigil community">
+          <button class="btn btn-ghost" data-act="navigateTo" data-a1="tasks">{% translate "Cancel" %}</button>
+          <button class="btn btn-outline" id="editor-publish-btn" data-act="openCommunitySubmit" title="{% translate "Open a GitHub PR to share this task with the Vigil community" %}">
             <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-            Submit to Community
+            {% translate "Submit to Community" %}
           </button>
           <button class="btn btn-sky" id="editor-save-btn" data-act="saveDefinitionFromEditor">
             <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-            Save Task
+            {% translate "Save Task" %}
           </button>
         </div>
       </div>
 
       <div class="editor-layout">
         <div class="editor-panel">
-          <div class="editor-panel-title">YAML Source</div>
+          <div class="editor-panel-title">{% translate "YAML Source" %}</div>
           <textarea id="editor-yaml" class="editor-textarea" spellcheck="false" autocomplete="off" data-input="onEditorInput"></textarea>
           <div class="editor-error" id="editor-error"></div>
           <div class="confirm-hint confirm-hint-wide">
-            Tasks are private by default. Click <strong>Submit to Community</strong> above to open a GitHub PR against the curated catalog — every Vigil instance can browse and fork approved entries.
+            {% blocktranslate %}Tasks are private by default. Click <strong>Submit to Community</strong> above to open a GitHub PR against the curated catalog — every Vigil instance can browse and fork approved entries.{% endblocktranslate %}
           </div>
         </div>
 
         <div class="editor-panel">
-          <div class="editor-panel-title">Preview</div>
+          <div class="editor-panel-title">{% translate "Preview" %}</div>
           <div id="editor-preview" class="preview-section">
             <div class="preview-heading">—</div>
-            <div class="preview-sub">Start typing to see a structured preview.</div>
+            <div class="preview-sub">{% translate "Start typing to see a structured preview." %}</div>
           </div>
         </div>
       </div>

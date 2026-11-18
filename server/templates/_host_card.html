@@ -1,4 +1,4 @@
-<div class="host-card{% if inactive %} inactive{% endif %}" data-act="openHostDetail" data-a1="$el"
+{% load i18n %}<div class="host-card{% if inactive %} inactive{% endif %}" data-act="openHostDetail" data-a1="$el"
      data-id="{{ host.id }}"
      data-hostname="{{ host.hostname }}"
      data-os="{{ host.inventory.os_name|default:host.os|default:'Unknown OS' }}"
@@ -32,27 +32,27 @@
 
   <div class="host-metrics">
     <div class="host-metric" data-metric="cpu">
-      <div class="host-metric-label">CPU</div>
+      <div class="host-metric-label">{% translate "CPU" %}</div>
       <div class="host-metric-value">—</div>
       <div class="host-metric-bar"><div class="host-metric-fill host-metric-fill-sky"></div></div>
     </div>
     <div class="host-metric" data-metric="memory">
-      <div class="host-metric-label">Memory</div>
+      <div class="host-metric-label">{% translate "Memory" %}</div>
       <div class="host-metric-value">—</div>
       <div class="host-metric-bar"><div class="host-metric-fill host-metric-fill-lavender"></div></div>
     </div>
     <div class="host-metric" data-metric="disk">
-      <div class="host-metric-label">Disk</div>
+      <div class="host-metric-label">{% translate "Disk" %}</div>
       <div class="host-metric-value">—</div>
       <div class="host-metric-bar"><div class="host-metric-fill host-metric-fill-mint"></div></div>
     </div>
     <div class="host-metric" data-metric="net-in">
-      <div class="host-metric-label">Net In</div>
+      <div class="host-metric-label">{% translate "Net In" %}</div>
       <div class="host-metric-value">—</div>
       <div class="host-metric-bar"><div class="host-metric-fill host-metric-fill-peach"></div></div>
     </div>
     <div class="host-metric" data-metric="net-out">
-      <div class="host-metric-label">Net Out</div>
+      <div class="host-metric-label">{% translate "Net Out" %}</div>
       <div class="host-metric-value">—</div>
       <div class="host-metric-bar"><div class="host-metric-fill host-metric-fill-lemon"></div></div>
     </div>
@@ -60,19 +60,19 @@
 
   <div class="host-card-actions">
     <div class="host-checkin">
-      {% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}
+      {% if host.last_checkin %}{% blocktranslate with delta=host.last_checkin|timesince %}{{ delta }} ago{% endblocktranslate %}{% else %}{% translate "Never" %}{% endif %}
     </div>
     <button type="button" class="btn btn-ghost" data-act="openConnectMenu" data-a1="{{ host.id }}" data-a2="{{ host.hostname }}" data-a3="$el" data-stop>
       <svg viewBox="0 0 24 24" width="13" height="13"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-      Connect
+      {% translate "Connect" %}
     </button>
     <button type="button" class="btn btn-sky" data-act="openDeployForHost" data-a1="{{ host.id }}" data-stop>
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      Deploy
+      {% translate "Deploy" %}
     </button>
-    <button type="button" class="btn btn-ghost btn-rose-ghost" data-act="deleteHost" data-a1="{{ host.id }}" data-a2="{{ host.hostname }}" data-a3="$el" data-stop title="Remove agent">
+    <button type="button" class="btn btn-ghost btn-rose-ghost" data-act="deleteHost" data-a1="{{ host.id }}" data-a2="{{ host.hostname }}" data-a3="$el" data-stop title="{% translate "Remove agent" %}">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-      Remove
+      {% translate "Remove" %}
     </button>
   </div>
 </div>

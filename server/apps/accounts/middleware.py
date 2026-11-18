@@ -3,6 +3,8 @@ from django.http import HttpResponseRedirect
 
 _BYPASS_PREFIXES = (
     "/static/", "/api/", "/admin/", "/setup", "/login", "/logout", "/media/", "/agent/",
+    # The JavaScript translation catalog: the setup page loads it too.
+    "/jsi18n/",
     # OS installers fetching their answer file or install tree. They cannot
     # follow a redirect to a setup page — they would stop at an interactive
     # prompt on a machine whose disk is already being wiped.
