@@ -147,7 +147,7 @@ function _enrollInvalidateCmd() {
   if (block) block.hidden = true;
   const note = document.getElementById('enroll-stale');
   if (note) {
-    note.textContent = 'Settings changed — create the command again.';
+    note.textContent = t('Settings changed — create the command again.');
     note.hidden = false;
   }
   const next = /** @type {HTMLButtonElement} */ (document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]'));
@@ -323,7 +323,7 @@ async function enrollSaveProfile() {
     _enrollProfileId = String(created.id);
     const sel = /** @type {HTMLSelectElement} */ (document.getElementById('enroll-profile'));
     if (sel) sel.value = _enrollProfileId;
-    showToast(`Saved profile ${created.name}`, 'success');
+    showToast(t('Saved profile {name}', { name: created.name }), 'success');
   } catch (e) {
     apfShowErrors(form, _enrollErrorFields(e));
     showToast(e.message || 'Could not save the profile', 'error');
@@ -379,11 +379,11 @@ async function _pollForHost() {
       const os = data.host.os || 'Unknown OS';
       const ip = data.host.ip_address || 'Unknown IP';
       document.getElementById('enroll-detected-hostname').textContent = hostname;
-      document.getElementById('enroll-detected-meta').textContent = `${os} · ${ip}`;
+      document.getElementById('enroll-detected-meta').textContent = t('{os} · {ip}', { os, ip });
       const rep = document.getElementById('enroll-replaces');
       if (rep) {
         if (data.replaces) {
-          rep.textContent = `Replaces ${data.replaces.hostname} — its history, tags and site are kept.`;
+          rep.textContent = t('Replaces {hostname} — its history, tags and site are kept.', { hostname: data.replaces.hostname });
           rep.style.display = '';
         } else {
           rep.style.display = 'none';
@@ -391,7 +391,7 @@ async function _pollForHost() {
       }
       if (data.status === 'approved') {
         /** @type {HTMLButtonElement} */ (document.getElementById('enroll-approve-btn')).disabled = true;
-        document.getElementById('enroll-approve-btn').textContent = 'Already approved';
+        document.getElementById('enroll-approve-btn').textContent = t('Already approved');
       }
     }
   } catch (_) { /* silently retry */ }
@@ -411,11 +411,11 @@ async function enrollApproveHost() {
       body: JSON.stringify({ totp }),
     });
     const hostname = _enrollDetectedHost.hostname || 'Host';
-    document.getElementById('enroll-done-msg').textContent = `${hostname} is now online and monitoring.`;
+    document.getElementById('enroll-done-msg').textContent = t('{hostname} is now online and monitoring.', { hostname });
     _enrollSetStep(4);
   } catch (e) {
     btn.disabled = false;
-    showToast('Approval failed: ' + e.message, 'error');
+    showToast(t('Approval failed: {reason}', { reason: e.message }), 'error');
   }
 }
 

@@ -26,7 +26,16 @@ BASELINE_PATH = Path(__file__).with_name("js_strings_baseline.json")
 SCRIPT_GLOB = "static/js/vigil-*.js"
 
 #: Scripts with no bare user-facing string left. Add one when it reaches zero.
-JS_TRANSLATED: list[str] = []
+JS_TRANSLATED: list[str] = [
+    "static/js/vigil-tags.js",
+    "static/js/vigil-waves.js",
+    "static/js/vigil-monitor.js",
+    "static/js/vigil-inventory.js",
+    "static/js/vigil-siteswitch.js",
+    "static/js/vigil-runhistory.js",
+    "static/js/vigil-hunts.js",
+    "static/js/vigil-enroll.js",
+]
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 _LINE_COMMENT = re.compile(r"(?m)(?:^|(?<=[\s;{}(),]))//.*$")

@@ -417,7 +417,7 @@ function _cellText(text, extraClass) {
 
 function exportInventoryCsv() {
   if (!inventoryState.rows.length) {
-    showToast('No inventory data to export', 'info');
+    showToast(t('No inventory data to export'), 'info');
     return;
   }
   const customCols = inventoryState.customColumns;
@@ -499,7 +499,7 @@ async function adLoadConfig() {
     /** @type {HTMLInputElement} */ (document.getElementById('ad-enabled')).checked = !!cfg.enabled;
     const status = document.getElementById('ad-status');
     if (cfg.last_sync) {
-      status.textContent = `Last sync: ${new Date(cfg.last_sync).toLocaleString()} — ${cfg.last_sync_status || ''}`;
+      status.textContent = t('Last sync: {time} — {status}', { time: new Date(cfg.last_sync).toLocaleString(), status: cfg.last_sync_status || '' });
     } else {
       status.textContent = cfg.has_password ? 'Configured but never synced.' : 'Not yet configured.';
     }
@@ -519,10 +519,10 @@ async function adSaveConfig() {
   try {
     await apiJson('/api/v1/hosts/ad/', { method: 'POST', body: JSON.stringify(body) });
     /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-password')).value = '';
-    showToast('AD settings saved', 'success');
+    showToast(t('AD settings saved'), 'success');
     adLoadConfig();
   } catch (e) {
-    showToast('Failed to save: ' + e.message, 'error');
+    showToast(t('Failed to save: {reason}', { reason: e.message }), 'error');
   }
 }
 
@@ -532,15 +532,15 @@ async function adSyncNow() {
   try {
     const result = await apiJson('/api/v1/hosts/ad/sync/', { method: 'POST' });
     if (result.queued) {
-      showToast('AD sync queued', 'success');
+      showToast(t('AD sync queued'), 'success');
     } else if (result.result && result.result.error) {
-      showToast('AD sync failed: ' + result.result.error, 'error');
+      showToast(t('AD sync failed: {reason}', { reason: result.result.error }), 'error');
     } else if (result.result) {
-      showToast(`AD sync complete: ${result.result.created} created, ${result.result.updated} updated`, 'success');
+      showToast(t('AD sync complete: {created} created, {updated} updated', { created: result.result.created, updated: result.result.updated }), 'success');
     }
     adLoadConfig();
   } catch (e) {
-    showToast('Failed to start sync: ' + e.message, 'error');
+    showToast(t('Failed to start sync: {reason}', { reason: e.message }), 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '';
   }

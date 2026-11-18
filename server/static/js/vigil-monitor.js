@@ -102,7 +102,7 @@ function selectMonitorHost(hostId) {
 
 // ── RDP launch ──
 function launchRdpForCurrentMonitor() {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  if (!monitorHostId) { showToast(t('No host selected'), 'error'); return; }
   // Stream a .rdp file download. The server returns it with
   // Content-Disposition: attachment so the OS hands it off to mstsc /
   // Microsoft Remote Desktop / Remmina depending on platform.
@@ -114,8 +114,8 @@ function openSshFor(hostname, ip) {
   monitorHostName = hostname || monitorHostName;
   monitorHostIp = ip || '';
   const target = _sshTarget();
-  if (!target) { showToast('No address known for this host', 'error'); return; }
-  document.getElementById('ssh-modal-title').textContent = `SSH to ${monitorHostName || target}`;
+  if (!target) { showToast(t('No address known for this host'), 'error'); return; }
+  document.getElementById('ssh-modal-title').textContent = t('SSH to {host}', { host: monitorHostName || target });
   /** @type {HTMLInputElement} */ (document.getElementById('ssh-user')).value = '';
   updateSshCommand();
   document.getElementById('ssh-overlay').classList.add('open');
@@ -123,7 +123,7 @@ function openSshFor(hostname, ip) {
 }
 
 function openSshForCurrentMonitor() {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  if (!monitorHostId) { showToast(t('No host selected'), 'error'); return; }
   openSshFor(monitorHostName, monitorHostIp);
 }
 
@@ -140,7 +140,7 @@ function updateSshCommand() {
   const user = /** @type {HTMLInputElement} */ (document.getElementById('ssh-user')).value.trim();
   const host = _sshTarget();
   const dest = user ? `${user}@${host}` : host;
-  document.getElementById('ssh-cmd').textContent = `ssh ${dest}`;
+  document.getElementById('ssh-cmd').textContent = `ssh ${dest}`; // i18n-ignore
   // Encode userinfo and host separately so the "@" stays structural while a
   // stray character in either part can't reshape the URI or the href attribute.
   const uri = 'ssh://' + (user ? encodeURIComponent(user) + '@' : '') + encodeURIComponent(host);
@@ -450,7 +450,7 @@ function renderProcTable(tableId, points, metricName) {
   const table = document.getElementById(tableId);
   const tbody = table.querySelector('tbody');
   if (!points.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="proc-td-wait">No data yet</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="3" class="proc-td-wait">${escHtml(t('No data yet'))}</td></tr>`;
     return;
   }
   // Get the latest snapshot: group by rank, take most recent per rank
@@ -500,7 +500,7 @@ function getLatestDiskPercent(diskData) {
 function renderDiskBars(diskData) {
   const container = document.getElementById('disk-bars');
   if (!diskData.length) {
-    container.innerHTML = '<div class="disk-bars-empty">Waiting for data...</div>';
+    container.innerHTML = `<div class="disk-bars-empty">${escHtml(t('Waiting for data...'))}</div>`;
     return;
   }
   // Get latest value per mount
@@ -560,6 +560,6 @@ window.navigateTo = function(pageName) {
 /* ── The monitor header's Connect button (QA-58) ───────────────────────────
    Same menu the host cards open; only where the host id comes from differs. */
 function openConnectMenuForMonitor(el) {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  if (!monitorHostId) { showToast(t('No host selected'), 'error'); return; }
   openConnectMenu(monitorHostId, monitorHostName, el);
 }
