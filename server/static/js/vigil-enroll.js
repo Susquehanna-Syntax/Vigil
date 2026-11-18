@@ -401,7 +401,7 @@ async function _pollForHost() {
 async function enrollApproveHost() {
   if (!_enrollDetectedHost) return;
   const totp = await totpPrompt(`Approving ${_enrollDetectedHost.hostname || 'this host'} lets it receive signed tasks.`,
-    { title: 'Approve host', confirmText: 'Approve' });
+    { title: t('Approve host'), confirmText: t('Approve') });
   if (!totp) return;
   const btn = /** @type {HTMLButtonElement} */ (document.getElementById('enroll-approve-btn'));
   btn.disabled = true;

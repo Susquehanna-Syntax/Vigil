@@ -279,8 +279,8 @@ function attachTagCombobox(inputId, opts) {
     options = matches;
     if (q && !have.has(q) && !_allTags.some(t => t.name.toLowerCase() === q)) {
       options.push(_RESERVED_TAG.test(q)
-        ? { name: q, meta: 'set by Vigil from inventory — cannot be added by hand', disabled: true }
-        : { name: q, meta: 'new tag', create: true });
+        ? { name: q, meta: t('set by Vigil from inventory — cannot be added by hand'), disabled: true }
+        : { name: q, meta: t('new tag'), create: true });
     }
     if (!options.length) {
       list.innerHTML = `<div class="tag-combo-empty">${q ? 'Already on this machine.' : 'No other tags yet — type one to create it.'}</div>`;
@@ -352,14 +352,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Every tag field in the app, in one place so none gets forgotten.
   // (The rollout start dialog picks wave groups from chips in vigil-rollout.js,
   // so it has no tag field to wire.)
-  attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
-  attachTagPicker('wave-group-tags', { title: 'Ladders this wave belongs to' });
-  attachTagPicker('bl-tags', { title: 'Machines this playbook targets' });
-  attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
-  attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
-  attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',
+  attachTagPicker('wave-tags', { title: t('Machines in this wave are tagged') });
+  attachTagPicker('wave-group-tags', { title: t('Ladders this wave belongs to') });
+  attachTagPicker('bl-tags', { title: t('Machines this playbook targets') });
+  attachTagPicker('auto-event-tags', { title: t('Only fire for hosts tagged') });
+  attachTagPicker('auto-target-tags', { title: t('Run on hosts tagged') });
+  attachTagPicker('repro-prof-tags', { title: t('Tag the rebuilt host with'),
                                        includeReserved: true });
-  attachTagPicker('pol-tags', { title: 'Hosts this policy applies to are tagged',
+  attachTagPicker('pol-tags', { title: t('Hosts this policy applies to are tagged'),
                                includeReserved: true });
   // The host drawer adds one tag at a time and saves it at once: a combobox,
   // not a comma field (vigil-host-cards.js).

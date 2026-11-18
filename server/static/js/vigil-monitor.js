@@ -273,8 +273,8 @@ function makeNetChart(canvasId) {
     type: 'line',
     data: {
       datasets: [
-        { label: 'Received', data: [], borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
-        { label: 'Sent', data: [], borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
+        { label: t('Received'), data: [], borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
+        { label: t('Sent'), data: [], borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
       ]
     },
     options: {

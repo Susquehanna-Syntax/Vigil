@@ -9,7 +9,9 @@ What counts as a user-facing string is a deliberately simple reading of the
 places text reaches a person: text between tags in built markup, the visible
 attributes (title, placeholder, aria-label, alt, data-tip, data-hint), and the
 literal first argument of showToast / confirmModal or a literal assigned to
-textContent / innerText. Comments are ignored, and so is any line carrying the
+textContent / innerText, and a literal given to a display key in an object
+(title, label, meta, message, hint, placeholder and the like: a modal's or a
+picker's options). Comments are ignored, and so is any line carrying the
 marker `i18n-ignore` (for text that is not a sentence: a shell command, a code
 sample). Wrapped text reads `${escHtml(t('Rename'))}` in markup and
 `showToast(t('Tag created'))` elsewhere, which none of the patterns match."""
@@ -45,6 +47,10 @@ _MARKUP = re.compile(
 _ATTR = re.compile(
     r"\b(?:title|placeholder|aria-label|data-tip|data-hint|alt)=\\?\""
     r"([^\"$\\]*[A-Za-z]{2,}[^\"$\\]*)\\?\"")
+_PROPERTY = re.compile(
+    r"\b(?:title|label|meta|message|hint|placeholder|empty|emptyText|subtitle|desc|description"
+    r"|confirmText|confirmLabel|okLabel|cancelLabel|tooltip)\s*:\s*(['\"`])"
+    r"((?:(?!\1).)*?[A-Za-z]{2,}(?:(?!\1).)*?)\1")
 _CALL = re.compile(
     r"\b(?:showToast|confirmModal|textContent\s*=|innerText\s*=)\s*\(?\s*(['\"`])"
     r"((?:(?!\1).)*?[A-Za-z]{2,}(?:(?!\1).)*?)\1")
@@ -57,6 +63,7 @@ def bare_strings(js: str) -> list[str]:
     found = [m.group(1).strip() for m in _MARKUP.finditer(js) if m.group(1).strip()]
     found += [f"[attribute] {m.group(1)}" for m in _ATTR.finditer(js)]
     found += [f"[call] {m.group(2)}" for m in _CALL.finditer(js)]
+    found += [f"[property] {m.group(2)}" for m in _PROPERTY.finditer(js)]
     return found
 
 
@@ -78,6 +85,8 @@ class JsStringRatchetTests(SimpleTestCase):
         self.assertEqual(bare_strings("showToast(t('Tag created'));"), [])
         self.assertEqual(bare_strings("el.textContent = 'Saving';"), ["[call] Saving"])
         self.assertEqual(bare_strings("if (a > b && c < d) go();"), [])
+        self.assertEqual(bare_strings("pick({ title: 'Pick a tag' });"), ["[property] Pick a tag"])
+        self.assertEqual(bare_strings("pick({ title: t('Pick a tag'), key: 'name' });"), [])
         self.assertEqual(bare_strings("// <b>Old</b> note\nx = 1;"), [])
         self.assertEqual(bare_strings("cmd.textContent = `ssh ${dest}`; // i18n-ignore"), [])
 
