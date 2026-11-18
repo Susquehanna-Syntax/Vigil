@@ -1190,3 +1190,29 @@ if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined'
   }).observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('DOMContentLoaded', () => applyDataCss(document.body));
 }
+
+// ── Strings a person reads ────────────────────────────────────────────────
+// Every user-facing string a script builds goes through t() (or tn() when it
+// depends on a count), so a later language is a .po file, not a code change.
+// Django's JavaScript catalog (/jsi18n/) defines gettext and ngettext; without
+// it (English, or the node tests) the string passes through unchanged. Named
+// placeholders, not positional ones, so a translation can reorder them:
+// t('Restart {host}?', { host: name }).
+function _tFill(text, params) {
+  if (!params) return text;
+  return text.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(params, k)
+    ? String(params[k]) : m));
+}
+
+//: The translated form of `msg`, with {name} placeholders filled from params.
+function t(msg, params) {
+  const g = typeof gettext === 'function' ? gettext : (s) => s;
+  return _tFill(g(String(msg)), params);
+}
+
+//: The singular or plural form for `n` ({n} is filled in for you).
+function tn(singular, plural, n, params) {
+  const ng = typeof ngettext === 'function' ? ngettext
+    : (a, b, c) => (c === 1 ? a : b);
+  return _tFill(ng(String(singular), String(plural), n), Object.assign({ n }, params || {}));
+}

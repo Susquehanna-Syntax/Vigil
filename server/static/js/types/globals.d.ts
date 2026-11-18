@@ -284,3 +284,8 @@ declare function openBuiltinTask(taskName: string, hostId: any, inputs: Record<s
 /** Defined in server/static/js/vigil-host-cards.js (loads the vendored terminal
  *  assets once before the first shell; resolves when they are on the page). */
 declare function loadTerminalAssets(): Promise<void>;
+
+// Django's JavaScript catalog (/jsi18n/, loaded before vigil-utils.js). Absent
+// in the node tests, so t() and tn() check for them before calling.
+declare var gettext: ((msgid: string) => string) | undefined;
+declare var ngettext: ((singular: string, plural: string, count: number) => string) | undefined;
