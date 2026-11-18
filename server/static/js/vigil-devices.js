@@ -26,16 +26,15 @@ function renderDevices() {
 
   if (!_devices.length) {
     if (countEl) countEl.textContent = '';
-    wrap.innerHTML = '<div class="dev-empty">No unmanaged devices yet. Add routers, switches, '
-      + 'printers and other gear to keep a full picture of the network.</div>';
+    wrap.innerHTML = `<div class="dev-empty">${escHtml(t('No unmanaged devices yet. Add routers, switches, printers and other gear to keep a full picture of the network.'))}</div>`;
     return;
   }
-  if (countEl) countEl.textContent = _devices.length === 1 ? '1 device' : `${_devices.length} devices`;
+  if (countEl) countEl.textContent = tn('{n} device', '{n} devices', _devices.length);
 
   let html = `<div class="dev-card"><table class="ctr-table dev-table">
     <thead><tr>
-      <th>Name</th><th>Type</th><th>IP Address</th><th>MAC</th><th>Serial</th>
-      <th>Vendor</th><th>Location</th><th>Owner</th><th class="num"></th>
+      <th>${escHtml(t('Name'))}</th><th>${escHtml(t('Type'))}</th><th>${escHtml(t('IP Address'))}</th><th>${escHtml(t('MAC'))}</th><th>${escHtml(t('Serial'))}</th>
+      <th>${escHtml(t('Vendor'))}</th><th>${escHtml(t('Location'))}</th><th>${escHtml(t('Owner'))}</th><th class="num"></th>
     </tr></thead><tbody>`;
   for (const d of _devices) {
     html += `<tr>
@@ -47,7 +46,7 @@ function renderDevices() {
       <td>${escHtml(d.vendor || '—')}</td>
       <td>${escHtml(d.location || '—')}</td>
       <td>${escHtml(d.owner || '—')}</td>
-      <td class="num"><button class="btn btn-ghost btn-sm" data-device-edit="${escAttr(d.id)}">Edit</button></td>
+      <td class="num"><button class="btn btn-ghost btn-sm" data-device-edit="${escAttr(d.id)}">${escHtml(t('Edit'))}</button></td>
     </tr>`;
   }
   html += `</tbody></table></div>`;
@@ -127,17 +126,17 @@ function _extraFromBody(text) {
 async function saveDevice() {
   const id = /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value;
   const body = _deviceFormBody();
-  if (!body.name) { showToast('Name is required', 'error'); return; }
+  if (!body.name) { showToast(t('Name is required'), 'error'); return; }
   const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (document.getElementById('device-site')),
     /** @type {HTMLElement} */ (document.getElementById('device-site-field')));
   if (siteId !== undefined) body.site_id = siteId;
   try {
     if (id) {
       await apiJson(`/api/v1/hosts/devices/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });
-      showToast('Device updated', 'success');
+      showToast(t('Device updated'), 'success');
     } else {
       await apiJson('/api/v1/hosts/devices/', { method: 'POST', body: JSON.stringify(body) });
-      showToast('Device added', 'success');
+      showToast(t('Device added'), 'success');
     }
     closeDeviceModal();
     loadDevices();
@@ -153,7 +152,7 @@ async function deleteDeviceFromModal() {
   if (!confirm('Delete this device from the inventory?')) return;
   try {
     await apiJson(`/api/v1/hosts/devices/${id}/`, { method: 'DELETE' });
-    showToast('Device deleted', 'success');
+    showToast(t('Device deleted'), 'success');
     closeDeviceModal();
     loadDevices();
   } catch (e) {

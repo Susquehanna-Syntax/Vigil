@@ -896,7 +896,7 @@ class RdpBrowserTests(TransactionTestCase):
         self.assertIn("client.sendSize(", self.js)
 
     def test_the_status_pill_tracks_the_tunnel_state(self):
-        for text in ("Connecting…", "'Connected'", "'Closed'"):
+        for text in ("t('Connecting…')", "t('Connected')", "t('Closed')"):
             self.assertIn(text, self.js)
         self.assertIn("Guacamole.Tunnel.State.OPEN", self.js)
         self.assertIn("client.onerror", self.js)

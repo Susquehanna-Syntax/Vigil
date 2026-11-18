@@ -9,11 +9,11 @@
 // Status slots are fixed by meaning; outcome slots are fixed by order and fold
 // into "Other" past four, never cycled.
 const RUN_STATES = [
-  { key: 'ok', label: 'ok', color: 'var(--st-ok)' },
-  { key: 'failed', label: 'failed', color: 'var(--st-failed)' },
-  { key: 'pending', label: 'waiting', color: 'var(--st-pending)' },
-  { key: 'not_applicable', label: 'not applicable', color: 'var(--st-na)' },
-  { key: 'skipped', label: 'skipped', color: 'var(--st-skipped)' },
+  { key: 'ok', label: t('ok'), color: 'var(--st-ok)' },
+  { key: 'failed', label: t('failed'), color: 'var(--st-failed)' },
+  { key: 'pending', label: t('waiting'), color: 'var(--st-pending)' },
+  { key: 'not_applicable', label: t('not applicable'), color: 'var(--st-na)' },
+  { key: 'skipped', label: t('skipped'), color: 'var(--st-skipped)' },
 ];
 const OUTCOME_COLORS = ['var(--oc-1)', 'var(--oc-2)', 'var(--oc-3)', 'var(--oc-4)'];
 
@@ -28,8 +28,8 @@ function outcomeSegments(outcomes) {
   const named = entries.filter(([k]) => k !== 'No outcome yet').sort((a, b) => b[1] - a[1]);
   const shown = named.slice(0, 4).map(([k, v], i) => ({ key: k, label: k, value: v, color: OUTCOME_COLORS[i] }));
   const rest = named.slice(4).reduce((n, [, v]) => n + v, 0);
-  if (rest) shown.push({ key: '__other', label: 'Other', value: rest, color: 'var(--st-skipped)' });
-  none.forEach(([k, v]) => shown.push({ key: k, label: 'no outcome yet', value: v, color: 'var(--st-na)' }));
+  if (rest) shown.push({ key: '__other', label: t('Other'), value: rest, color: 'var(--st-skipped)' });
+  none.forEach(([k, v]) => shown.push({ key: k, label: t('no outcome yet'), value: v, color: 'var(--st-na)' }));
   return shown;
 }
 
@@ -51,7 +51,7 @@ function donutHtml(segments, { size = 104, center = '', filterKind = '', legend 
     return arc;
   }).join('');
   const svg = `<svg class="donut" viewBox="0 0 100 100" width="${size}" height="${size}" role="img"
-      aria-label="${escAttr(title || 'Summary')}: ${escAttr(segments.map(s => `${s.value} ${s.label}`).join(', '))}">
+      aria-label="${escAttr(title || t('Summary'))}: ${escAttr(segments.map(s => `${s.value} ${s.label}`).join(', '))}">
       <g transform="rotate(-90 50 50)">${arcs}</g>
       ${center ? `<text x="50" y="47" text-anchor="middle" class="donut-total">${escHtml(String(total))}</text>
       <text x="50" y="62" text-anchor="middle" class="donut-center">${escHtml(center)}</text>` : ''}
@@ -76,9 +76,10 @@ function donutHtml(segments, { size = 104, center = '', filterKind = '', legend 
 function runSummaryHtml(summary) {
   if (!summary || !summary.hosts) return '';
   const states = donutHtml(stateSegments(summary.states), {
-    center: summary.hosts === 1 ? 'host' : 'hosts', filterKind: 'state', title: 'Hosts by result' });
+    // The word under the host count; ngettext picks it, not a JS ternary.
+    center: tn('host', 'hosts', summary.hosts), filterKind: 'state', title: t('Hosts by result') });
   const outcomes = summary.outcomes
-    ? donutHtml(outcomeSegments(summary.outcomes), { center: 'outcomes', filterKind: 'outcome', title: 'Where hosts ended up' })
+    ? donutHtml(outcomeSegments(summary.outcomes), { center: t('outcomes'), filterKind: 'outcome', title: t('Where hosts ended up') })
     : '';
   return `<div class="run-summary">${states}${outcomes}</div>`;
 }
@@ -187,35 +188,35 @@ function _hostRunDuration(/** @type {string|null|undefined} */ dispatched, /** @
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-function _hostRunTaskHtml(t) {
-  const color = _TASK_STATE_COLORS[t.state] || 'var(--text-3)';
-  const results = _stepResultsHtml(t.result_data, t.result_output);
-  const output = (t.result_output || '').trim();
-  const meta = [
-    ['Requested by', t.requested_by_username || '—'],
-    ['Risk', t.risk_level || '—'],
-    ['TTL', `${t.ttl_seconds}s`],
-    ['Created', _hostRunWhen(t.created_at)],
-    ['Dispatched', _hostRunWhen(t.dispatched_at)],
-    ['Completed', _hostRunWhen(t.completed_at)],
-    ['Duration', _hostRunDuration(t.dispatched_at, t.completed_at)],
+function _hostRunTaskHtml(task) {
+  const color = _TASK_STATE_COLORS[task.state] || 'var(--text-3)';
+  const results = _stepResultsHtml(task.result_data, task.result_output);
+  const output = (task.result_output || '').trim();
+  const meta = [ // field names beside API values, not sentences
+    ['Requested by', task.requested_by_username || '—'], // i18n-ignore
+    ['Risk', task.risk_level || '—'], // i18n-ignore
+    ['TTL', `${task.ttl_seconds}s`], // i18n-ignore
+    ['Created', _hostRunWhen(task.created_at)], // i18n-ignore
+    ['Dispatched', _hostRunWhen(task.dispatched_at)], // i18n-ignore
+    ['Completed', _hostRunWhen(task.completed_at)], // i18n-ignore
+    ['Duration', _hostRunDuration(task.dispatched_at, task.completed_at)], // i18n-ignore
   ];
-  if (t.step_ref) meta.push(['Playbook step', t.step_ref]);
-  if (t.branch) meta.push(['Branch', t.branch]);
+  if (task.step_ref) meta.push(['Playbook step', task.step_ref]);  // i18n-ignore
+  if (task.branch) meta.push(['Branch', task.branch]);  // i18n-ignore
   return `
     <div class="host-run-task">
       <div class="host-run-head">
-        <span class="host-run-step">${escHtml(t.step_label || t.action || '')}</span>
-        <span class="host-run-action">${escHtml(t.action || '')}</span>
-        <span class="host-run-state" data-css="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[t.state] || t.state || '')}</span>
+        <span class="host-run-step">${escHtml(task.step_label || task.action || '')}</span>
+        <span class="host-run-action">${escHtml(task.action || '')}</span>
+        <span class="host-run-state" data-css="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[task.state] || task.state || '')}</span>
       </div>
       <dl class="host-run-meta">${meta.map(([k, v]) =>
         `<dt>${escHtml(k)}</dt><dd>${escHtml(String(v))}</dd>`).join('')}</dl>
-      <div class="host-run-k">Params</div>
-      <pre class="host-run-json">${escHtml(JSON.stringify(t.params ?? {}, null, 2))}</pre>
+      <div class="host-run-k">${escHtml(t('Params'))}</div>
+      <pre class="host-run-json">${escHtml(JSON.stringify(task.params ?? {}, null, 2))}</pre>
       ${results ? `<div class="host-run-results">${results}</div>` : ''}
-      <div class="host-run-k">Output</div>
-      <pre class="host-run-out term term-wrap">${output ? termHtml(output) : 'No output captured.'}</pre>
+      <div class="host-run-k">${escHtml(t('Output'))}</div>
+      <pre class="host-run-out term term-wrap">${output ? termHtml(output) : t('No output captured.')}</pre>
     </div>`;
 }
 
@@ -231,14 +232,16 @@ function openHostRunDetail(run, hostId) {
   const m = mountModal('host-run-detail', { wide: true });
   m.setBody(`
     <div class="modal-title"><span id="host-run-title"></span>
-      <button class="modal-close" id="hrd-x" aria-label="Close">
+      <button class="modal-close" id="hrd-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     ${tasks.map(_hostRunTaskHtml).join('')}
-    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="hrd-close">Close</button></div>`);
-  m.modal.querySelector('#host-run-title').textContent =
-    `${hostname} · ${run.name_snapshot || 'Run'}`;
+    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="hrd-close">${escHtml(t('Close'))}</button></div>`);
+  // Named outside the filters above, whose `t` is a task row and shadows the
+  // translate helper.
+  const runTitle = t('{host} · {run}', { host: hostname, run: run.name_snapshot || t('Run') });
+  m.modal.querySelector('#host-run-title').textContent = runTitle;
   /** @type {HTMLElement} */ (m.modal.querySelector('#hrd-x')).onclick = () => m.close();
   /** @type {HTMLElement} */ (m.modal.querySelector('#hrd-close')).onclick = () => m.close();
   requestAnimationFrame(m.open);
