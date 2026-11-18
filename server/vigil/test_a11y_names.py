@@ -31,7 +31,9 @@ class SelectNameTests(SimpleTestCase):
         apps = template("_apps.html")
         select = re.search(r"<select[^>]*id=\"apps-source\"[^>]*>", apps)
         self.assertIsNotNone(select, "the app source select is gone from _apps.html")
-        self.assertIn('aria-label="App source"', select.group(0))
+        # Wrapped for translation in phase 09b; the rendered attribute is the
+        # same string, so assert on the translate tag around it.
+        self.assertIn('{% translate "App source" %}', select.group(0))
 
     def test_the_dashboard_picker_names_itself(self):
         # The picker is built in JavaScript, so its name lives in a template string.
