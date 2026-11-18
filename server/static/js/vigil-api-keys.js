@@ -3,7 +3,8 @@
 // Owns: Settings → API & Webhooks — minting and revoking scoped API keys,
 //   and adding, testing, pausing and deleting webhooks.
 // HTML: templates/pages/_settings.html — #api-keys and #webhooks in the
-//   data-pane="api" pane.
+//   data-pane="api" pane. The look lives in .ak-* / .wh-* classes next to the
+//   other Settings rules in static/css/vigil/09-settings-pages.css.
 // Depends on: vigil-utils.js (apiJson, escHtml, escAttr, mountModal,
 //   confirmModal, showToast, delegateClick)
 //
@@ -95,19 +96,19 @@ function _renderKeys() {
   const form = _akFeatureActive('api_keys') ? _akKeyForm()
     : '<p class="muted">Creating keys needs an SQSY Business licence.</p>';
   const rows = _akState.keys.map(_akKeyRow).join('');
-  host.innerHTML = `<p class="muted" style="margin-bottom:14px;">A scoped key lets a script `
+  host.innerHTML = `<p class="muted ak-pane-intro">A scoped key lets a script `
     + `or Jackil use Vigil&rsquo;s API as you, limited to the sites you pick. `
     + `Read-only keys cannot change anything.</p>`
     + form
-    + (rows ? `<div class="dash-cards" style="margin-top:16px;">${rows}</div>`
-            : '<p class="muted" style="margin-top:14px;">No keys yet.</p>');
+    + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
+            : '<p class="muted ak-empty-below">No keys yet.</p>');
 }
 
 function _akKeyForm() {
-  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">`
-    + `<input type="text" class="form-control" id="api-key-name" maxlength="80"`
-      + ` placeholder="Key name, e.g. Backups" style="flex:1;min-width:180px;">`
-    + `<select class="form-control" id="api-key-access" style="width:auto;">`
+  return `<div class="ak-form-row">`
+    + `<input type="text" class="form-control ak-name-field" id="api-key-name" maxlength="80"`
+      + ` placeholder="Key name, e.g. Backups">`
+    + `<select class="form-control ak-access-field" id="api-key-access">`
       + `<option value="read" selected>Read only</option>`
       + `<option value="write">Read and write</option>`
     + `</select>`
@@ -121,8 +122,8 @@ function _akKeyForm() {
 function _akSitePicker(attr) {
   const sites = (_akState && _akState.sites) || [];
   if (!sites.length) return '';
-  return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;">`
-    + sites.map((s) => `<label class="totp-sub" style="display:flex;gap:6px;align-items:center;">`
+  return `<div class="ak-sites-row">`
+    + sites.map((s) => `<label class="totp-sub ak-site-check">`
       + `<input type="checkbox" ${attr}="${escAttr(String(s.id))}">`
       + `${escHtml(s.name)}</label>`).join('')
     + `</div>`;
@@ -141,7 +142,7 @@ function _akKeyRow(k) {
     + ` · ${escHtml(created)} · last used ${escHtml(used)}`;
   const right = k.revoked_at ? '<span class="muted">Revoked</span>'
     : `<button type="button" class="btn btn-rose btn-sm" data-ak-revoke="${escAttr(String(k.id))}">Revoke</button>`;
-  return `<div class="dash-card"${k.revoked_at ? ' style="opacity:.6"' : ''}>`
+  return `<div class="dash-card${k.revoked_at ? ' ak-row-revoked' : ''}">`
     + `<div class="dash-card-main">`
       + `<div class="dash-card-title">${escHtml(k.name)}</div>`
       + `<div class="dash-card-sub">${sub}</div>`
@@ -173,10 +174,10 @@ function _akShowPlainKey(raw) {
   const m = mountModal('api-key-plain', { variant: 'm-pop' });
   m.setBody(
     `<div class="modal-title">Copy your key now</div>`
-    + `<p class="muted" style="margin-bottom:14px;">Vigil keeps only a hash of it `
+    + `<p class="muted ak-pane-intro">Vigil keeps only a hash of it `
       + `and cannot show it again.</p>`
-    + `<input type="text" class="form-control totp-input" id="api-key-plain" readonly`
-      + ` value="${escAttr(raw)}" style="font-size:13px;letter-spacing:normal;text-align:left;">`
+    + `<input type="text" class="form-control totp-input ak-secret-field" id="api-key-plain" readonly`
+      + ` value="${escAttr(raw)}">`
     + `<div class="is-actions">`
       + `<button type="button" class="btn btn-mint btn-sm" data-ak-copy>Copy</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-ak-done>Done</button>`
@@ -233,25 +234,24 @@ function _renderWebhooks() {
   const form = _akFeatureActive('webhooks') ? _akHookForm()
     : '<p class="muted">Adding webhooks needs an SQSY Business licence.</p>';
   const rows = _akState.hooks.map(_akHookRow).join('');
-  host.innerHTML = `<p class="muted" style="margin-bottom:14px;">Vigil posts signed JSON to `
+  host.innerHTML = `<p class="muted ak-pane-intro">Vigil posts signed JSON to `
     + `these addresses. Check the X-Vigil-Signature header: sha256 HMAC of the body `
     + `with the webhook&rsquo;s secret.</p>`
     + form
-    + (rows ? `<div class="dash-cards" style="margin-top:16px;">${rows}</div>`
-            : '<p class="muted" style="margin-top:14px;">No webhooks yet.</p>');
+    + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
+            : '<p class="muted ak-empty-below">No webhooks yet.</p>');
 }
 
 function _akHookForm() {
-  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">`
-    + `<input type="text" class="form-control" id="wh-name" maxlength="80"`
-      + ` placeholder="Name, e.g. Helpdesk" style="flex:1;min-width:140px;">`
-    + `<input type="url" class="form-control" id="wh-url" style="flex:2;min-width:220px;"`
+  return `<div class="wh-form-row">`
+    + `<input type="text" class="form-control wh-name-field" id="wh-name" maxlength="80"`
+      + ` placeholder="Name, e.g. Helpdesk">`
+    + `<input type="url" class="form-control wh-url-field" id="wh-url"`
       + ` placeholder="https://example.com/hooks/vigil">`
     + `<button type="button" class="btn btn-primary btn-sm" data-wh-create>Add webhook</button>`
     + `</div>`
-    + `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;">`
-    + AK_EVENTS.map(([name, label], i) => `<label class="totp-sub" style="display:flex;`
-      + `gap:6px;align-items:center;">`
+    + `<div class="ak-sites-row">`
+    + AK_EVENTS.map(([name, label], i) => `<label class="totp-sub ak-site-check">`
       + `<input type="checkbox" data-wh-event="${escAttr(name)}"${i < 2 ? ' checked' : ''}>`
       + `${escHtml(label)}</label>`).join('')
     + `</div>`
@@ -280,7 +280,7 @@ function _akHookRow(w) {
       + ` data-active="${escAttr(w.is_active ? '1' : '0')}">${w.is_active ? 'Pause' : 'Resume'}</button>`
     + `<button type="button" class="btn btn-outline btn-sm wh-act" data-wh-rotate="${escAttr(String(w.id))}">New secret</button>`
     + `<button type="button" class="btn btn-rose btn-sm wh-act" data-wh-delete="${escAttr(String(w.id))}">Delete</button>`;
-  return `<div class="dash-card"${w.is_active ? '' : ' style="opacity:.6"'}>`
+  return `<div class="dash-card${w.is_active ? '' : ' ak-row-revoked'}">`
     + `<div class="dash-card-main">`
       + `<div class="dash-card-title">${escHtml(w.name)}</div>`
       + `<div class="dash-card-sub">${sub}</div>`
@@ -408,11 +408,11 @@ function _akShowSecret(secret, title) {
   const m = mountModal('webhook-secret', { variant: 'm-pop' });
   m.setBody(
     `<div class="modal-title">${escHtml(title)}</div>`
-    + `<p class="muted" style="margin-bottom:14px;">Vigil shows this secret once. `
+    + `<p class="muted ak-pane-intro">Vigil shows this secret once. `
       + `Verify each delivery with it: the X-Vigil-Signature header is a sha256 `
       + `HMAC of the body, sent as sha256=&lt;digest&gt;.</p>`
-    + `<input type="text" class="form-control totp-input" id="webhook-secret-plain" readonly`
-      + ` value="${escAttr(secret)}" style="font-size:13px;letter-spacing:normal;text-align:left;">`
+    + `<input type="text" class="form-control totp-input ak-secret-field" id="webhook-secret-plain" readonly`
+      + ` value="${escAttr(secret)}">`
     + `<div class="is-actions">`
       + `<button type="button" class="btn btn-mint btn-sm" data-wh-copy>Copy</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-wh-done>Done</button>`

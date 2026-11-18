@@ -51,10 +51,31 @@ THIRD_BATCH = [
     "templates/pages/_playbooks.html",
 ]
 
-# The scripts whose generated markup went into classes in 08h. What they still
-# write inline is worked out per render — a state colour, a bar width — and only
-# a later batch can class it; see `stray_script_styles`.
-SCRIPT_BATCH_2 = [
+# The Settings page, cleared in 08d: what remains is bare style="display:none;"
+# (scripts show those elements with element.style.display = '', which a class
+# could not undo). The theme previews' colours are tokens in tokens.css.
+FOURTH_BATCH = [
+    "templates/pages/_settings.html",
+]
+
+# SCRIPT_BATCH_1 is done to nothing: no attribute there is one a class could not
+# undo. SCRIPT_BATCH_2 keeps only attributes whose value is worked out per render
+# — a state colour, a width — and is held to that exact count in place of the
+# baseline entry this phase deleted, so its number stays honest as it goes down.
+SCRIPT_BATCH_1 = [
+    "static/js/vigil-api-keys.js",
+]
+
+SCRIPT_BATCH_2 = {
+    # Seven state colours: six attributes that are one colour and nothing else,
+    # plus the wave dot's background and glow, whose fixed declarations this
+    # phase moved to .rlt-wave-dot.
+    "static/js/vigil-rollout.js": 7,
+}
+
+# Phase 08h: the dashboard widget and Community scripts. What the widgets
+# still write inline is worked out per render (a state colour, a bar width).
+SCRIPT_BATCH_4 = [
     "static/js/vigil-community.js",
     "static/js/vigil-widgets.js",
 ]
@@ -62,40 +83,15 @@ SCRIPT_BATCH_2 = [
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
-def stray_styles(text: str) -> list[str]:
-    """Every style attribute in `text` a finished batch may not leave behind:
-    anything that is not a bare display:none or holds a template tag."""
+def _leftover_styles(rel: str, script: bool) -> list[str]:
+    """Every style attribute in a finished file that is neither bare
+    display:none nor worked out per render. A template's per-render value is a
+    ``{{`` or a ``{%``; a script's is a template literal's ``${``."""
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    markers = ("${",) if script else ("{{", "{%")
     return [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
             if not _ALLOWED_LEFTOVER.match(m.group(0))
-            and "{{" not in m.group(0) and "{%" not in m.group(0)]
-
-
-# Same idea for a script, with one difference: a fixed declaration written next
-# to an interpolation stays with it, because the two are one look whose colour or
-# width does not exist until render time. See `_per_render_spans`.
-def _per_render_spans(attribute: str) -> list[str]:
-    """The declarations of one script style attribute whose value is built at
-    render time: each runs to the next ';' and holds `${` inside that span, so
-    an attribute written over several source lines cannot hide a fixed width
-    sitting beside an interpolated colour."""
-    return [chunk for chunk in attribute[len('style="'):-1].split(";")
-            if ":" in chunk and "${" in chunk]
-
-
-def stray_script_styles(text: str) -> list[str]:
-    """Every style attribute left in a finished script's markup that is neither
-    a bare display:none nor carries a `${...}` value."""
-    stray = []
-    for m in re.finditer(r'style="[^"]*"', text, re.DOTALL):
-        attribute = m.group(0)
-        if _ALLOWED_LEFTOVER.match(attribute.strip()):
-            continue
-        if "${" in attribute and _per_render_spans(attribute):
-            # Half of this look only exists at render time; keep the rest next
-            # to the value it belongs to rather than splitting them apart.
-            continue
-        stray.append(attribute)
-    return stray
+            and not any(marker in m.group(0) for marker in markers)]
 
 
 def scanned_files() -> list[Path]:
@@ -120,7 +116,9 @@ class InlineStyleRatchetTests(SimpleTestCase):
         for path in scanned_files():
             rel = str(path.relative_to(ROOT))
             counted = count_inline_styles(path)
-            allowed = baseline.get(rel, 0)
+            # SCRIPT_BATCH_2 files left the baseline as they were cleared; their
+            # pinned counts live with the batch list instead.
+            allowed = baseline.get(rel, SCRIPT_BATCH_2.get(rel, 0))
             self.assertLessEqual(
                 counted, allowed,
                 f"{rel} has {counted} inline style attributes and the baseline "
@@ -156,35 +154,49 @@ class InlineStyleRatchetTests(SimpleTestCase):
 
     def test_the_first_batch_is_done(self):
         for rel in FIRST_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))]
-            self.assertEqual(leftover, [],
+            self.assertEqual(_leftover_styles(rel, script=False), [],
                              f"{rel} was moved into classes in phase 08a; only "
                              'style="display:none;" may remain.')
 
     def test_the_second_batch_is_done(self):
         for rel in SECOND_BATCH:
-            assert_batch_is_clean(self, rel)
+            self.assertEqual(_leftover_styles(rel, script=False), [],
+                             f"{rel} was moved into classes in phase 08b; only "
+                             'style="display:none;" may remain.')
 
     def test_the_third_batch_is_done(self):
         for rel in THIRD_BATCH:
-            assert_batch_is_clean(self, rel)
+            self.assertEqual(_leftover_styles(rel, script=False), [],
+                             f"{rel} was moved into classes in phase 08c; only "
+                             'style="display:none;" may remain.')
+
+    def test_the_fourth_batch_is_done(self):
+        for rel in FOURTH_BATCH:
+            self.assertEqual(_leftover_styles(rel, script=False), [],
+                             f"{rel} was moved into classes in phase 08d; only "
+                             'style="display:none;" may remain.')
+
+    def test_the_first_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_1:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08g; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")
+
+    def test_the_second_script_batch_is_cleared_to_its_per_render_colours(self):
+        for rel in SCRIPT_BATCH_2:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08g; only "
+                             "a state colour worked out per render may remain.")
 
     def test_base_is_done(self):
-        assert_batch_is_clean(self, "templates/base.html")
+        self.assertEqual(_leftover_styles("templates/base.html", script=False), [],
+                         "templates/base.html was moved into classes in phases "
+                         '08e and 08f; only style="display:none;" may remain.')
 
-    def test_the_second_script_batch_is_done(self):
-        for rel in SCRIPT_BATCH_2:
-            body = (ROOT / rel).read_text(encoding="utf-8")
-            self.assertEqual(
-                stray_script_styles(body), [],
-                f"{rel} was moved into classes in phase 08h; only "
-                'style="display:none;" or a `${...}` value may remain.')
-
-
-def assert_batch_is_clean(case, rel: str) -> None:
-    case.assertEqual(
-        stray_styles((ROOT / rel).read_text(encoding="utf-8")), [],
-        f"{rel} was moved into classes; only "
-        'style="display:none;" may remain.')
+    def test_the_fourth_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_4:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08h; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")

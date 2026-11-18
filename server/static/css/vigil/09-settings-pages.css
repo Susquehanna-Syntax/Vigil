@@ -396,6 +396,27 @@ select.form-control:hover { border-color: var(--s4); }
 .theme-prev .tp-line { display: block; height: 8px; border-radius: 4px; }
 .theme-prev .tp-chips { display: flex; gap: 4px; margin-top: auto; }
 .theme-prev .tp-chips i { width: 16px; height: 10px; border-radius: 4px; }
+.theme-prev .tp-line--long { width: 70%; }
+.theme-prev .tp-line--short { width: 45%; }
+.theme-prev .tp-chips i:nth-child(1) { background: var(--tp-chip-1); }
+.theme-prev .tp-chips i:nth-child(2) { background: var(--tp-chip-2); }
+.theme-prev .tp-chips i:nth-child(3) { background: var(--tp-chip-3); }
+.theme-prev--dark { background: var(--tp-dark-bg); }
+.theme-prev--dark .tp-side { background: var(--tp-dark-side); }
+.theme-prev--dark .tp-line--long { background: var(--tp-dark-long); }
+.theme-prev--dark .tp-line--short { background: var(--tp-dark-short); }
+.theme-prev--light { background: var(--tp-light-bg); }
+.theme-prev--light .tp-side { background: var(--tp-light-side); }
+.theme-prev--light .tp-line--long { background: var(--tp-light-long); }
+.theme-prev--light .tp-line--short { background: var(--tp-light-short); }
+.theme-prev--river { background: var(--tp-river-bg); }
+.theme-prev--river .tp-side { background: var(--tp-river-side); }
+.theme-prev--river .tp-line--long { background: var(--tp-river-long); }
+.theme-prev--river .tp-line--short { background: var(--tp-river-short); }
+.theme-prev--ink { background: var(--tp-ink-bg); }
+.theme-prev--ink .tp-side { background: var(--tp-ink-side); }
+.theme-prev--ink .tp-line--long { background: var(--tp-ink-long); }
+.theme-prev--ink .tp-line--short { background: var(--tp-ink-short); }
 .theme-name { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 4px 4px; font-size: 13px; font-weight: 600; }
 .exp-tag {
   font-size: 9px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
@@ -502,4 +523,88 @@ select.form-control:hover { border-color: var(--s4); }
   margin: 0 auto 14px; object-fit: contain;
 }
 :root[data-density="compact"] .vigil-footer { margin-top: 20px; padding: 10px 0 2px; }
+
+/* ── Settings page inline styles (S6 08d) ─────────────────────────────── */
+.settings-pane .section-label.set-label-far { margin-top: 32px; }
+.totp-actions.totp-actions-below { margin-top: 16px; }
+#totp-enroll-view.totp-actions-below { margin-top: 16px; }
+/* `.totp-sub` and `.deploy-policy-grid` (both in an earlier part) already set a
+   bottom margin, so each of these carries its page's class twice to win like the
+   inline style did. */
+.totp-sub.ad-sub-flush { margin-bottom: 12px; }
+.totp-sub.users-intro-tight { margin-bottom: 6px; }
+.totp-sub.theme-sub-flush { margin-bottom: 14px; }
+.deploy-policy-grid.ad-grid-flush { margin-bottom: 12px; }
+.set-empty {
+  background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center;
+  color: var(--text-3); font-size: 13px;
+}
+.license-paste-form { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.license-paste-field { flex: 1; min-width: 280px; }
+.ai-providers-list { margin: 14px 0; }
+.bl-editor.set-editor-flush { margin-bottom: 0; }
+.set-actions-row { margin-top: 12px; }
+.set-check-row { display: flex; align-items: center; gap: 10px; }
+.ad-enable-check { accent-color: var(--sky); width: 16px; height: 16px; }
+/* `.setting-row > label` (0,1,2) gives a settings-pane label a 6px bottom gap and
+   beats a bare class; two classes win it back, as the inline style did. */
+.deploy-input-label.set-label-flush { margin-bottom: 0; }
+/* Nothing else puts a margin on `#br-note` but the UA's own, which a type
+   selector still beats. */
+p.set-label-flush { margin: 0; }
+.set-row-between { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.btn-gap { display: flex; gap: 8px; }
+/* `.status-dot` is 10px and these dots are 8px, so this needs the second class
+   to beat it the way the inline style did. */
+.status-dot.agent-dot { width: 8px; height: 8px; margin: 0 auto; }
+/* `.agent-table td` (0,1,1) sets 13px on every cell of this table and comes
+   before this part; the hostname cell was never given a size inline, so it keeps
+   the row's own. */
+td.agent-hostname { font-weight: 600; }
+.agent-os { color: var(--text-2); }
+.relays-usage { margin-top: 10px; }
+.relay-priority-field { max-width: 120px; }
+/* `.muted` sets font-size at (0,1,0) and comes later than this part. The seats
+   line only showed its colour from that class, so it keeps the class for the
+   colour and inherits the size back, as the inline style left it. */
+.muted.users-seats { margin-bottom: 12px; }
+.set-actions-center { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
+.br-accent-row { display: flex; align-items: center; gap: 8px; }
+.br-accent-picker {
+  width: 38px; height: 32px; padding: 2px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--s2); cursor: pointer;
+}
+.br-accent-field { width: 120px; }
+.theme-sub-flush { margin-bottom: 14px; }
+.agent-plat-label {
+  margin-bottom: 6px; font-size: 11px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.agent-dl-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.agent-dl-row-last { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.copyable-code { cursor: pointer; user-select: all; }
+.install-cmd-label { margin-top: 10px; }
+.agent-versions { margin-top: 10px; font-size: 12px; color: var(--text-3); min-height: 16px; }
+.agent-upload { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 18px; }
+.deploy-input-label.agent-upload-label { margin-bottom: 10px; }
+.agent-upload-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.upload-platform-field { width: 180px; }
+.upload-version-field { width: 100px; }
+.upload-file-cell { flex: 1; min-width: 180px; }
+.upload-file-input { color: var(--text-2); font-size: 13px; width: 100%; }
+
+/* Scoped API keys and webhooks (Settings → API & Webhooks), markup built by
+   vigil-api-keys.js. The look this screen carries outright: nothing else gives
+   these elements a margin or a width, so one class settles each of them the way
+   the inline style did. `.muted`, which the intro and the empty line already
+   wear for its size and colour, is in a later part and never sets either. */
+.ak-pane-intro { margin-bottom: 14px; }
+.ak-cards-below { margin-top: 16px; }
+.ak-empty-below { margin-top: 14px; }
+.ak-form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ak-name-field { flex: 1; min-width: 180px; }
+.wh-form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wh-name-field { flex: 1; min-width: 140px; }
+.wh-url-field { flex: 2; min-width: 220px; }
+.ak-sites-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
 
