@@ -241,6 +241,8 @@
 .chart-card-header-flush { padding: 16px 18px 10px; }
 .proc-table .proc-th-num { text-align: right; }
 .proc-table .proc-td-wait { color: var(--text-3); text-align: center; padding: 20px; }
+.proc-val-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.proc-bar-track { width: 50px; height: 4px; background: var(--s3); border-radius: 2px; overflow: hidden; }
 
 /* ═══════════════════════════════════════════
    INVENTORY TABLE

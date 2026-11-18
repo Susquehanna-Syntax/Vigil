@@ -82,6 +82,39 @@ SCRIPT_BATCH_3 = [
     "static/js/vigil-tasks.js",
 ]
 
+# Phase 08h: the dashboard widget and Community scripts. What the widgets
+# still write inline is worked out per render (a state colour, a bar width).
+SCRIPT_BATCH_4 = [
+    "static/js/vigil-community.js",
+    "static/js/vigil-widgets.js",
+]
+
+# Phase 08j: the agent profile editor, wave list, AI compare panel and tag
+# manager. Every attribute those four wrote moved into a class — nothing there
+# was worked out per render, so no file of this batch is ratcheted any more.
+SCRIPT_BATCH_5 = [
+    "static/js/vigil-agentprofile-form.js",
+    "static/js/vigil-waves.js",
+    "static/js/vigil-ai.js",
+    "static/js/vigil-tags.js",
+]
+
+# Phase 08k: the monitor, host drawer, status pages, settings, automations,
+# vulns, sites, run history, playbooks and picker scripts. What those ten still
+# write inline is a value worked out per render (a state colour, a bar width).
+SCRIPT_BATCH_6 = [
+    "static/js/vigil-monitor.js",
+    "static/js/vigil-host-cards.js",
+    "static/js/vigil-statuspages.js",
+    "static/js/vigil-settings.js",
+    "static/js/vigil-automations.js",
+    "static/js/vigil-vulns.js",
+    "static/js/vigil-sites.js",
+    "static/js/vigil-runhistory.js",
+    "static/js/vigil-playbooks.js",
+    "static/js/vigil-pickers.js",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
@@ -201,3 +234,24 @@ class InlineStyleRatchetTests(SimpleTestCase):
         self.assertEqual(_leftover_styles("templates/base.html", script=False), [],
                          "templates/base.html was moved into classes in phases "
                          '08e and 08f; only style="display:none;" may remain.')
+
+    def test_the_fourth_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_4:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08h; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")
+
+    def test_the_fifth_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_5:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08j; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")
+
+    def test_the_sixth_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_6:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08k; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")

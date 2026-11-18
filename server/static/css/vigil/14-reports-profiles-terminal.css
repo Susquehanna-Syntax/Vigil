@@ -176,6 +176,20 @@
 .apf-narrow { max-width: 180px; }
 .apf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 
+/* The agent profile form's own looks, moved out of vigil-agentprofile-form.js
+   (08j). `.tab-bar` gives a tab strip room beneath itself; the mode tabs sit in
+   a card that already spaces its children, so this pulls the bar back to 6px
+   above and below it. The 1px underline it keeps is the strip's own. */
+.apf-mode-tabs { margin: 6px 0; }
+/* Two elements that are a direct child of `.apf-section` but do not wear
+   `.apf-check` or `.apf-narrow`, so nothing above touches them and these two
+   classes beat the (0,1,0) `.apf-field` / `.confirm-hint` margins they follow. */
+.apf-field.apf-under-section, .apf-grid.apf-under-section { margin-top: 10px; }
+.confirm-hint.apf-hint-tight { margin: 4px 0 8px; }
+/* The checkbox under a field, 8px below it where `.apf-section > .apf-check`
+   further down gives every other checkbox 10px; one class more than that rule. */
+.apf-section > .apf-check.apf-under-input-label { margin-top: 8px; }
+
 /* The allowlist picker is the widest part of the form and needs its own scroll
    box: an agent's full action list is longer than any dialog holding it. */
 .apf-action-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }

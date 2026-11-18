@@ -146,7 +146,7 @@ function _renderPlaybookList(playbooks) {
           <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? 'auto-enroll on' : 'auto-enroll off'}</span>
           ${b.completion_tag ? `<span class="chip">done: ${escHtml(b.completion_tag)}</span>` : ''}
           ${b.failing_hosts ? `<span class="chip chip-rose">held back on ${b.failing_hosts} host${b.failing_hosts === 1 ? '' : 's'}</span>` : ''}
-          ${b.description ? `<div class="muted-note" style="margin-top:4px;">${escHtml(b.description)}</div>` : ''}
+          ${b.description ? `<div class="muted-note bl-desc-line">${escHtml(b.description)}</div>` : ''}
         </div>
         <div class="card-actions">
           <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>

@@ -411,6 +411,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .vuln-count.c-sky    { color: var(--sky-ink); }
 .vuln-count.c-dim    { color: var(--text-3); }
 .vuln-sync-note { font-size: 12px; color: var(--text-3); margin-top: 12px; }
+/* The exception chip's kind word (vigil-vulns.js) sits back a little. */
+.vuln-exception-kind { opacity: .7; }
 
 /* ═══════════════════════════════════════════
    FILTER TABS

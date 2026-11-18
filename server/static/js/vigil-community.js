@@ -36,7 +36,7 @@ function _communityEmptyHtml(kind) {
   return `<div class="empty-state">
     <div class="empty-state-title">No community ${escHtml(kind)} yet</div>
     <div class="empty-state-desc">They come from the public
-      <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Vigil-Approved-Scripts</a>
+      <a class="community-catalog-link" href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener">Vigil-Approved-Scripts</a>
       repo. Be the first to contribute — open one in its editor and use Submit to Community.</div>
   </div>`;
 }
@@ -74,20 +74,20 @@ function _isReferenced(item, keys) {
 function _requiresHtml(item) {
   const needs = item.requires || [];
   const held = item.have
-    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--mint-ink);">Already in your library.</div>`
+    ? `<div class="community-requires community-requires-held">Already in your library.</div>`
     : '';
   if (!needs.length) return held;
   if (item.have) return held;
   const rows = needs.map(ref => {
     const held = ref.have === true;
     const mark = held
-      ? '<span style="color:var(--mint-ink);">already yours</span>'
-      : '<span style="color:var(--sky-ink);">will fork</span>';
-    return `<div style="display:flex;justify-content:space-between;gap:10px;">
-      <span style="color:var(--text-2);">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
+      ? '<span class="community-require-held">already yours</span>'
+      : '<span class="community-require-will">will fork</span>';
+    return `<div class="community-require-row">
+      <span class="community-require-name">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
   }).join('');
-  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;">
-    <div style="color:var(--text-3);margin-bottom:5px;">Pulls in ${needs.length} item${needs.length === 1 ? '' : 's'}:</div>
+  return `<div class="community-requires">
+    <div class="community-require-count">Pulls in ${needs.length} item${needs.length === 1 ? '' : 's'}:</div>
     ${rows}
   </div>`;
 }
@@ -105,7 +105,7 @@ function _communityCardHtml(item) {
   if (item.author) meta.push(`by ${escHtml(item.author)}`);
 
   const github = item.html_url
-    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>View on GitHub</a>`
+    ? `<a class="btn btn-ghost btn-sm community-github-link" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>View on GitHub</a>`
     : '';
   // Was built as a JS argument string: `'${item.kind}','${encodeURIComponent(
   // item.filename)}'` spliced into an onclick. encodeURIComponent is the wrong
@@ -175,21 +175,21 @@ function _renderCommunity(kind) {
     const serving = visible.filter(i => _isReferenced(i, referenced));
     if (serving.length && !communityShowServing) {
       grid.innerHTML = standalone.map(_communityCardHtml).join('')
-        + `<div class="empty-state" style="grid-column:1/-1;padding:18px;">
+        + `<div class="empty-state community-grid-banner">
              <div class="empty-state-desc">
                ${serving.length} more task${serving.length === 1 ? ' is' : 's are'} used by a playbook or automation,
                and come${serving.length === 1 ? 's' : ''} along when you fork it.
-               <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
+               <button class="btn btn-ghost btn-sm community-serving-toggle"
                        data-comm-serving>Show ${serving.length === 1 ? 'it' : 'them'}</button>
              </div></div>`;
       return;
     }
     if (serving.length) {
       grid.innerHTML = standalone.concat(serving).map(_communityCardHtml).join('')
-        + `<div class="empty-state" style="grid-column:1/-1;padding:14px;">
+        + `<div class="empty-state community-grid-banner-tight">
              <div class="empty-state-desc">
                Showing tasks used by playbooks.
-               <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
+               <button class="btn btn-ghost btn-sm community-serving-toggle"
                        data-comm-serving>Hide them</button>
              </div></div>`;
       return;

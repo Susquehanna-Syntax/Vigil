@@ -211,7 +211,7 @@ function _dashHostCard(h) {
           <div class="host-metric-label">${label}</div>
           <div class="host-metric-value">—</div>
           <div class="host-metric-bar">
-            <div class="host-metric-fill" style="width: 0%; background: var(--${colour});"></div>
+            <div class="host-metric-fill host-metric-fill-${colour}"></div>
           </div>
         </div>`).join('')}
     </div>
@@ -715,7 +715,7 @@ async function _renderPendingEnrollments(body) {
       <span class="dash-host-dot dash-dot-pending"></span>
       <span class="dash-alert-msg"><strong>${escHtml(h.hostname)}</strong>
         <span class="muted-note">${escHtml(h.ip_address || '')}</span></span>
-      <span style="margin-left:auto;display:flex;gap:6px;">
+      <span class="dash-alert-actions">
         <button class="btn btn-mint btn-xs" data-approve="${escAttr(h.id)}">Approve</button>
         <button class="btn btn-rose btn-xs" data-reject="${escAttr(h.id)}">Reject</button>
       </span>
@@ -905,7 +905,7 @@ async function _renderPlaybookCoverage(body, settings) {
   body.innerHTML = `
     <div class="dash-stat">
       <div class="dash-stat-value" style="color:${pct === 100 ? 'var(--mint)' : 'var(--lemon)'};">
-        ${ran.length}<span style="font-size:18px;color:var(--text-3);">/${matching.length}</span></div>
+        ${ran.length}<span class="dash-stat-suffix">/${matching.length}</span></div>
       <div class="dash-stat-label">${escHtml(book.name)}${done ? '' : ' — no completion tag set'}</div>
       <div class="dash-cover-bar"><span style="width:${pct}%;"></span></div>
     </div>`;
@@ -970,7 +970,7 @@ async function _renderFirewallStatus(body, settings) {
   const active = payload.enabled ?? payload.active;
   body.innerHTML = `
     <div class="dash-stat">
-      <div class="dash-stat-value" style="color:${active === false ? 'var(--rose)' : 'var(--mint)'};font-size:22px;">
+      <div class="dash-stat-value dash-stat-value-22" style="color:${active === false ? 'var(--rose)' : 'var(--mint)'};">
         ${escHtml(String(backend))}</div>
       <div class="dash-stat-label">${rules.length} rule${rules.length === 1 ? '' : 's'}${
         active === false ? ' · inactive' : ''}</div>
@@ -1024,7 +1024,7 @@ async function _renderQuickDeploy(body, settings) {
   const def = rows.find(d => String(d.id) === String(settings.definition));
   if (!def) { _wEmpty(body, 'That task no longer exists'); return; }
   body.innerHTML = `
-    <div class="dash-stat" style="gap:10px;">
+    <div class="dash-stat dash-stat-gap10">
       <div class="dash-stat-label">${escHtml(def.name)}</div>
       <button class="btn btn-peach btn-sm" data-quick-deploy>Deploy…</button>
     </div>`;
@@ -1421,7 +1421,7 @@ async function openWidgetSettings(widgetId) {
     }).join('');
 
   document.getElementById('ws-body').innerHTML =
-    `${spec.description ? `<p class="muted-note" style="margin-bottom:14px;">${escHtml(spec.description)}</p>` : ''}
+    `${spec.description ? `<p class="muted-note widget-settings-desc">${escHtml(spec.description)}</p>` : ''}
      ${fields}
      <div class="modal-actions">
        <button class="btn btn-outline btn-sm" id="ws-cancel">Cancel</button>

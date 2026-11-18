@@ -39,12 +39,12 @@ function _tagKindBadge(kind) {
 
 function _tagCard(t) {
   const used = t.host_count === 0
-    ? '<span style="color:var(--text-3);">on no machines</span>'
+    ? '<span class="muted-span">on no machines</span>'
     : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
   const actions = t.editable && t.can_change !== false
     ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(t.id)}">Rename</button>
-       <button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-tag-del="${escAttr(t.id)}">Delete</button>`
-    : '<span class="confirm-hint" style="margin:0;">' +
+       <button class="btn btn-ghost btn-sm delete-btn" data-tag-del="${escAttr(t.id)}">Delete</button>`
+    : '<span class="confirm-hint hint-flush">' +
       (!t.editable ? 'maintained by Vigil' : t.site_id ? 'you can use it, not change it' : 'global: changed by an administrator of the whole install') + '</span>';
   return `<div class="bl-card">
     <div class="bl-card-head">
@@ -52,9 +52,9 @@ function _tagCard(t) {
         <span class="bl-name">${escHtml(t.name)}</span>
         ${_tagKindBadge(t.kind)}
       </div>
-      <div style="display:flex;gap:6px;align-items:center;">${actions}</div>
+      <div class="tag-card-actions">${actions}</div>
     </div>
-    <div class="bl-card-body" style="color:var(--text-2);font-size:12px;">
+    <div class="bl-card-body card-body-quiet">
       ${used}${t.description ? ' · ' + escHtml(t.description) : ''}
     </div>
   </div>`;

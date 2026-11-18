@@ -1135,3 +1135,58 @@ function termPlain(text, opts) {
     return line.replace(_TERM_ESC, '').replace(_TERM_CTRL, '');
   }).join('\n');
 }
+
+// ── Per-render styles without inline style attributes ────────────────────
+// The CSP refuses inline style attributes in markup, so a value worked out per render (a
+// bar's width, a state colour, a node's position) is written as
+// `data-css="width:42%;color:var(--mint)"` and applied here through
+// `element.style`, which the CSP does not govern. Only the properties below
+// are accepted and no value may load anything, so markup injected past the
+// escaping still cannot restyle the page into a fake one or fetch a URL.
+// A MutationObserver applies them as markup lands; a caller that measures
+// layout straight after setting innerHTML calls applyDataCss(container) first.
+const _DATA_CSS_PROPS = new Set([
+  'width', 'height', 'min-width', 'max-width', 'min-height', 'max-height',
+  'left', 'top', 'right', 'bottom', 'transform',
+  'color', 'background', 'background-color', 'border-color', 'box-shadow',
+  'fill', 'stroke', 'opacity',
+]);
+const _DATA_CSS_UNSAFE = /url\s*\(|image-set|image\s*\(|expression|\\|[<>{}@"']/i;
+
+//: [[property, value], ...] for the declarations in a data-css value that are
+//: allowed; anything else is dropped silently, never half-applied.
+function parseDataCss(text) {
+  const out = [];
+  for (const chunk of String(text ?? '').split(';')) {
+    const at = chunk.indexOf(':');
+    if (at < 1) continue;
+    const prop = chunk.slice(0, at).trim().toLowerCase();
+    const value = chunk.slice(at + 1).trim();
+    if (!value || _DATA_CSS_UNSAFE.test(value)) continue;
+    if (!_DATA_CSS_PROPS.has(prop) && !/^--[a-z0-9-]+$/.test(prop)) continue;
+    out.push([prop, value]);
+  }
+  return out;
+}
+
+//: Applies every data-css at or under `root` and removes the attribute, so a
+//: second pass (the observer after a direct call) does nothing.
+function applyDataCss(root) {
+  if (!root || root.nodeType !== 1) return;
+  const els = root.matches && root.matches('[data-css]') ? [root] : [];
+  els.push(...(root.querySelectorAll ? root.querySelectorAll('[data-css]') : []));
+  for (const el of els) {
+    for (const [prop, value] of parseDataCss(el.getAttribute('data-css'))) {
+      el.style.setProperty(prop, value);
+    }
+    el.removeAttribute('data-css');
+  }
+}
+
+if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined'
+    && document.documentElement) {
+  new MutationObserver((records) => {
+    for (const r of records) r.addedNodes.forEach((n) => applyDataCss(/** @type {Element} */ (n)));
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  document.addEventListener('DOMContentLoaded', () => applyDataCss(document.body));
+}

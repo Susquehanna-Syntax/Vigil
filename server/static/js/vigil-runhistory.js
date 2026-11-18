@@ -157,7 +157,7 @@ async function _openRunDetail(runId) {
     <div class="modal-title"><span>${escHtml(run.name_snapshot || 'Run')}</span>
       <button class="modal-close" id="rd-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <p class="muted" style="margin-bottom:12px;">${escHtml(run.state)} · ${escHtml(String(run.host_count))} host(s) · ${escHtml(String(run.step_count))} step(s)</p>
+    <p class="muted run-detail-intro">${escHtml(run.state)} · ${escHtml(String(run.host_count))} host(s) · ${escHtml(String(run.step_count))} step(s)</p>
     ${typeof runSummaryHtml === 'function' ? runSummaryHtml(run.summary) : ''}
     ${typeof flowRunHtml === 'function' ? flowRunHtml(run) : ''}
     <div class="run-task-list">${rows}</div>

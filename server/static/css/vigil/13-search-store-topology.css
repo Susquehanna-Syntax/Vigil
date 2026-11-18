@@ -167,6 +167,8 @@
    automation editor (inputsFormMount in vigil-pickers.js) — same shape as the
    deploy dialog's input rows, in a container the caller owns. */
 .inputs-form { display: grid; gap: 12px; margin-bottom: 14px; }
+/* The overlay-inputs modal's intro (vigil-pickers.js) clears the form below. */
+.muted-note.inputs-intro-note { margin-bottom: 6px; }
 .inputs-form-row { display: flex; flex-direction: column; gap: 5px; }
 .inputs-form-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .inputs-form-req { font-weight: 400; color: var(--text-3); }

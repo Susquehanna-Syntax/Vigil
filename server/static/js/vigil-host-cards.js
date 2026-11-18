@@ -62,7 +62,7 @@ function openHostDetail(card) {
   // Quick actions based on mode
   const actions = /** @type {HTMLElement} */ (document.getElementById('detail-actions'));
   if (d.mode === 'monitor') {
-    actions.innerHTML = '<div style="color: var(--text-3); font-size: 13px;">This host is in monitor mode — no task execution.</div>';
+    actions.innerHTML = '<div class="detail-actions-note">This host is in monitor mode — no task execution.</div>';
   } else {
     actions.innerHTML = `
       <button class="btn btn-sm btn-sky" disabled>
@@ -128,27 +128,26 @@ async function renderJackilRelated(section, body, kind, id, stillCurrent) {
 
   section.style.display = '';
   if (!data.available) {
-    body.innerHTML = `<div style="color: var(--text-3);">${escHtml(data.message || '')}</div>`;
+    body.innerHTML = `<div class="muted-span">${escHtml(data.message || '')}</div>`;
     return;
   }
 
   const links = data.links || [];
   const items = data.items || [];
   if (!links.length && !items.length) {
-    body.innerHTML = `<div style="color: var(--text-3);">Nothing in Jackil is linked to this ${escHtml(kind)} yet.</div>`;
+    body.innerHTML = `<div class="muted-span">Nothing in Jackil is linked to this ${escHtml(kind)} yet.</div>`;
     return;
   }
 
   let html = '';
   for (const link of links) {
     const status = link.status
-      ? `<div style="font-size: 11px; color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
+      ? `<div class="jackil-link-status" style="color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
       : '';
     html += `<div>${escHtml(link.relation)} · ${_jackilLink(link.url, link.label)}</div>${status}`;
   }
   if (items.length) {
-    html += '<div style="color: var(--text-3); font-size: 11px; text-transform: uppercase;'
-          + ' letter-spacing: .08em; margin-top: 8px;">Jackil Items</div>';
+    html += '<div class="jackil-related-label">Jackil Items</div>';
     for (const item of items) {
       html += `<div>${_jackilLink(item.url, item.name)}</div>`;
     }
@@ -176,7 +175,7 @@ function _jackilToneColor(tone) {
 function _jackilLink(url, label) {
   const text = escHtml(label || '');
   return url
-    ? `<a href="${escAttr(url)}" target="_blank" rel="noopener" style="color: var(--text-1); text-decoration: none; font-weight: 500;">${text}</a>`
+    ? `<a class="jackil-link" href="${escAttr(url)}" target="_blank" rel="noopener">${text}</a>`
     : text;
 }
 

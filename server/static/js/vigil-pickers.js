@@ -245,7 +245,7 @@ async function openInputsModal(opts) {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="muted-note" style="margin-bottom:6px;">Changes apply only where this task is used here — the task itself is untouched. Blank fields use the task's own values.</div>
+    <div class="muted-note inputs-intro-note">Changes apply only where this task is used here — the task itself is untouched. Blank fields use the task's own values.</div>
     ${sections || '<div class="muted-note">This task has no actions.</div>'}
     <div class="modal-actions">
       <button class="btn btn-ghost" id="inputs-reset" type="button">Reset to task defaults</button>

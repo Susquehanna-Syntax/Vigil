@@ -154,7 +154,7 @@ function _renderAutomations(autos) {
           <button class="btn btn-rose btn-xs" data-au-del="${a.id}">Delete</button>
         </div>
       </div>
-      <div class="muted-note" style="margin-bottom:8px;">${when} → run ${action} on ${escHtml(target)}.</div>
+      <div class="muted-note auto-card-note">${when} → run ${action} on ${escHtml(target)}.</div>
       <div class="bl-meta"><span>Ran <b>${a.run_count}</b> time${a.run_count === 1 ? '' : 's'}</span><span>Last run: ${escHtml(last)}</span></div>
     </div>`;
   }).join('');
@@ -297,7 +297,7 @@ async function _openAutoInputs() {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="muted-note" style="margin-bottom:10px;">The automation runs with these values,
+    <div class="muted-note auto-inputs-note">The automation runs with these values,
       whenever it fires — nobody is asked when it does.</div>
     <div class="inputs-form" id="ai-form"></div>
     <div class="confirm-actions">
