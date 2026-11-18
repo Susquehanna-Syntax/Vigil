@@ -333,6 +333,17 @@ class PollerPickTests(TestCase):
         body = client_for(self.admin).get(POLLERS).json()
         self.assertNotIn("web-1", [row["hostname"] for row in body])
 
+    def test_only_an_administrator_may_scan_from_a_poller(self):
+        # The dialog shows its scan form from this one field, so it answers the
+        # same question POST of a scan does — an administrator who may write the
+        # poller's site — rather than merely "is authenticated".
+        viewer = make_user("viewer-" + uuid4().hex[:8], Role.VIEWER)
+        for user, expected in ((self.admin, True), (viewer, False)):
+            with self.subTest(user=user.username):
+                body = client_for(user).get(POLLERS).json()
+                self.assertEqual([row["can_scan"] for row in body],
+                                 [expected, expected])
+
 
 class RoleTests(TestCase):
     """Reads open to every role that sees devices; writes admin-only."""

@@ -731,6 +731,33 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   </div>
 </div>
 
+{# Device discovery modal — opened by openDiscovery() in vigil-discovery.js (S9) #}
+<div class="modal-overlay" id="discovery-overlay" data-act="closeDiscovery"></div>
+<div class="modal modal-wide discovery-modal" id="discovery-modal">
+  <div class="modal-title">
+    <span>Discover devices</span>
+    <button class="modal-close" data-act="closeDiscovery">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form id="discovery-form" class="discovery-form" data-submit="startDiscoveryScan" data-a1="$event" hidden>
+    <label class="form-label discovery-sr" for="discovery-poller">Poller</label>
+    <select class="form-control" id="discovery-poller"></select>
+    <label class="form-label discovery-sr" for="discovery-cidr">Network</label>
+    <input class="form-control" id="discovery-cidr" placeholder="10.0.0.0/24" autocomplete="off">
+    <label class="form-label discovery-sr" for="discovery-ports">Ports</label>
+    <input class="form-control" id="discovery-ports" placeholder="Ports (optional)" autocomplete="off">
+    <label class="form-label discovery-sr" for="discovery-community">SNMP community</label>
+    <input class="form-control" id="discovery-community" type="password" autocomplete="off" placeholder="Community (optional)">
+    <button class="btn btn-sm btn-mint" type="submit">Scan</button>
+  </form>
+  <div class="discovery-help" id="discovery-help" hidden>Private IPv4 networks only, up to 1024 addresses.
+    Without ports it tries 22, 23, 80, 443, 445, 3389, 8080 and 8443; with an SNMP community it also reads each
+    host's name. The poller scans on its next check-in.</div>
+  <div id="discovery-scans" class="discovery-scans"></div>
+  <div id="discovery-result" class="discovery-result" hidden></div>
+</div>
+
 {# Task run detail modal — opened by openTaskDetail() in vigil-tasks.js #}
 <div class="modal-overlay" id="task-detail-overlay" data-act="closeTaskDetail"></div>
 <div class="modal modal-wide" id="task-detail-modal" style="max-height:80vh;display:flex;flex-direction:column;">
@@ -930,6 +957,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-topology.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
+<!-- vigil-discovery.js — the Discover dialog: scan a network from a poller and add what it found as devices (S9) -->
+<script src="{% static 'js/vigil-discovery.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->
 <script src="{% static 'js/vigil-instance-settings.js' %}"></script>
 <!-- vigil-api-keys.js — Settings → API & Webhooks pane (scoped keys, webhooks) -->

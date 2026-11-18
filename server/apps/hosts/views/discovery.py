@@ -69,6 +69,7 @@ class _PollerSerializer(serializers.Serializer):
     hostname = serializers.CharField()
     site_id = serializers.CharField(allow_null=True)
     online = serializers.BooleanField()
+    can_scan = serializers.BooleanField()
 
 
 class _ScanPollerSerializer(serializers.Serializer):
@@ -158,14 +159,19 @@ class _AdoptResultSerializer(serializers.Serializer):
 @scoping.module_view("devices")
 def discovery_pollers(request):
     """The hosts that can run a scan — the page's poller picker."""
-    return Response([_poller_out(host) for host in _pickable_pollers(request.user)])
+    return Response([_poller_out(request, host) for host in _pickable_pollers(request.user)])
 
 
-def _poller_out(host: Host) -> dict:
+def _poller_out(request, host: Host) -> dict:
     return {"id": str(host.id), "hostname": host.hostname,
             "site_id": _poller_site_id(host),
             # The pick shows whether the scan starts now or at the next check-in.
-            "online": host.status == Host.Status.ONLINE}
+            "online": host.status == Host.Status.ONLINE,
+            # What the picker offers to scan from, per poller rather than per
+            # user: a site-scoped administrator sees the list but scans only
+            # from the sites they may write — which is what POST says too.
+            "can_scan": _is_admin(request)
+                        and scoping.site_for_write(request.user, _poller_site_id(host))[1] is None}
 
 
 def _pickable_pollers(user):
