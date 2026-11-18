@@ -63,7 +63,12 @@ async function openUserSites(user) {
     // here, at the moment it happens, rather than in documentation.
     const warning = grants.length === 0
       ? `<div class="us-warning">
-           ${escHtml(t('{username} currently has {role} access to every site through their profile. Granting a site role will limit them to only the sites listed here.', { username: user.username, role: ROLE_LABELS[user.role] || user.role }))}
+           ${t('{username} currently has {role} access to every site through their profile. Granting a site role will limit them to only the sites listed here.', {
+             // The sentence comes from the catalog and is trusted; each value is
+             // escaped before it goes in, so the bold survives and nothing else does.
+             username: `<strong>${escHtml(user.username)}</strong>`,
+             role: `<strong>${escHtml(ROLE_LABELS[user.role] || user.role)}</strong>`,
+           })}
          </div>`
       : '';
 
