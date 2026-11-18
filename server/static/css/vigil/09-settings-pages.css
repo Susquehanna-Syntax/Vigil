@@ -139,6 +139,17 @@ code.code-tight-sm {
 .ai-sug-actions { display: flex; gap: 8px; margin-top: 12px; }
 .ai-sug-actions .btn { flex: 1; justify-content: center; }
 .ai-empty, .ai-err { font-size: 13px; color: var(--text-3); padding: 20px 0; text-align: center; }
+/* The AI panel's own looks, moved out of vigil-ai.js (08j). `.page-sub` is
+   first in the cascade and `.section-label` comes later, so each carries its
+   shared class and beats it as the inline did. */
+.page-sub.ai-context { margin: -14px 0 18px; }
+.section-label.ai-ask-label { margin-top: 0; }
+.btn-sm.ai-run-btn { margin-top: 12px; }
+.ai-settings-btn { margin-left: 8px; }
+/* The note is a line of the picker row it hangs off, so it needed the row's
+   whole width to read as one sentence — `.ai-empty` above never sets a width. */
+.ai-empty.ai-empty-wide { width: 100%; }
+.bl-hint.ai-sug-note { margin-bottom: 8px; }
 .ai-err { color: var(--rose-ink); }
 .ai-note { font-size: 13px; color: var(--text-1); line-height: 1.5; padding: 12px 0; white-space: pre-wrap; }
 .ai-rejected { margin-top: 10px; font-size: 12px; color: var(--text-2); }
@@ -608,3 +619,23 @@ td.agent-hostname { font-weight: 600; }
 .wh-url-field { flex: 2; min-width: 220px; }
 .ak-sites-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
 
+/* Waves (Deployments → Waves), markup built by vigil-waves.js and vigil-tags.js
+   (08j). Nothing else gives a bare <span> in a card a colour, or one of these
+   button rows its layout, so each class settles its element outright the way
+   the inline style did; `.btn-ghost` sets a colour of its own and is loaded
+   earlier, so the Delete buttons carry that shared class too and beat it. */
+.rose-note { color: var(--rose-ink); }
+.muted-span { color: var(--text-3); }
+.btn-ghost.delete-btn { color: var(--rose-ink); }
+.wave-card-actions { display: flex; gap: 6px; }
+.bl-card-body.card-body-lines {
+  color: var(--text-2); font-size: 12px; line-height: 1.7;
+}
+/* The wave's tag chips: the inline style only spaced this row 4px below the one
+   above and never set a size, so `.chip` keeps doing the laying out. */
+.wave-card-tags { margin-top: 4px; }
+/* `.confirm-hint` sets the size and colour this one already has, so it is named
+   only to beat that class's 6px top margin the way the inline did. */
+.confirm-hint.hint-flush { margin: 0; }
+.tag-card-actions { display: flex; gap: 6px; align-items: center; }
+.bl-card-body.card-body-quiet { color: var(--text-2); font-size: 12px; }

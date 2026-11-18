@@ -112,13 +112,13 @@ function apfRender(container, values, ctx) {
   container.innerHTML = `
   <div class="apf-section">
     <div class="deploy-input-label">Agent mode</div>
-    <div class="tab-bar apf-mode-tabs" style="margin:6px 0;">${modeTabs}</div>
+    <div class="tab-bar apf-mode-tabs">${modeTabs}</div>
     <div class="confirm-hint">${escHtml(_APF_MODE_HINTS[v.mode])}</div>
   </div>
 
 <div class="apf-section"${v.mode === 'managed' ? '' : ' hidden'}>
   <div class="deploy-input-label">Allowed actions</div>
-  <p class="confirm-hint" style="margin:4px 0 8px;">Only used in managed mode. Nothing here lets a task run
+  <p class="confirm-hint apf-hint-tight">Only used in managed mode. Nothing here lets a task run
     arbitrary commands — <span class="mono">run_command</span> can never be allowlisted.</p>
   <div class="apf-action-tools">
     <input type="search" class="form-control apf-action-search" placeholder="Search actions…" aria-label="Search actions">
@@ -135,16 +135,16 @@ function apfRender(container, values, ctx) {
     <label class="apf-field"><span class="apf-field-label">Add fallback</span>
       <select class="form-control apf-add-fallback">${_apfFallbackOptions(v, ctx)}</select></label>
   </div>
-  <div class="apf-field" style="margin-top:10px;"><span class="apf-field-label">Fallback relays, in order</span>
+  <div class="apf-field apf-under-section"><span class="apf-field-label">Fallback relays, in order</span>
     <div class="apf-fallbacks">${_apfFallbackRows(v, ctx)}</div></div>
-  <label class="apf-check" style="margin-top:8px;">
+  <label class="apf-check apf-under-input-label">
     <input type="checkbox" class="apf-dashboard-fallback"${v.include_dashboard_fallback ? ' checked' : ''}>
     <span>Fall back to this dashboard last</span></label>
 </div>
 
 <div class="apf-section">
   <div class="deploy-input-label">Live sessions</div>
-  <div class="confirm-hint apf-sessions-note" style="margin:4px 0 8px;">${
+  <div class="confirm-hint apf-sessions-note apf-hint-tight">${
     v.mode === 'monitor' ? 'Monitor mode never opens sessions.'
       : 'Off unless enabled here; every session still needs a two-factor code.'}</div>
   <label class="apf-check"><input type="checkbox" class="apf-shell"${v.allow_remote_shell ? ' checked' : ''}${v.mode === 'monitor' ? ' disabled' : ''}>
@@ -165,7 +165,7 @@ function apfRender(container, values, ctx) {
 
 <details class="apf-section apf-advanced">
   <summary class="deploy-input-label">Advanced</summary>
-  <div class="apf-grid" style="margin-top:10px;">
+  <div class="apf-grid apf-under-section">
     <label class="apf-field"><span class="apf-field-label">Check-in interval (s)</span>
       <input type="number" class="form-control apf-checkin" min="10" max="86400" value="${escAttr(String(v.checkin_interval))}"></label>
     <label class="apf-field"><span class="apf-field-label">Container update check (s)</span>
@@ -173,9 +173,9 @@ function apfRender(container, values, ctx) {
     <label class="apf-field"><span class="apf-field-label">Software inventory (s)</span>
       <input type="number" class="form-control apf-software-interval" min="60" max="2592000" value="${escAttr(String(v.software_interval))}"></label>
   </div>
-  <label class="apf-field" style="margin-top:10px;"><span class="apf-field-label">Watched processes</span>
+  <label class="apf-field apf-under-section"><span class="apf-field-label">Watched processes</span>
     <input type="text" class="form-control apf-process-watch" placeholder="nginx, postgres" value="${escAttr(v.process_watch)}"></label>
-  <label class="apf-check" style="margin-top:8px;"><input type="checkbox" class="apf-reprovision"${v.allow_reprovision ? ' checked' : ''}${v.mode === 'monitor' ? ' disabled' : ''}>
+  <label class="apf-check apf-under-input-label"><input type="checkbox" class="apf-reprovision"${v.allow_reprovision ? ' checked' : ''}${v.mode === 'monitor' ? ' disabled' : ''}>
     <span>Allow remote rebuild of this machine</span></label>
 </details>`;
 

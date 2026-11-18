@@ -68,11 +68,11 @@ function _ensureAiModal() {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="page-sub" id="ai-context" style="margin:-14px 0 18px;"></div>
+    <div class="page-sub ai-context" id="ai-context"></div>
     <div id="ai-picker-wrap">
-      <div class="section-label" style="margin-top:0;">Ask which models</div>
+      <div class="section-label ai-ask-label">Ask which models</div>
       <div class="ai-provider-picker" id="ai-picker"></div>
-      <button class="btn btn-mint btn-sm" id="ai-run" style="margin-top:12px;">Get suggestions</button>
+      <button class="btn btn-mint btn-sm ai-run-btn" id="ai-run">Get suggestions</button>
     </div>
     <div class="ai-compare" id="ai-compare"></div>`);
   /** @type {HTMLElement} */ (_aiModal.modal.querySelector('#ai-close')).onclick = () => _closeAi();
@@ -108,7 +108,7 @@ async function _openAi(context, runFn, staticResult) {
   if (!_aiProviders.length && !_staticResolver) {
     document.getElementById('ai-picker-wrap').innerHTML =
       `<div class="ai-empty">No AI providers are configured.
-       <button class="btn btn-mint btn-sm" style="margin-left:8px;" data-ai-settings>Add one in Settings</button></div>`;
+       <button class="btn btn-mint btn-sm ai-settings-btn" data-ai-settings>Add one in Settings</button></div>`;
     return;
   }
   picker.innerHTML = staticChip + _aiProviders.map(p => `
@@ -119,7 +119,7 @@ async function _openAi(context, runFn, staticResult) {
     </label>`).join('');
   if (!_aiProviders.length) {
     picker.insertAdjacentHTML('beforeend',
-      '<span class="ai-empty" style="width:100%;">Add AI providers in Settings to compare model suggestions alongside the built-in template.</span>');
+      '<span class="ai-empty ai-empty-wide">Add AI providers in Settings to compare model suggestions alongside the built-in template.</span>');
   }
   /** @type {NodeListOf<HTMLElement>} */ (picker.querySelectorAll('.ai-pick')).forEach(el => {
     const cb = /** @type {HTMLInputElement} */ (el.querySelector('input'));
@@ -211,7 +211,7 @@ function _renderColumn(id) {
           <span class="ai-sug-name">${escHtml((s.parsed && s.parsed.name) || 'Suggestion')}</span>
           <span class="risk-badge risk-${escHtml(s.risk || 'standard')}">${escHtml(s.risk || 'standard')}</span>
         </div>
-        ${s.note ? `<div class="bl-hint" style="margin-bottom:8px;">${escHtml(s.note)}</div>` : ''}
+        ${s.note ? `<div class="bl-hint ai-sug-note">${escHtml(s.note)}</div>` : ''}
         <pre class="ai-sug-yaml">${yamlToHtml(s.yaml)}</pre>
       </div>
       ${nav}

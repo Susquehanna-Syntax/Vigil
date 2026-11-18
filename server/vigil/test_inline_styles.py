@@ -80,6 +80,16 @@ SCRIPT_BATCH_4 = [
     "static/js/vigil-widgets.js",
 ]
 
+# Phase 08j: the agent profile editor, wave list, AI compare panel and tag
+# manager. Every attribute those four wrote moved into a class — nothing there
+# was worked out per render, so no file of this batch is ratcheted any more.
+SCRIPT_BATCH_5 = [
+    "static/js/vigil-agentprofile-form.js",
+    "static/js/vigil-waves.js",
+    "static/js/vigil-ai.js",
+    "static/js/vigil-tags.js",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
@@ -198,5 +208,12 @@ class InlineStyleRatchetTests(SimpleTestCase):
         for rel in SCRIPT_BATCH_4:
             self.assertEqual(_leftover_styles(rel, script=True), [],
                              f"{rel} was moved into classes in phase 08h; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")
+
+    def test_the_fifth_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_5:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08j; only "
                              'style="display:none;" or a value worked out per '
                              "render may remain.")

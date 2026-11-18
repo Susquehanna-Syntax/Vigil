@@ -28,16 +28,16 @@ function _filterWaves() {
 function _waveCard(w) {
   const tags = (w.tags || []).length
     ? (w.tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
-    : '<span style="color:var(--rose-ink);">no tags — matches nothing</span>';
+    : '<span class="rose-note">no tags — matches nothing</span>';
 
   // Matching vs actually-patched. They differ when an earlier wave already
   // claimed a host, and that difference is the thing operators trip over.
   const overlap = w.host_count - w.exclusive_host_count;
   const hosts = w.host_count === 0
-    ? '<span style="color:var(--text-3);">no hosts match</span>'
+    ? '<span class="muted-span">no hosts match</span>'
     : `${w.exclusive_host_count} host${w.exclusive_host_count === 1 ? '' : 's'}` +
       (overlap > 0
-        ? ` <span style="color:var(--text-3);">(${overlap} also in an earlier wave)</span>`
+        ? ` <span class="muted-span">(${overlap} also in an earlier wave)</span>`
         : '');
 
   return `<div class="bl-card">
@@ -47,14 +47,14 @@ function _waveCard(w) {
         <span class="bl-badge ${w.enabled ? 'on' : 'off'}">${w.enabled ? 'enabled' : 'off'}</span>
         ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
       </div>
-      <div style="display:flex;gap:6px;">
+      <div class="wave-card-actions">
         <button class="btn btn-sky btn-sm" data-wave-edit="${escAttr(w.id)}">Edit</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-wave-del="${escAttr(w.id)}">Delete</button>
+        <button class="btn btn-ghost btn-sm delete-btn" data-wave-del="${escAttr(w.id)}">Delete</button>
       </div>
     </div>
-    <div class="bl-card-body" style="color:var(--text-2);font-size:12px;line-height:1.7;">
+    <div class="bl-card-body card-body-lines">
       <div>${hosts} &middot; validation window ${escHtml(w.validation_hours)}h</div>
-      <div style="margin-top:4px;">${tags}</div>
+      <div class="wave-card-tags">${tags}</div>
     </div>
   </div>`;
 }

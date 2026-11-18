@@ -1,6 +1,4 @@
 {
-  "static/js/vigil-agentprofile-form.js": 8,
-  "static/js/vigil-ai.js": 6,
   "static/js/vigil-alerts.js": 9,
   "static/js/vigil-automations.js": 2,
   "static/js/vigil-charts.js": 2,
@@ -16,11 +14,9 @@
   "static/js/vigil-sites.js": 1,
   "static/js/vigil-statuspages.js": 3,
   "static/js/vigil-store.js": 2,
-  "static/js/vigil-tags.js": 5,
   "static/js/vigil-tasks.js": 8,
   "static/js/vigil-utils.js": 2,
   "static/js/vigil-vulns.js": 1,
-  "static/js/vigil-waves.js": 7,
   "static/js/vigil-widgets.js": 11,
   "templates/base.html": 13,
   "templates/login_verify.html": 1,
