@@ -9,6 +9,7 @@
 //      (POST, TOTP), /api/v1/wave-groups/ (GET).
 // The server's beat task (tasks.advance_rollouts, every 5 min) advances the
 // state machine; this page only reads and sends operator actions.
+// The look lives in .rlt-* classes in static/css/vigil/12-playbooks-apps-stacks.css.
 
 const WAVE_STATUS_COLOR = {
   passed: 'var(--mint)',
@@ -38,7 +39,7 @@ const RLT_ACTIVE = ['pending', 'running', 'validating'];
 
 function _waveDot(status) {
   const color = WAVE_STATUS_COLOR[status] || 'var(--text-3)';
-  return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};box-shadow:0 0 6px ${status === 'pending' ? 'none' : color};"></span>`;
+  return `<span class="rlt-wave-dot" style="background:${color};box-shadow:0 0 6px ${status === 'pending' ? 'none' : color};"></span>`;
 }
 
 function _fmtTs(ts) {
@@ -60,7 +61,7 @@ function _waveProgress(r) {
     // failed, never which machines or why.
     const openable = wave.tasks_total > 0;
     const failed = wave.tasks_failed
-      ? `<span class="chip" style="background:var(--rose);color:var(--bg);">${wave.tasks_failed} failed</span>`
+      ? `<span class="chip rlt-chip-failed">${wave.tasks_failed} failed</span>`
       : '<span></span>';
     return `<div class="rlt-wave">
       ${_waveDot(wave.status)}
@@ -105,20 +106,20 @@ async function openWaveHosts(rolloutId, waveId) {
     return `<tr>
       <td><strong>${escHtml(h.hostname)}</strong>
         <div class="muted-note">${escHtml(h.ip_address || '')}</div></td>
-      <td style="color:${stateColor};font-weight:600;">${escHtml(h.state)}</td>
+      <td class="rlt-host-state" style="color:${stateColor};">${escHtml(h.state)}</td>
       <td>${h.completed_at ? escHtml(new Date(h.completed_at).toLocaleString()) : '—'}</td>
       <td>${output
-        ? `<pre style="white-space:pre-wrap;margin:0;font-size:11px;max-height:140px;overflow:auto;">${escHtml(output)}</pre>`
+        ? `<pre class="rlt-host-output">${escHtml(output)}</pre>`
         : '<span class="muted-note">no output</span>'}</td>
     </tr>`;
   }).join('');
 
   document.getElementById('wh-body').innerHTML = `
-    <div class="muted-note" style="margin-bottom:10px;">
+    <div class="muted-note rlt-summary-below">
       ${data.total} machine${data.total === 1 ? '' : 's'} ·
       <span style="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};font-weight:600;">${data.failed} failed</span>
     </div>
-    <div style="overflow-x:auto;">
+    <div class="rlt-hosts-scroll">
       <table class="vuln-table">
         <thead><tr><th>Machine</th><th>State</th><th>Finished</th><th>Output</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="muted-note">Nothing dispatched in this wave.</td></tr>'}</tbody>
@@ -138,7 +139,7 @@ function _rolloutCard(r) {
   const reason = r.halted_reason
     ? `<div class="rlt-halted">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}
-        ${r.halted_by_name ? `<span style="color:var(--text-3);">by ${escHtml(r.halted_by_name)}</span>` : ''}
+        ${r.halted_by_name ? `<span class="rlt-halted-by">by ${escHtml(r.halted_by_name)}</span>` : ''}
        </div>`
     : '';
   return `<div class="def-card rlt-card"
@@ -255,9 +256,9 @@ function _renderRollouts() {
   if (!box) return;
   const items = _filterRollouts();
   if (!items.length) {
-    box.innerHTML = `<div class="empty-state" style="padding:28px;">
+    box.innerHTML = `<div class="empty-state rlt-empty-compact">
       <div class="empty-state-title">${_rolloutState.items.length ? 'No rollouts match that search' : 'No rollouts yet'}</div>
-      <div style="color:var(--text-3);font-size:12px;margin-top:6px;">${_rolloutState.items.length ? 'Clear the search to see them all.' : 'Start one from a task definition — it fans out wave by wave and halts itself on failure.'}</div>
+      <div class="rlt-empty-note">${_rolloutState.items.length ? 'Clear the search to see them all.' : 'Start one from a task definition — it fans out wave by wave and halts itself on failure.'}</div>
     </div>`;
   } else {
     box.innerHTML = _groupRollouts(items)
@@ -573,9 +574,9 @@ document.addEventListener('keydown', (e) => {
 
 function _detailRow(label, value) {
   if (value === null || value === undefined || value === '') return '';
-  return `<div style="display:flex;gap:12px;padding:5px 0;border-bottom:1px solid var(--s2);">
-    <span style="min-width:170px;color:var(--text-3);font-size:12px;">${escHtml(label)}</span>
-    <span style="font-size:12px;">${escHtml(String(value))}</span>
+  return `<div class="rlt-detail-row">
+    <span class="rlt-detail-label">${escHtml(label)}</span>
+    <span class="rlt-detail-value">${escHtml(String(value))}</span>
   </div>`;
 }
 
@@ -592,9 +593,9 @@ async function openRolloutDetail(rolloutId) {
                `${r.min_results_before_halt} host${r.min_results_before_halt === 1 ? '' : 's'} have reported`;
 
   document.getElementById('rollout-detail-body').innerHTML = `
-    ${r.halted_reason ? `<div style="margin-bottom:10px;padding:9px 11px;border:1px solid var(--rose);border-radius:6px;color:var(--rose-ink);font-size:12px;">
+    ${r.halted_reason ? `<div class="rlt-detail-halted">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}</div>` : ''}
-    <div style="margin-bottom:12px;">${_waveProgress(r)}</div>
+    <div class="rlt-detail-waves">${_waveProgress(r)}</div>
     ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'playbook' ? ' (playbook)' : ' (task)'))}
     ${_detailRow('State', r.state)}
     ${r.batch && r.wave_group_tag ? _detailRow('Wave group', r.wave_group_tag) : ''}
@@ -615,7 +616,7 @@ async function openRolloutDetail(rolloutId) {
       data-rlt-act="skip-validation">Skip validation, continue now</button>`);
   }
   if (r.state === 'running' || r.state === 'validating') {
-    acts.push(`<button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-rlt="${escAttr(r.id)}"
+    acts.push(`<button class="btn btn-ghost btn-sm rlt-act-halt" data-rlt="${escAttr(r.id)}"
       data-rlt-act="halt">Halt now</button>`);
   }
   if (r.state === 'halted') {
@@ -630,7 +631,7 @@ async function openRolloutDetail(rolloutId) {
         ? 'This wave is still reporting. Halting stops the rollout where it is.'
         : 'This rollout has finished — nothing left to do.';
   document.getElementById('rollout-detail-actions').innerHTML =
-    `<div class="confirm-hint" style="flex:1;margin:0;">${escHtml(hint)}</div>` + acts.join(' ');
+    `<div class="confirm-hint rlt-detail-hint">${escHtml(hint)}</div>` + acts.join(' ');
 
   document.getElementById('rollout-detail-overlay').classList.add('open');
   modal.classList.add('open');

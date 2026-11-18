@@ -583,3 +583,18 @@ td.agent-hostname { font-weight: 600; }
 .upload-file-cell { flex: 1; min-width: 180px; }
 .upload-file-input { color: var(--text-2); font-size: 13px; width: 100%; }
 
+/* Scoped API keys and webhooks (Settings → API & Webhooks), markup built by
+   vigil-api-keys.js. The look this screen carries outright: nothing else gives
+   these elements a margin or a width, so one class settles each of them the way
+   the inline style did. `.muted`, which the intro and the empty line already
+   wear for its size and colour, is in a later part and never sets either. */
+.ak-pane-intro { margin-bottom: 14px; }
+.ak-cards-below { margin-top: 16px; }
+.ak-empty-below { margin-top: 14px; }
+.ak-form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ak-name-field { flex: 1; min-width: 180px; }
+.wh-form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wh-name-field { flex: 1; min-width: 140px; }
+.wh-url-field { flex: 2; min-width: 220px; }
+.ak-sites-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+

@@ -58,8 +58,33 @@ FOURTH_BATCH = [
     "templates/pages/_settings.html",
 ]
 
+# SCRIPT_BATCH_1 is done to nothing: no attribute there is one a class could not
+# undo. SCRIPT_BATCH_2 keeps only attributes whose value is worked out per render
+# — a state colour, a width — and is held to that exact count in place of the
+# baseline entry this phase deleted, so its number stays honest as it goes down.
+SCRIPT_BATCH_1 = [
+    "static/js/vigil-api-keys.js",
+]
+
+SCRIPT_BATCH_2 = {
+    # Seven state colours: six attributes that are one colour and nothing else,
+    # plus the wave dot's background and glow, whose fixed declarations this
+    # phase moved to .rlt-wave-dot.
+    "static/js/vigil-rollout.js": 7,
+}
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
+
+def _leftover_styles(rel: str, script: bool) -> list[str]:
+    """Every style attribute in a finished file that is neither bare
+    display:none nor worked out per render. A template's per-render value is a
+    ``{{`` or a ``{%``; a script's is a template literal's ``${``."""
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    markers = ("${",) if script else ("{{", "{%")
+    return [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
+            if not _ALLOWED_LEFTOVER.match(m.group(0))
+            and not any(marker in m.group(0) for marker in markers)]
 
 
 def scanned_files() -> list[Path]:
@@ -84,7 +109,9 @@ class InlineStyleRatchetTests(SimpleTestCase):
         for path in scanned_files():
             rel = str(path.relative_to(ROOT))
             counted = count_inline_styles(path)
-            allowed = baseline.get(rel, 0)
+            # SCRIPT_BATCH_2 files left the baseline as they were cleared; their
+            # pinned counts live with the batch list instead.
+            allowed = baseline.get(rel, SCRIPT_BATCH_2.get(rel, 0))
             self.assertLessEqual(
                 counted, allowed,
                 f"{rel} has {counted} inline style attributes and the baseline "
@@ -120,39 +147,37 @@ class InlineStyleRatchetTests(SimpleTestCase):
 
     def test_the_first_batch_is_done(self):
         for rel in FIRST_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))]
-            self.assertEqual(leftover, [],
+            self.assertEqual(_leftover_styles(rel, script=False), [],
                              f"{rel} was moved into classes in phase 08a; only "
                              'style="display:none;" may remain.')
 
     def test_the_second_batch_is_done(self):
         for rel in SECOND_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))
-                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
-            self.assertEqual(leftover, [],
+            self.assertEqual(_leftover_styles(rel, script=False), [],
                              f"{rel} was moved into classes in phase 08b; only "
                              'style="display:none;" may remain.')
 
     def test_the_third_batch_is_done(self):
         for rel in THIRD_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))
-                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
-            self.assertEqual(leftover, [],
+            self.assertEqual(_leftover_styles(rel, script=False), [],
                              f"{rel} was moved into classes in phase 08c; only "
                              'style="display:none;" may remain.')
 
     def test_the_fourth_batch_is_done(self):
         for rel in FOURTH_BATCH:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
-                        if not _ALLOWED_LEFTOVER.match(m.group(0))
-                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
-            self.assertEqual(leftover, [],
+            self.assertEqual(_leftover_styles(rel, script=False), [],
                              f"{rel} was moved into classes in phase 08d; only "
                              'style="display:none;" may remain.')
+
+    def test_the_first_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_1:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08g; only "
+                             'style="display:none;" or a value worked out per '
+                             "render may remain.")
+
+    def test_the_second_script_batch_is_cleared_to_its_per_render_colours(self):
+        for rel in SCRIPT_BATCH_2:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08g; only "
+                             "a state colour worked out per render may remain.")

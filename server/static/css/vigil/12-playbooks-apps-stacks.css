@@ -587,6 +587,59 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .rlt-lane-body .rlt-wave-count { grid-column: 2 / -1; grid-row: 2; }
 .rlt-lane-body .rlt-wave-tags { display: none; }
 
+/* ── Inline styles moved out of vigil-api-keys.js (S6 08g) ─────────────── */
+/* `.totp-sub` sizes a checkbox row and `.btn` colours every button, both from a
+   part that loads earlier, so a single class here still wins by coming later.
+   Naming the element is how this select's width joins its neighbours' rules:
+   `.hunt-toolbar .form-control`, `.auto-when .form-control`. The other three
+   carry a second class because what styles them loads after this part —
+   11-hints-dashboards dims `.dash-card` rows and this very part lays out
+   `.totp-input`, which sizes the six digits someone types. A secret is not a
+   code: these boxes read as ordinary fields, and a revoked key or a paused
+   webhook stays the card it was, just dimmed. */
+.totp-sub.ak-site-check { display: flex; gap: 6px; align-items: center; }
+select.ak-access-field { width: auto; }
+.btn.rlt-act-halt { color: var(--rose-ink); }
+.dash-card.ak-row-revoked { opacity: .6; }
+.form-control.totp-input.ak-secret-field {
+  font-size: 13px; letter-spacing: normal; text-align: left;
+}
+/* ── Inline styles moved out of vigil-rollout.js (S6 08g) ──────────────── */
+/* A wave's own colour and glow stay inline — both are worked out per render —
+   but the dot was never a flex or grid item, which this restores. Two classes on
+   the failed count keep its rose over `.chip`, which tints a status tag and gives
+   it its padding in 09-settings-pages; that part also owns `.modal-actions`,
+   whose 26px top margin this row's hint used to sit flush against. */
+.rlt-wave-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.chip.rlt-chip-failed { background: var(--rose); color: var(--bg); }
+td.rlt-host-state { font-weight: 600; }
+.confirm-hint.rlt-detail-hint { flex: 1; margin: 0; }
+.rlt-host-output {
+  white-space: pre-wrap; margin: 0; font-size: 11px;
+  max-height: 140px; overflow: auto;
+}
+.rlt-summary-below { margin-bottom: 10px; }
+.rlt-hosts-scroll { overflow-x: auto; }
+.rlt-halted-by { color: var(--text-3); }
+.empty-state.rlt-empty-compact { padding: 28px; }
+.rlt-empty-note { color: var(--text-3); font-size: 12px; margin-top: 6px; }
+.rlt-detail-row {
+  display: flex; gap: 12px; padding: 5px 0;
+  border-bottom: 1px solid var(--s2);
+}
+.rlt-detail-label { min-width: 170px; color: var(--text-3); font-size: 12px; }
+.rlt-detail-value { font-size: 12px; }
+/* `.rlt-halted` is the same box on a rollout card; in the detail dialog it heads
+   the body instead of sitting under a head, and its padding is a hair roomier. */
+.rlt-detail-halted {
+  margin-bottom: 10px; padding: 9px 11px;
+  border: 1px solid var(--rose); border-radius: 6px;
+  color: var(--rose-ink); font-size: 12px;
+}
+/* The wave list above the detail rows. On a rollout card it is `.rlt-waves`,
+   which takes its gap from the head; here it needs the gap below instead. */
+.rlt-detail-waves { margin-bottom: 12px; }
+
 @media (max-width: 640px) {
   .rlt-lanes { grid-template-columns: minmax(0, 1fr); }
 }
