@@ -1162,26 +1162,25 @@ function _moveRptWidget(i, delta) {
 
 //: A select, box or radio on a chart's card, written into its draft row.
 //: false when the control is not one of the card's (typing is handled apart).
-function _rptWidgetChanged(t) {
-  const ds = t.dataset;
+function _rptWidgetChanged(el) {
+  const ds = el.dataset;
   const at = (k) => _rptDraft.widgets[Number(ds[k])];
   if ('rptWkind' in ds) {
-    const entry = _rptCatalog.find(c => c.kind === t.value);
+    const entry = _rptCatalog.find(c => c.kind === el.value);
     if (entry && at('rptWkind')) rptKindChanged(at('rptWkind'), entry);
   } else if ('rptWchart' in ds) {
-    if (at('rptWchart')) at('rptWchart').chart = t.value;
+    if (at('rptWchart')) at('rptWchart').chart = el.value;
   } else if ('rptWaxes' in ds) {
-    if (at('rptWaxes')) at('rptWaxes').axes = t.checked;
+    if (at('rptWaxes')) at('rptWaxes').axes = el.checked;
   } else if ('rptWlegend' in ds) {
-    if (at('rptWlegend')) at('rptWlegend').legend = t.value;
+    if (at('rptWlegend')) at('rptWlegend').legend = el.value;
   } else if ('rptWsrcmode' in ds) {
-    if (at('rptWsrcmode')) at('rptWsrcmode').sourceMode = t.value;
+    if (at('rptWsrcmode')) at('rptWsrcmode').sourceMode = el.value;
   } else if ('rptWsrc' in ds) {
     const d = at('rptWsrc');
     if (!d) return false;
-    const widget = /** @type {HTMLInputElement} */ (t);
-    if (widget.checked) d.sources.add(widget.value);
-    else d.sources.delete(widget.value);
+    if (el.checked) d.sources.add(el.value);
+    else d.sources.delete(el.value);
   } else {
     return false;
   }

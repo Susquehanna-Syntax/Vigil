@@ -20,28 +20,13 @@
 
 const AK_KEYS_API = '/api/v1/api-keys/';
 const AK_WEBHOOKS_API = '/api/v1/webhooks/';
-// Wrapped in t() where they are shown, not here: a module-level const is
-// evaluated before the i18n catalog (and t()) exist. This file loads as a
-// classic script, so these globals are shared with vigil-utils.js either way.
-/** @returns {string} */
-function AK_NOT_LICENSED() { return t('Scoped API keys and webhooks come with SQSY Business.'); }
-/** @returns {string} */
-function AK_ADMIN_ONLY() { return t('Only an admin can manage these.'); }
-/** @returns {string} */
-function AK_COPY_FAILED() { return t('Copy failed — select it and copy manually'); }
-// Two dialogs, one shape: a value shown once. Their intro lines differ only in
-// which name reads best over the box, so both are catalog entries here.
-/** @returns {string} */
-function AK_KEY_INTRO() { return t('Vigil keeps only a hash of it and cannot show it again.'); }
-/** @returns {string} */
-function AK_SECRET_INTRO() { return t('Vigil shows this secret once.'); }
-
-/** @type {Array<[string, () => string]>} */
+const AK_NOT_LICENSED = t('Scoped API keys and webhooks come with SQSY Business.');
+const AK_ADMIN_ONLY = t('Only an admin can manage these.');
 const AK_EVENTS = [
-  ['alert.sent', () => t('Alert fires')],
-  ['alert.resolved', () => t('Alert clears')],
-  ['task.finished', () => t('Task finishes')],
-  ['host.approved', () => t('Host approved')],
+  ['alert.sent', t('Alert fires')],
+  ['alert.resolved', t('Alert clears')],
+  ['task.finished', t('Task finishes')],
+  ['host.approved', t('Host approved')],
 ];
 
 let _akState = null;
@@ -89,8 +74,8 @@ function _akFeatureActive(name) {
 // reaches the pane but may not manage it. The sites endpoint is optional in
 // the same way: 404 on a source build, and then there are no pickers.
 function _akAbsence(status) {
-  if (status === 404) return AK_NOT_LICENSED();
-  if (status === 403) return AK_ADMIN_ONLY();
+  if (status === 404) return AK_NOT_LICENSED;
+  if (status === 403) return AK_ADMIN_ONLY;
   return null;
 }
 
@@ -110,9 +95,7 @@ function _renderKeys() {
   const form = _akFeatureActive('api_keys') ? _akKeyForm()
     : `<p class="muted">${escHtml(t('Creating keys needs an SQSY Business licence.'))}</p>`;
   const rows = _akState.keys.map(_akKeyRow).join('');
-  host.innerHTML = `<p class="muted ak-pane-intro">A scoped key lets a script ` // i18n-ignore
-    + `or Jackil use Vigil&rsquo;s API as you, limited to the sites you pick. `
-    + `Read-only keys cannot change anything.</p>`
+  host.innerHTML = `<p class="muted ak-pane-intro">${escHtml(t('A scoped key lets a script or Jackil use Vigil’s API as you, limited to the sites you pick. Read-only keys cannot change anything.'))}</p>`
     + form
     + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
             : `<p class="muted ak-empty-below">${escHtml(t('No keys yet.'))}</p>`);
@@ -188,7 +171,7 @@ function _akShowPlainKey(raw) {
   const m = mountModal('api-key-plain', { variant: 'm-pop' });
   m.setBody(
     `<div class="modal-title">${escHtml(t('Copy your key now'))}</div>`
-    + `<p class="muted ak-pane-intro">${escHtml(AK_KEY_INTRO())}</p>`
+    + `<p class="muted ak-pane-intro">${escHtml(t('Vigil keeps only a hash of it and cannot show it again.'))}</p>`
     + `<input type="text" class="form-control totp-input ak-secret-field" id="api-key-plain" readonly`
       + ` value="${escAttr(raw)}">`
     + `<div class="is-actions">`
@@ -201,7 +184,7 @@ function _akShowPlainKey(raw) {
       await navigator.clipboard.writeText(field ? field.value : '');
       showToast(t('Key copied'), 'success');
     } catch (e) {
-      showToast(AK_COPY_FAILED(), 'error');
+      showToast(t('Copy failed — select it and copy manually'), 'error');
     }
   };
   /** @type {HTMLElement} */ (m.modal.querySelector('[data-ak-done]')).onclick = () => m.close();
@@ -247,9 +230,7 @@ function _renderWebhooks() {
   const form = _akFeatureActive('webhooks') ? _akHookForm()
     : `<p class="muted">${escHtml(t('Adding webhooks needs an SQSY Business licence.'))}</p>`;
   const rows = _akState.hooks.map(_akHookRow).join('');
-  host.innerHTML = `<p class="muted ak-pane-intro">Vigil posts signed JSON to ` // i18n-ignore
-    + `these addresses. Check the X-Vigil-Signature header: sha256 HMAC of the body `
-    + `with the webhook&rsquo;s secret.</p>`
+  host.innerHTML = `<p class="muted ak-pane-intro">${escHtml(t('Vigil posts signed JSON to these addresses. Check the X-Vigil-Signature header: sha256 HMAC of the body with the webhook’s secret.'))}</p>`
     + form
     + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
             : `<p class="muted ak-empty-below">${escHtml(t('No webhooks yet.'))}</p>`);
@@ -266,14 +247,14 @@ function _akHookForm() {
     + `<div class="ak-sites-row">`
     + AK_EVENTS.map(([name, label], i) => `<label class="totp-sub ak-site-check">`
       + `<input type="checkbox" data-wh-event="${escAttr(name)}"${i < 2 ? ' checked' : ''}>`
-      + `${escHtml(label())}</label>`).join('')
+      + `${escHtml(label)}</label>`).join('')
     + `</div>`
     + _akSitePicker('data-wh-site');
 }
 
 function _akEventLabel(name) {
   const found = AK_EVENTS.find((row) => row[0] === name);
-  return found ? found[1]() : name;
+  return found ? found[1] : name;
 }
 
 function _akDeliveryText(w) {
@@ -425,9 +406,7 @@ function _akShowSecret(secret, title) {
   const m = mountModal('webhook-secret', { variant: 'm-pop' });
   m.setBody(
     `<div class="modal-title">${escHtml(title)}</div>`
-    + `<p class="muted ak-pane-intro">${escHtml(AK_SECRET_INTRO())} `
-      + `${escHtml(t('Verify each delivery with it: the X-Vigil-Signature header is a sha256'))} `
-      + `${escHtml(t('HMAC of the body, sent as'))} sha256=&lt;digest&gt;.</p>`
+    + `<p class="muted ak-pane-intro">${escHtml(t('Vigil shows this secret once. Verify each delivery with it: the X-Vigil-Signature header is a sha256 HMAC of the body, sent as {format}.', { format: 'sha256=<digest>' }))}</p>`
     + `<input type="text" class="form-control totp-input ak-secret-field" id="webhook-secret-plain" readonly`
       + ` value="${escAttr(secret)}">`
     + `<div class="is-actions">`
@@ -440,7 +419,7 @@ function _akShowSecret(secret, title) {
       await navigator.clipboard.writeText(field ? field.value : '');
       showToast(t('Secret copied'), 'success');
     } catch (e) {
-      showToast(AK_COPY_FAILED(), 'error');
+      showToast(t('Copy failed — select it and copy manually'), 'error');
     }
   };
   /** @type {HTMLElement} */ (m.modal.querySelector('[data-wh-done]')).onclick = () => m.close();
