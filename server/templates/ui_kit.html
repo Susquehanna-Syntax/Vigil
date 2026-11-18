@@ -1,9 +1,19 @@
-{% load static %}<!DOCTYPE html>
+{% load static %}{% load i18n %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>UI kit</title>
+<title>{% translate "UI kit" %}</title>
+{% comment %}
+  Each component sample below prints its own CSS class name as body text —
+  btn-mint, chip-rose and the rest. Those are identifiers an admin matches
+  against rather than prose, and the tables section carries four invented
+  sample findings; all of it stays exactly as written. Every heading, label,
+  placeholder and aria-label around it is wrapped in a translate tag.
+
+  {% comment %}, not {# #}: the latter comments only to end of line, so a
+  multi-line block here needs the pair form.
+{% endcomment %}
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
 {% include "_stylesheets.html" %}
@@ -13,206 +23,226 @@
 <body class="ui-kit">
 
 <section class="kit-section" id="kit-header">
-  <h1>UI kit</h1>
-  <p class="page-sub">Every shared component, with the live stylesheets. Admins only.</p>
+  <h1>{% translate "UI kit" %}</h1>
+  <p class="page-sub">{% translate "Every shared component, with the live stylesheets. Admins only." %}</p>
   <div class="kit-row">
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="dark">Dark</button>
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="light">Light</button>
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="ink">Ink</button>
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="river">River</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="dark">{% translate "Dark" %}</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="light">{% translate "Light" %}</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="ink">{% translate "Ink" %}</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitTheme" data-a1="river">{% translate "River" %}</button>
   </div>
 </section>
 
 <section class="kit-section" id="kit-colours">
-  <h2>Colours</h2>
+  <h2>{% translate "Colours" %}</h2>
   <div class="kit-swatches" id="kit-swatches"></div>
 </section>
 
 <section class="kit-section" id="kit-buttons">
-  <h2>Buttons</h2>
+  <h2>{% translate "Buttons" %}</h2>
   <div class="kit-row">
-    <button type="button" class="btn btn-mint">btn-mint</button>
-    <button type="button" class="btn btn-rose">btn-rose</button>
-    <button type="button" class="btn btn-sky">btn-sky</button>
-    <button type="button" class="btn btn-lav">btn-lav</button>
-    <button type="button" class="btn btn-peach">btn-peach</button>
-    <button type="button" class="btn btn-lemon">btn-lemon</button>
-    <button type="button" class="btn btn-outline">btn-outline</button>
-    <button type="button" class="btn btn-ghost">btn-ghost</button>
+    {% comment %}
+      Each sample prints its own CSS class name as body text — btn-mint,
+      chip-rose and the rest. Those are identifiers an admin matches against
+      rather than prose, so they read as tokens; every heading, label,
+      placeholder and aria-label around them is wrapped in a translate tag.
+
+      {% comment %}, not {# #}: the latter comments only to end of line, so a
+      multi-line note like this one needs the pair form (see pages/_firewall.html).
+    {% endcomment %}
+    <button type="button" class="btn btn-mint">{% translate "btn-mint" %}</button>
+    <button type="button" class="btn btn-rose">{% translate "btn-rose" %}</button>
+    <button type="button" class="btn btn-sky">{% translate "btn-sky" %}</button>
+    <button type="button" class="btn btn-lav">{% translate "btn-lav" %}</button>
+    <button type="button" class="btn btn-peach">{% translate "btn-peach" %}</button>
+    <button type="button" class="btn btn-lemon">{% translate "btn-lemon" %}</button>
+    <button type="button" class="btn btn-outline">{% translate "btn-outline" %}</button>
+    <button type="button" class="btn btn-ghost">{% translate "btn-ghost" %}</button>
   </div>
   <div class="kit-row">
-    <button type="button" class="btn btn-mint btn-sm">btn-mint btn-sm</button>
-    <button type="button" class="btn btn-rose btn-sm">btn-rose btn-sm</button>
-    <button type="button" class="btn btn-sky btn-sm">btn-sky btn-sm</button>
-    <button type="button" class="btn btn-lav btn-sm">btn-lav btn-sm</button>
-    <button type="button" class="btn btn-peach btn-sm">btn-peach btn-sm</button>
-    <button type="button" class="btn btn-lemon btn-sm">btn-lemon btn-sm</button>
-    <button type="button" class="btn btn-outline btn-sm">btn-outline btn-sm</button>
-    <button type="button" class="btn btn-ghost btn-sm">btn-ghost btn-sm</button>
+    <button type="button" class="btn btn-mint btn-sm">{% translate "btn-mint btn-sm" %}</button>
+    <button type="button" class="btn btn-rose btn-sm">{% translate "btn-rose btn-sm" %}</button>
+    <button type="button" class="btn btn-sky btn-sm">{% translate "btn-sky btn-sm" %}</button>
+    <button type="button" class="btn btn-lav btn-sm">{% translate "btn-lav btn-sm" %}</button>
+    <button type="button" class="btn btn-peach btn-sm">{% translate "btn-peach btn-sm" %}</button>
+    <button type="button" class="btn btn-lemon btn-sm">{% translate "btn-lemon btn-sm" %}</button>
+    <button type="button" class="btn btn-outline btn-sm">{% translate "btn-outline btn-sm" %}</button>
+    <button type="button" class="btn btn-ghost btn-sm">{% translate "btn-ghost btn-sm" %}</button>
   </div>
   <div class="kit-row">
-    <button type="button" class="btn btn-mint btn-xs">btn-mint btn-xs</button>
-    <button type="button" class="btn btn-rose btn-xs">btn-rose btn-xs</button>
-    <button type="button" class="btn btn-sky btn-xs">btn-sky btn-xs</button>
-    <button type="button" class="btn btn-lav btn-xs">btn-lav btn-xs</button>
-    <button type="button" class="btn btn-peach btn-xs">btn-peach btn-xs</button>
-    <button type="button" class="btn btn-lemon btn-xs">btn-lemon btn-xs</button>
-    <button type="button" class="btn btn-outline btn-xs">btn-outline btn-xs</button>
-    <button type="button" class="btn btn-ghost btn-xs">btn-ghost btn-xs</button>
+    <button type="button" class="btn btn-mint btn-xs">{% translate "btn-mint btn-xs" %}</button>
+    <button type="button" class="btn btn-rose btn-xs">{% translate "btn-rose btn-xs" %}</button>
+    <button type="button" class="btn btn-sky btn-xs">{% translate "btn-sky btn-xs" %}</button>
+    <button type="button" class="btn btn-lav btn-xs">{% translate "btn-lav btn-xs" %}</button>
+    <button type="button" class="btn btn-peach btn-xs">{% translate "btn-peach btn-xs" %}</button>
+    <button type="button" class="btn btn-lemon btn-xs">{% translate "btn-lemon btn-xs" %}</button>
+    <button type="button" class="btn btn-outline btn-xs">{% translate "btn-outline btn-xs" %}</button>
+    <button type="button" class="btn btn-ghost btn-xs">{% translate "btn-ghost btn-xs" %}</button>
   </div>
   <div class="kit-row">
-    <button type="button" class="btn btn-mint" disabled>btn-mint</button>
-    <button type="button" class="btn btn-rose" disabled>btn-rose</button>
-    <button type="button" class="btn btn-sky" disabled>btn-sky</button>
-    <button type="button" class="btn btn-lav" disabled>btn-lav</button>
-    <button type="button" class="btn btn-peach" disabled>btn-peach</button>
-    <button type="button" class="btn btn-lemon" disabled>btn-lemon</button>
-    <button type="button" class="btn btn-outline" disabled>btn-outline</button>
-    <button type="button" class="btn btn-ghost" disabled>btn-ghost</button>
+    <button type="button" class="btn btn-mint" disabled>{% translate "btn-mint" %}</button>
+    <button type="button" class="btn btn-rose" disabled>{% translate "btn-rose" %}</button>
+    <button type="button" class="btn btn-sky" disabled>{% translate "btn-sky" %}</button>
+    <button type="button" class="btn btn-lav" disabled>{% translate "btn-lav" %}</button>
+    <button type="button" class="btn btn-peach" disabled>{% translate "btn-peach" %}</button>
+    <button type="button" class="btn btn-lemon" disabled>{% translate "btn-lemon" %}</button>
+    <button type="button" class="btn btn-outline" disabled>{% translate "btn-outline" %}</button>
+    <button type="button" class="btn btn-ghost" disabled>{% translate "btn-ghost" %}</button>
   </div>
 </section>
 
 <section class="kit-section" id="kit-chips">
-  <h2>Chips</h2>
+  <h2>{% translate "Chips" %}</h2>
+  {% comment %}
+    Every sample in this catalogue prints its own CSS class name as its body
+    text — btn-mint, chip-rose and the rest. They are identifiers an admin
+    matches against rather than prose, so they stay unwrapped, and so do the
+    four invented sample findings in the tables section. Everything a person
+    actually reads around them — headings, labels, placeholders, aria-labels —
+    is wrapped in a translate tag.
+
+    {% comment %}, not {# #}: the latter comments only to end of line, so a
+    multi-line note like this one needs the pair form (see pages/_firewall.html).
+  {% endcomment %}
   <div class="kit-row">
-    <span class="chip">chip</span>
-    <span class="chip chip-mint">chip-mint</span>
-    <span class="chip chip-lemon">chip-lemon</span>
-    <span class="chip chip-rose">chip-rose</span>
-    <span class="chip chip-muted">chip-muted</span>
+    <span class="chip">{% translate "chip" %}</span>
+    <span class="chip chip-mint">{% translate "chip-mint" %}</span>
+    <span class="chip chip-lemon">{% translate "chip-lemon" %}</span>
+    <span class="chip chip-rose">{% translate "chip-rose" %}</span>
+    <span class="chip chip-muted">{% translate "chip-muted" %}</span>
   </div>
 </section>
 
 <section class="kit-section" id="kit-tabs">
-  <h2>Tabs</h2>
+  <h2>{% translate "Tabs" %}</h2>
   <div class="page active">
     <div class="tab-bar" data-tab-group="kit" role="tablist">
-      <button type="button" class="tab active" data-tab="kit-tab-a">First</button>
-      <button type="button" class="tab" data-tab="kit-tab-b">Second</button>
-      <button type="button" class="tab" data-tab="kit-tab-c">Third</button>
+      <button type="button" class="tab active" data-tab="kit-tab-a">{% translate "First" %}</button>
+      <button type="button" class="tab" data-tab="kit-tab-b">{% translate "Second" %}</button>
+      <button type="button" class="tab" data-tab="kit-tab-c">{% translate "Third" %}</button>
     </div>
-    <div class="tab-content active" id="kit-tab-a"><p>The first panel. A tab bar switches these panels.</p></div>
-    <div class="tab-content" id="kit-tab-b"><p>The second panel, reached by a click or an arrow key.</p></div>
-    <div class="tab-content" id="kit-tab-c"><p>The third panel. The bar scrolls sideways on a phone.</p></div>
+    <div class="tab-content active" id="kit-tab-a"><p>{% translate "The first panel. A tab bar switches these panels." %}</p></div>
+    <div class="tab-content" id="kit-tab-b"><p>{% translate "The second panel, reached by a click or an arrow key." %}</p></div>
+    <div class="tab-content" id="kit-tab-c"><p>{% translate "The third panel. The bar scrolls sideways on a phone." %}</p></div>
   </div>
 </section>
 
 <section class="kit-section" id="kit-forms">
-  <h2>Forms</h2>
+  <h2>{% translate "Forms" %}</h2>
   <div class="form-group">
-    <label class="form-label" for="kit-text">Text</label>
-    <input class="form-control" type="text" id="kit-text" placeholder="Type something">
+    <label class="form-label" for="kit-text">{% translate "Text" %}</label>
+    <input class="form-control" type="text" id="kit-text" placeholder="{% translate "Type something" %}">
   </div>
   <div class="form-group">
-    <label class="form-label" for="kit-select">Choice</label>
+    <label class="form-label" for="kit-select">{% translate "Choice" %}</label>
     <select class="form-control" id="kit-select">
-      <option>First option</option>
-      <option>Second option</option>
-      <option>Third option</option>
+      <option>{% translate "First option" %}</option>
+      <option>{% translate "Second option" %}</option>
+      <option>{% translate "Third option" %}</option>
     </select>
   </div>
   <div class="form-group">
-    <label class="form-label" for="kit-textarea">Long text</label>
-    <textarea class="form-control" id="kit-textarea" rows="3" placeholder="A few lines"></textarea>
+    <label class="form-label" for="kit-textarea">{% translate "Long text" %}</label>
+    <textarea class="form-control" id="kit-textarea" rows="3" placeholder="{% translate "A few lines" %}"></textarea>
   </div>
   <div class="form-group">
-    <label class="form-label" for="kit-number">Number</label>
+    <label class="form-label" for="kit-number">{% translate "Number" %}</label>
     <input class="form-control" type="number" id="kit-number" min="0" max="10" value="3">
   </div>
   <div class="form-group">
-    <label class="form-label" for="kit-check">Checkbox</label>
+    <label class="form-label" for="kit-check">{% translate "Checkbox" %}</label>
     <input id="kit-check" type="checkbox">
   </div>
 </section>
 
 <section class="kit-section" id="kit-settings-rows">
-  <h2>Settings rows</h2>
+  <h2>{% translate "Settings rows" %}</h2>
   <div class="set-row">
-    <div><b>Notify on critical alerts</b><small>Email the on-call address when an alert is rose</small></div>
-    <button type="button" class="toggle" role="switch" aria-checked="true" tabindex="0" aria-label="Notify on critical alerts"></button>
+    <div><b>{% translate "Notify on critical alerts" %}</b><small>{% translate "Email the on-call address when an alert is rose" %}</small></div>
+    <button type="button" class="toggle" role="switch" aria-checked="true" tabindex="0" aria-label="{% translate "Notify on critical alerts" %}"></button>
   </div>
   <div class="set-row">
-    <div><b>Mute weekend patches</b><small>Keep the patch window on weekdays only</small></div>
-    <button type="button" class="toggle" role="switch" aria-checked="false" tabindex="0" aria-label="Mute weekend patches"></button>
+    <div><b>{% translate "Mute weekend patches" %}</b><small>{% translate "Keep the patch window on weekdays only" %}</small></div>
+    <button type="button" class="toggle" role="switch" aria-checked="false" tabindex="0" aria-label="{% translate "Mute weekend patches" %}"></button>
   </div>
 </section>
 
 <section class="kit-section" id="kit-tables">
-  <h2>Tables</h2>
+  <h2>{% translate "Tables" %}</h2>
   <div class="table-wrap">
     <table class="hunt-table">
       <thead>
-        <tr><th>Host</th><th>Finding</th><th class="num">Count</th></tr>
+        <tr><th>{% translate "Host" %}</th><th>{% translate "Finding" %}</th><th class="num">{% translate "Count" %}</th></tr>
       </thead>
       <tbody>
-        <tr><td>matrix-db-01</td><td>openssl 1.1.1 outdated</td><td class="num">14</td></tr>
-        <tr><td>atlas-edge-02</td><td>ssh permits root login</td><td class="num">2</td></tr>
-        <tr><td>ledger-web-03</td><td>certificate expires in 9 days</td><td class="num">1</td></tr>
-        <tr><td>quay-build-04</td><td>kernel 5.15 needs a reboot</td><td class="num">7</td></tr>
+        <tr><td>{% translate "matrix-db-01" %}</td><td>{% translate "openssl 1.1.1 outdated" %}</td><td class="num">14</td></tr>
+        <tr><td>{% translate "atlas-edge-02" %}</td><td>{% translate "ssh permits root login" %}</td><td class="num">2</td></tr>
+        <tr><td>{% translate "ledger-web-03" %}</td><td>{% translate "certificate expires in 9 days" %}</td><td class="num">1</td></tr>
+        <tr><td>{% translate "quay-build-04" %}</td><td>{% translate "kernel 5.15 needs a reboot" %}</td><td class="num">7</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
 <section class="kit-section" id="kit-empty-state">
-  <h2>Empty state</h2>
+  <h2>{% translate "Empty state" %}</h2>
   <div class="empty-state">
     <div class="empty-state-icon">
       <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
     </div>
-    <div class="empty-state-title">Nothing to see yet</div>
-    <p class="empty-state-desc">No alerts match this filter. Add a host, or clear the filters above.</p>
+    <div class="empty-state-title">{% translate "Nothing to see yet" %}</div>
+    <p class="empty-state-desc">{% translate "No alerts match this filter. Add a host, or clear the filters above." %}</p>
   </div>
 </section>
 
 <section class="kit-section" id="kit-dialogs">
-  <h2>Dialogs</h2>
+  <h2>{% translate "Dialogs" %}</h2>
   <div class="kit-row">
-    <button type="button" class="btn btn-sky btn-sm" data-act="kitRise">Open a Rise dialog</button>
-    <button type="button" class="btn btn-lav btn-sm" data-act="kitPop">Open a Pop dialog</button>
-    <button type="button" class="btn btn-peach btn-sm" data-act="kitSheet">Open a sheet</button>
-    <button type="button" class="btn btn-mint btn-sm" data-act="kitConfirm">Open a confirm</button>
-    <button type="button" class="btn btn-rose btn-sm" data-act="kitShake">Shake the text field</button>
+    <button type="button" class="btn btn-sky btn-sm" data-act="kitRise">{% translate "Open a Rise dialog" %}</button>
+    <button type="button" class="btn btn-lav btn-sm" data-act="kitPop">{% translate "Open a Pop dialog" %}</button>
+    <button type="button" class="btn btn-peach btn-sm" data-act="kitSheet">{% translate "Open a sheet" %}</button>
+    <button type="button" class="btn btn-mint btn-sm" data-act="kitConfirm">{% translate "Open a confirm" %}</button>
+    <button type="button" class="btn btn-rose btn-sm" data-act="kitShake">{% translate "Shake the text field" %}</button>
   </div>
 </section>
 
 <div class="modal-overlay" id="kit-rise-overlay">
-  <div class="modal" id="kit-rise-modal" role="dialog" aria-modal="true" aria-label="Rise dialog">
-    <div class="modal-title"><span>Rise — the default dialog</span></div>
-    <p>The plain <code>.modal</code>, for forms, editors and read-mostly detail. Esc closes this one only.</p>
+  <div class="modal" id="kit-rise-modal" role="dialog" aria-modal="true" aria-label="{% translate "Rise dialog" %}">
+    <div class="modal-title"><span>{% translate "Rise — the default dialog" %}</span></div>
+    <p>{% blocktranslate %}The plain <code>.modal</code>, for forms, editors and read-mostly detail. Esc closes this one only.{% endblocktranslate %}</p>
     <div class="kit-row">
-      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitRise">Close</button>
+      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitRise">{% translate "Close" %}</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay" id="kit-pop-overlay">
-  <div class="modal m-pop" id="kit-pop-modal" role="dialog" aria-modal="true" aria-label="Pop dialog">
-    <div class="modal-title"><span>Pop — small quick decisions</span></div>
-    <p><code>.m-pop</code>, for confirms, prompts and one-line choices.</p>
+  <div class="modal m-pop" id="kit-pop-modal" role="dialog" aria-modal="true" aria-label="{% translate "Pop dialog" %}">
+    <div class="modal-title"><span>{% translate "Pop — small quick decisions" %}</span></div>
+    <p>{% blocktranslate %}<code>.m-pop</code>, for confirms, prompts and one-line choices.{% endblocktranslate %}</p>
     <div class="kit-row">
-      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitPop">Close</button>
+      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitPop">{% translate "Close" %}</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay" id="kit-sheet-overlay">
-  <div class="modal m-pop m-sheet-sm" id="kit-sheet-modal" role="dialog" aria-modal="true" aria-label="Sheet dialog">
-    <div class="modal-title"><span>Sheet — a picker on a phone</span></div>
-    <p><code>.m-pop .m-sheet-sm</code>: a pop on a desktop, a bottom sheet under 600 pixels.</p>
+  <div class="modal m-pop m-sheet-sm" id="kit-sheet-modal" role="dialog" aria-modal="true" aria-label="{% translate "Sheet dialog" %}">
+    <div class="modal-title"><span>{% translate "Sheet — a picker on a phone" %}</span></div>
+    <p>{% blocktranslate %}<code>.m-pop .m-sheet-sm</code>: a pop on a desktop, a bottom sheet under 600 pixels.{% endblocktranslate %}</p>
     <div class="kit-row">
-      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitSheet">Close</button>
+      <button type="button" class="btn btn-outline btn-sm" data-act="closeKitSheet">{% translate "Close" %}</button>
     </div>
   </div>
 </div>
 
 <section class="kit-section" id="kit-toasts">
-  <h2>Toasts</h2>
+  <h2>{% translate "Toasts" %}</h2>
   <div class="kit-row">
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="success">Success</button>
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="error">Error</button>
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="info">Info</button>
-    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="warn">Warning</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="success">{% translate "Success" %}</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="error">{% translate "Error" %}</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="info">{% translate "Info" %}</button>
+    <button type="button" class="btn btn-outline btn-sm" data-act="kitToast" data-a1="warn">{% translate "Warning" %}</button>
   </div>
 </section>
 

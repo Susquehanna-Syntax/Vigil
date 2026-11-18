@@ -27,6 +27,8 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/pages/_apps.html",
     "templates/pages/_vulns.html",
     "templates/pages/_stack_editor.html",
+    "templates/status_public.html",
+    "templates/ui_kit.html",
 ]
 
 _DROP = [
@@ -50,6 +52,10 @@ _LETTERS = re.compile(r"[A-Za-z]{2,}")
 
 def untranslated(text: str) -> list[str]:
     """The words a person would read that no translate tag covers."""
+    # Code, comments and SVG first: a title= inside a script's string is not
+    # an attribute anyone reads in this template.
+    for pattern in _DROP[:6]:
+        text = pattern.sub(" ", text)
     attrs = [m.group(1) for m in _VISIBLE_ATTR.finditer(text)]
     body = text
     for pattern in _DROP:
@@ -72,6 +78,7 @@ class TranslationReadyTests(SimpleTestCase):
         self.assertEqual(untranslated('<input placeholder="Search">'), ["[attribute] Search"])
         self.assertEqual(untranslated('<input placeholder="{% translate "Search" %}">'), [])
         self.assertEqual(untranslated("<script>const a = 'text';</script><p>{{ host.name }}</p>"), [])
+        self.assertEqual(untranslated("<script>x = '<span title=\"' + label + '\">';</script>"), [])
 
     def test_translated_templates_have_no_bare_text(self):
         for rel in TRANSLATED_TEMPLATES:

@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static %}{% load i18n %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -156,16 +156,16 @@
       <img class="logo" src="{% if logo_url %}{{ logo_url }}{% else %}{% static 'img/vigil-logo.png' %}{% endif %}" alt="">
       <div>
         <h1>{{ page.title }}</h1>
-        <div class="subtitle">live status · refreshes every minute</div>
+        <div class="subtitle">{% translate "live status · refreshes every minute" %}</div>
       </div>
     </header>
 
     <div class="overall overall--{% if all_up %}up{% else %}down{% endif %}" id="overall">
       <span class="up-dot"></span>
       <span class="overall-title" id="overall-title">
-        {% if all_up %}All systems operational{% else %}Some systems are down{% endif %}
+        {% if all_up %}{% translate "All systems operational" %}{% else %}{% translate "Some systems are down" %}{% endif %}
       </span>
-      <span class="overall-count" id="overall-count">{{ up_count }}/{{ hosts|length }} up</span>
+      <span class="overall-count" id="overall-count">{% blocktranslate with count=up_count total=hosts|length %}{{ count }}/{{ total }} up{% endblocktranslate %}</span>
     </div>
 
     <ul id="cards">
@@ -173,9 +173,9 @@
       <li class="card card--{% if h.up %}up{% else %}down{% endif %}" data-host-id="{{ h.id }}">
         <div class="card-top">
           <span class="card-name">{{ h.hostname }}</span>
-          <span class="card-uptime">{% if h.uptime_pct %}{{ h.uptime_pct }}% uptime{% endif %}</span>
+          <span class="card-uptime">{% if h.uptime_pct %}{% blocktranslate with pct=h.uptime_pct %}{{ pct }}% uptime{% endblocktranslate %}{% endif %}</span>
           <span class="card-state card-state--{% if h.up %}up{% else %}down{% endif %}">
-            {% if h.up %}operational{% else %}down{% endif %}
+            {% if h.up %}{% translate "operational" %}{% else %}{% translate "down" %}{% endif %}
           </span>
         </div>
         {% if h.bars %}
@@ -184,14 +184,14 @@
             {% for bar in h.bars %}<span class="ubar ubar--{{ bar.state }}" title="{{ bar.label }}"></span>{% endfor %}
           </div>
           <div class="uptime-axis">
-            <span>{{ window_days }} days ago</span>
-            <span>today</span>
+            <span>{% blocktranslate with days=window_days %}{{ days }} days ago{% endblocktranslate %}</span>
+            <span>{% translate "today" %}</span>
           </div>
         </div>
         {% endif %}
       </li>
       {% empty %}
-      <li class="card card-empty">No hosts on this page yet.</li>
+      <li class="card card-empty">{% translate "No hosts on this page yet." %}</li>
       {% endfor %}
     </ul>
 
@@ -199,9 +199,9 @@
     <footer>
       <span class="powered">
         <img src="{% static 'img/vigil-logo.png' %}" alt="">
-        Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.
+        {% blocktranslate %}Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.{% endblocktranslate %}
       </span>
-      <span class="sqsy">A <b>SQSY</b> · Susquehanna Syntax product</span>
+      <span class="sqsy">{% blocktranslate %}A <b>SQSY</b> · Susquehanna Syntax product{% endblocktranslate %}</span>
     </footer>
     {% endif %}
   </div>
