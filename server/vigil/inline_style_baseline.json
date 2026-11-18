@@ -23,6 +23,7 @@
   "static/js/vigil-utils.js": 2,
   "static/js/vigil-vulns.js": 1,
   "static/js/vigil-waves.js": 7,
+  "static/js/vigil-widgets.js": 11,
   "templates/base.html": 13,
   "templates/login_verify.html": 1,
   "templates/pages/_firewall.html": 4,

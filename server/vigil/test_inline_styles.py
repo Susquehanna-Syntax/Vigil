@@ -119,12 +119,6 @@ class InlineStyleRatchetTests(SimpleTestCase):
         baseline = load_baseline()
         for path in scanned_files():
             rel = str(path.relative_to(ROOT))
-            if rel in SCRIPT_BATCH_2:
-                # Those two keep per-render attributes by design, so the count
-                # here would say nothing. test_the_second_script_batch_is_done
-                # holds them instead, and fails on an attribute that is neither
-                # display:none nor built from `${...}`.
-                continue
             counted = count_inline_styles(path)
             allowed = baseline.get(rel, 0)
             self.assertLessEqual(
