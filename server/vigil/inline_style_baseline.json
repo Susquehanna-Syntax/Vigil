@@ -32,7 +32,7 @@
   "templates/pages/_monitor.html": 2,
   "templates/pages/_playbooks.html": 2,
   "templates/pages/_reprovision.html": 1,
-  "templates/pages/_settings.html": 108,
+  "templates/pages/_settings.html": 6,
   "templates/pages/_task_editor.html": 1,
   "templates/pages/_tasks.html": 1,
   "templates/pages/_vulns.html": 2,

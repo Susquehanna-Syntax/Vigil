@@ -51,7 +51,15 @@ THIRD_BATCH = [
     "templates/pages/_playbooks.html",
 ]
 
+# The Settings page, cleared in 08d: what remains is bare style="display:none;"
+# (scripts show those elements with element.style.display = '', which a class
+# could not undo). The theme previews' colours are tokens in tokens.css.
+FOURTH_BATCH = [
+    "templates/pages/_settings.html",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
+
 
 
 def scanned_files() -> list[Path]:
@@ -137,4 +145,14 @@ class InlineStyleRatchetTests(SimpleTestCase):
                         and "{{" not in m.group(0) and "{%" not in m.group(0)]
             self.assertEqual(leftover, [],
                              f"{rel} was moved into classes in phase 08c; only "
+                             'style="display:none;" may remain.')
+
+    def test_the_fourth_batch_is_done(self):
+        for rel in FOURTH_BATCH:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            leftover = [m.group(0) for m in re.finditer(r'style="[^"]*"', text)
+                        if not _ALLOWED_LEFTOVER.match(m.group(0))
+                        and "{{" not in m.group(0) and "{%" not in m.group(0)]
+            self.assertEqual(leftover, [],
+                             f"{rel} was moved into classes in phase 08d; only "
                              'style="display:none;" may remain.')
