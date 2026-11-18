@@ -60,7 +60,7 @@ function _isRenderGroup(group) {
   const testable = ['greenbone', 'nessus', 'jackil', 'email'].includes(group.id);
   return (
     `<div class="totp-card">` +
-      (group.help ? `<div class="totp-sub" style="margin-bottom:16px;">${escHtml(group.help)}</div>` : '') +
+      (group.help ? `<div class="totp-sub is-help-below">${escHtml(group.help)}</div>` : '') +
       `<div class="is-fields">${group.fields.map(_isRenderField).join('')}</div>` +
       `<div class="is-actions">` +
         `<button type="button" class="btn btn-mint btn-sm" data-act="saveInstanceSettings" data-a1="${group.id}">Save</button>` +
@@ -280,7 +280,7 @@ async function loadJackilTickets() {
     + `</div>`;
   }).join('');
   host.innerHTML = `<div class="dash-cards">${rows}</div>`
-    + `<p class="muted" style="margin-top:12px;">${data.count} ticket${data.count === 1 ? '' : 's'} opened in total.</p>`;
+    + `<p class="muted is-tickets-count">${data.count} ticket${data.count === 1 ? '' : 's'} opened in total.</p>`;
 }
 
 /* ── Jackil: integration keys ──────────────────────────────────────────────
@@ -304,19 +304,19 @@ async function loadJackilKeys() {
       : `<p class="muted">${escHtml(e.message || 'Could not load keys')}</p>`;
     return;
   }
-  const form = `<p class="totp-sub" style="margin-bottom:14px;">A key lets Jackil `
+  const form = `<p class="totp-sub totp-sub-tight">A key lets Jackil `
     + `look up hosts, tasks, playbooks, runs, automations and devices as you, and `
     + `read dashboard widgets. It cannot change anything until you tick a key's `
     + `box below.</p>`
-    + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">`
-      + `<input type="text" class="form-control" id="jackil-key-name" maxlength="80"`
-        + ` placeholder="Key name, e.g. Helpdesk" style="flex:1;min-width:180px;">`
+    + `<div class="ak-form-row">`
+      + `<input type="text" class="form-control ak-name-field" id="jackil-key-name" maxlength="80"`
+        + ` placeholder="Key name, e.g. Helpdesk">`
       + `<button type="button" class="btn btn-primary btn-sm" data-jk-create>Create key</button>`
     + `</div>`;
   const rows = (data.keys || []).map(_jkRow).join('');
   host.innerHTML = form
-    + (rows ? `<div class="dash-cards" style="margin-top:16px;">${rows}</div>`
-            : '<p class="muted" style="margin-top:14px;">No keys yet.</p>');
+    + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
+            : '<p class="muted ak-empty-below">No keys yet.</p>');
 }
 
 function _jkRow(k) {
@@ -329,8 +329,7 @@ function _jkRow(k) {
   // The write grant is a checkbox rather than a button: it is a state an admin
   // sets, and seeing it ticked is what stops them wondering why Jackil can add
   // a printer. A revoked key shows its last state, disabled.
-  const write = `<label style="display:inline-flex;align-items:center;gap:5px;`
-    + `font-size:11px;white-space:nowrap;">`
+  const write = `<label class="jk-write-check">`
     + `<input type="checkbox" data-jk-write="${escAttr(String(k.id))}"`
       + `${k.can_write_devices ? ' checked' : ''}${k.revoked_at ? ' disabled' : ''}>`
     + `Can change devices</label>`;
@@ -338,7 +337,7 @@ function _jkRow(k) {
     : `<button type="button" class="btn btn-rose btn-sm wh-act" data-jk-revoke="${escAttr(String(k.id))}">Revoke</button>`;
   // Dimmed rather than flagged with a coloured edge: a revoked key is not an
   // alert, it is history.
-  return `<div class="dash-card"${k.revoked_at ? ' style="opacity:.6"' : ''}>`
+  return `<div class="dash-card${k.revoked_at ? ' ak-row-revoked' : ''}">`
     + `<div class="dash-card-main">`
       + `<div class="dash-card-title">${escHtml(k.name)}</div>`
       + `<div class="dash-card-sub">${sub}</div>`
@@ -366,10 +365,10 @@ function _jkShowPlainKey(raw) {
   const m = mountModal('jackil-key', { variant: 'm-pop' });
   m.setBody(
     `<div class="modal-title">Copy your key now</div>`
-    + `<p class="muted" style="margin-bottom:14px;">Vigil keeps only a hash of it `
+    + `<p class="muted ak-pane-intro">Vigil keeps only a hash of it `
       + `and cannot show it again.</p>`
-    + `<input type="text" class="form-control totp-input" id="jackil-key-plain" readonly`
-      + ` value="${escAttr(raw)}" style="font-size:13px;letter-spacing:normal;text-align:left;">`
+    + `<input type="text" class="form-control totp-input ak-secret-field" id="jackil-key-plain" readonly`
+      + ` value="${escAttr(raw)}">`
     + `<div class="is-actions">`
       + `<button type="button" class="btn btn-mint btn-sm" data-jk-copy>Copy</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-jk-done>Done</button>`

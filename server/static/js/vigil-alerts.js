@@ -73,7 +73,7 @@ function _alertItemHtml(alert, tab) {
         <div class="ack-menu-wrap">
           <button class="btn btn-sm btn-outline" data-ack-menu="${escAttr(alert.id)}">
             Ack
-            <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg class="alerts-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="ack-menu" id="ack-menu-${escAttr(alert.id)}">
             <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="3600">For 1 hour</div>
@@ -100,14 +100,15 @@ function _alertItemHtml(alert, tab) {
     time = `Fired ${_alertRelTime(alert.fired_at)}`;
   }
 
-  const titleStyle = tab === 'resolved' ? ' style="color: var(--text-2);"' : '';
+  let titleClass = 'alert-title';
+  if (tab === 'resolved') titleClass += ' alert-title-muted';
   const dotStyle = tab === 'resolved' ? `background: ${dot}; opacity: 0.5;` : `background: ${dot};`;
   return `
     <div class="alert-item" data-alert-id="${alert.id}">
       ${checkbox}
       <div class="alert-dot" style="${dotStyle}"></div>
       <div class="alert-content">
-        <div class="alert-title"${titleStyle}>${escHtml(alert.message)}</div>
+        <div class="${titleClass}">${escHtml(alert.message)}</div>
         <div class="alert-sub">${sub}</div>
       </div>
       <div class="alert-time">${time}</div>
@@ -118,24 +119,24 @@ function _alertItemHtml(alert, tab) {
 const _ALERT_EMPTY = {
   firing: `
     <div class="empty-state">
-      <div class="empty-state-icon" style="background: rgba(var(--rgb-mint), var(--tint-a));">
-        <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><polyline points="20 6 9 17 4 12"/></svg>
+      <div class="empty-state-icon empty-state-mint">
+        <svg viewBox="0 0 24 24" class="empty-state-svg-mint"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="empty-state-title">All clear</div>
       <div class="empty-state-desc">No alerts are currently firing. Everything looks healthy.</div>
     </div>`,
   ack: `
     <div class="empty-state">
-      <div class="empty-state-icon" style="background: rgba(var(--rgb-lemon), var(--tint-a));">
-        <svg viewBox="0 0 24 24" style="stroke: var(--lemon);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <div class="empty-state-icon empty-state-lemon">
+        <svg viewBox="0 0 24 24" class="empty-state-svg-lemon"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
       <div class="empty-state-title">No acknowledged alerts</div>
       <div class="empty-state-desc">Alerts you acknowledge move here until they resolve or re-fire.</div>
     </div>`,
   resolved: `
     <div class="empty-state">
-      <div class="empty-state-icon" style="background: rgba(var(--rgb-mint), var(--tint-a));">
-        <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <div class="empty-state-icon empty-state-mint">
+        <svg viewBox="0 0 24 24" class="empty-state-svg-mint"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       </div>
       <div class="empty-state-title">No resolved alerts yet</div>
       <div class="empty-state-desc">Resolved alerts keep their history here for reference.</div>

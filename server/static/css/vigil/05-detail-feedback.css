@@ -247,3 +247,13 @@
 .enroll-meta.enroll-replaces { margin-top: 6px; }
 .enroll-approve-actions { display: flex; gap: 8px; }
 
+/* ── Inline styles moved out of vigil-alerts.js (S6 08i) ───────────────── */
+/* The Alerts page's three empty states, whose icon box this part gives
+   `var(--s2)`, tint it in the colour of what an empty list means — mint for all
+   clear, lemon for alerts someone still owes an answer to — so each tint repeats
+   that class. And `.empty-state-icon svg` strokes every glyph with
+   `currentColor`; a mint one is not a grey one, so it names the element too. */
+.empty-state-icon.empty-state-mint { background: rgba(var(--rgb-mint), var(--tint-a)); }
+.empty-state-icon.empty-state-lemon { background: rgba(var(--rgb-lemon), var(--tint-a)); }
+.empty-state-icon svg.empty-state-svg-mint { stroke: var(--mint); }
+.empty-state-icon svg.empty-state-svg-lemon { stroke: var(--lemon); }

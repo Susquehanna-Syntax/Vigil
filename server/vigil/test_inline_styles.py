@@ -73,6 +73,15 @@ SCRIPT_BATCH_2 = {
     "static/js/vigil-rollout.js": 7,
 }
 
+# SCRIPT_BATCH_3 is done to nothing but the one alert dot, which stays in the
+# baseline at 1: its colour comes from the alert's severity, so a class could
+# not work it out per render.
+SCRIPT_BATCH_3 = [
+    "static/js/vigil-alerts.js",
+    "static/js/vigil-instance-settings.js",
+    "static/js/vigil-tasks.js",
+]
+
 _ALLOWED_LEFTOVER = re.compile(r'^style="display:none;"?$')
 
 
@@ -180,6 +189,12 @@ class InlineStyleRatchetTests(SimpleTestCase):
         for rel in SCRIPT_BATCH_2:
             self.assertEqual(_leftover_styles(rel, script=True), [],
                              f"{rel} was moved into classes in phase 08g; only "
+                             "a state colour worked out per render may remain.")
+
+    def test_the_third_script_batch_is_done(self):
+        for rel in SCRIPT_BATCH_3:
+            self.assertEqual(_leftover_styles(rel, script=True), [],
+                             f"{rel} was moved into classes in phase 08i; only "
                              "a state colour worked out per render may remain.")
 
     def test_base_is_done(self):
