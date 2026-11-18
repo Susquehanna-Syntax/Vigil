@@ -33,6 +33,9 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/pages/_statuspages.html",
     "templates/pages/_playbooks.html",
     "templates/pages/_policies.html",
+    "templates/pages/_monitor.html",
+    "templates/dashboard.html",
+    "templates/compliance_report.html",
 ]
 
 _DROP = [

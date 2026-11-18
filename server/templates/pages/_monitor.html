@@ -1,16 +1,16 @@
-{% load static %}
+{% load static %}{% load i18n %}
 {# Monitor page section — pin bar + host dropdown + gauges + charts + processes #}
 {# Logic: static/js/vigil-monitor.js (charts) + vigil-host-cards.js (pin bar / dropdown) | Styles: css/vigil/*.css .monitor-*, .gauge-*, .chart-*, .pin-*, .proc-* | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
     <section id="page-monitor" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Monitor<span>.</span></div>
-          <div class="page-sub">Real-time metrics for your infrastructure</div>
+          <div class="page-title">{% translate "Monitor" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Real-time metrics for your infrastructure" %}</div>
         </div>
         <button class="btn btn-outline btn-sm" data-act="refreshMonitor" id="monitor-refresh-btn">
           <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-          Refresh
+          {% translate "Refresh" %}
         </button>
       </div>
 
@@ -20,7 +20,7 @@
         <div class="host-selector-wrap">
           <button class="btn btn-sm btn-outline" data-act="toggleHostDropdown" data-a1="$event" id="host-selector-btn">
             <svg viewBox="0 0 24 24" class="host-selector-btn-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Select Host
+            {% translate "Select Host" %}
           </button>
           <div class="host-dropdown" id="host-dropdown">
             {% for host in hosts %}
@@ -39,13 +39,13 @@
                 sees it. vigil-host-cards.js binds this from the parent
                 item's data-* attributes instead.
               {% endcomment %}
-              <button class="hdi-pin" type="button" title="Pin host">
+              <button class="hdi-pin" type="button" title="{% translate "Pin host" %}">
                 <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
               </button>
             </div>
             {% endfor %}
             {% if not hosts %}
-            <div class="host-dropdown-empty">No hosts registered yet.</div>
+            <div class="host-dropdown-empty">{% translate "No hosts registered yet." %}</div>
             {% endif %}
           </div>
         </div>
@@ -53,9 +53,9 @@
 
       <!-- No host selected state -->
       <div id="monitor-empty" class="monitor-empty">
-        <div class="monitor-empty-title">Select a host to monitor</div>
+        <div class="monitor-empty-title">{% translate "Select a host to monitor" %}</div>
         <div class="monitor-empty-desc">
-          Pick a host from the bar above, or pin your favorites for quick access.
+          {% translate "Pick a host from the bar above, or pin your favorites for quick access." %}
         </div>
       </div>
 
@@ -70,9 +70,9 @@
             <div class="mhb-name" id="mon-hostname">—</div>
             <div class="mhb-meta" id="mon-meta">—</div>
           </div>
-          <button class="btn btn-outline btn-sm" id="mon-connect-btn" data-act="openConnectMenuForMonitor" data-a1="$el" title="Open a shell, get an SSH command, or download a .rdp file">
+          <button class="btn btn-outline btn-sm" id="mon-connect-btn" data-act="openConnectMenuForMonitor" data-a1="$el" title="{% translate "Open a shell, get an SSH command, or download a .rdp file" %}">
             <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            Connect
+            {% translate "Connect" %}
           </button>
           {% comment %}The web terminal's vendored assets, loaded on first use by
           loadTerminalAssets() in vigil-host-cards.js rather than on every page
@@ -84,12 +84,12 @@
                 data-guac="{% static 'js/vendor/guacamole-common.js' %}"
                 data-rdp="{% static 'js/vigil-rdp.js' %}"
                 data-xterm-css="{% static 'css/vendor/xterm.css' %}"></span>
-          <button class="btn btn-outline btn-sm" id="mon-containers-btn" data-act="openContainersForCurrentMonitor" title="Containers and compose stacks on this host">
+          <button class="btn btn-outline btn-sm" id="mon-containers-btn" data-act="openContainersForCurrentMonitor" title="{% translate "Containers and compose stacks on this host" %}">
             <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
-            Containers
+            {% translate "Containers" %}
           </button>
-          <span class="field-hint" tabindex="0" aria-label="About the time range"
-                data-hint="How far back the charts on this page look.&#10;&#10;Longer ranges hold more measurements than the chart has pixels, so Vigil shows every n-th real reading rather than averaging them together — a spike you can see is a spike that really happened.&#10;&#10;The newest reading is always included, so the right-hand edge is current.">?</span>
+          <span class="field-hint" tabindex="0" aria-label="{% translate "About the time range" %}"
+                data-hint="{% translate "How far back the charts on this page look.&#10;&#10;Longer ranges hold more measurements than the chart has pixels, so Vigil shows every n-th real reading rather than averaging them together — a spike you can see is a spike that really happened.&#10;&#10;The newest reading is always included, so the right-hand edge is current." %}">?</span>
           <div class="time-range-bar">
             <button class="time-btn active" data-range="60" data-act="setTimeRange" data-a1="60" data-a2="$el">1h</button>
             <button class="time-btn" data-range="360" data-act="setTimeRange" data-a1="360" data-a2="$el">6h</button>
@@ -99,7 +99,7 @@
         </div>
 
         <div class="detail-section mon-jackil-section" id="mon-jackil-section" style="display:none;">
-          <div class="detail-section-title">Related in Jackil</div>
+          <div class="detail-section-title">{% translate "Related in Jackil" %}</div>
           <div id="mon-jackil-body" class="mon-jackil-body"></div>
         </div>
 
@@ -113,7 +113,7 @@
               </svg>
               <div class="gauge-text gauge-text-sky" id="gauge-cpu-text">—</div>
             </div>
-            <div class="gauge-card-label">CPU</div>
+            <div class="gauge-card-label">{% translate "CPU" %}</div>
           </div>
           <div class="gauge-card">
             <div class="gauge-ring">
@@ -123,7 +123,7 @@
               </svg>
               <div class="gauge-text gauge-text-lavender" id="gauge-mem-text">—</div>
             </div>
-            <div class="gauge-card-label">Memory</div>
+            <div class="gauge-card-label">{% translate "Memory" %}</div>
           </div>
           <div class="gauge-card">
             <div class="gauge-ring">
@@ -133,10 +133,10 @@
               </svg>
               <div class="gauge-text gauge-text-mint" id="gauge-disk-text">—</div>
             </div>
-            <div class="gauge-card-label">Disk</div>
+            <div class="gauge-card-label">{% translate "Disk" %}</div>
           </div>
           <div class="gauge-card">
-            <div class="gauge-card-label gauge-card-label-flush">Load Average</div>
+            <div class="gauge-card-label gauge-card-label-flush">{% translate "Load Average" %}</div>
             <div class="gauge-card-value gauge-card-value-peach" id="gauge-load-text">—</div>
             <div class="gauge-load-sub" id="gauge-load-sub">1m / 5m / 15m</div>
           </div>
@@ -146,7 +146,7 @@
         <div class="chart-row">
           <div class="chart-card">
             <div class="chart-card-header">
-              <div class="chart-card-title">CPU Usage</div>
+              <div class="chart-card-title">{% translate "CPU Usage" %}</div>
               <div class="chart-card-latest" id="cpu-chart-latest">—</div>
             </div>
             <div class="chart-wrap"><canvas id="chart-cpu"></canvas></div>
@@ -157,7 +157,7 @@
         <div class="chart-row">
           <div class="chart-card">
             <div class="chart-card-header">
-              <div class="chart-card-title">Memory Usage</div>
+              <div class="chart-card-title">{% translate "Memory Usage" %}</div>
               <div class="chart-card-latest" id="mem-chart-latest">—</div>
             </div>
             <div class="chart-wrap"><canvas id="chart-mem"></canvas></div>
@@ -168,18 +168,18 @@
         <div class="chart-row two-col">
           <div class="chart-card">
             <div class="chart-card-header">
-              <div class="chart-card-title">Disk Usage</div>
+              <div class="chart-card-title">{% translate "Disk Usage" %}</div>
             </div>
             <div class="disk-bars" id="disk-bars">
-              <div class="disk-bars-empty">Waiting for data...</div>
+              <div class="disk-bars-empty">{% translate "Waiting for data..." %}</div>
             </div>
           </div>
           <div class="chart-card">
             <div class="chart-card-header">
-              <div class="chart-card-title">Network I/O</div>
+              <div class="chart-card-title">{% translate "Network I/O" %}</div>
               <div class="net-legend">
-                <span class="net-legend-recv">● recv</span>
-                <span class="net-legend-sent">● sent</span>
+                <span class="net-legend-recv">{% translate "● recv" %}</span>
+                <span class="net-legend-sent">{% translate "● sent" %}</span>
               </div>
             </div>
             <div class="chart-wrap"><canvas id="chart-net"></canvas></div>
@@ -190,7 +190,7 @@
         <div class="chart-row">
           <div class="chart-card">
             <div class="chart-card-header">
-              <div class="chart-card-title">Swap Usage</div>
+              <div class="chart-card-title">{% translate "Swap Usage" %}</div>
               <div class="chart-card-latest" id="swap-chart-latest">—</div>
             </div>
             <div class="chart-wrap"><canvas id="chart-swap"></canvas></div>
@@ -198,31 +198,31 @@
         </div>
 
         <!-- Top Processes -->
-        <div class="section-label mon-section-label-far">Top Processes</div>
+        <div class="section-label mon-section-label-far">{% translate "Top Processes" %}</div>
         <div class="proc-split">
           <div class="chart-card chart-card-flush">
             <div class="chart-card-header chart-card-header-flush">
-              <div class="chart-card-title">By CPU</div>
+              <div class="chart-card-title">{% translate "By CPU" %}</div>
             </div>
             <table class="proc-table" id="proc-table-cpu">
               <thead>
-                <tr><th>Process</th><th>PID</th><th class="proc-th-num">CPU %</th></tr>
+                <tr><th>{% translate "Process" %}</th><th>{% translate "PID" %}</th><th class="proc-th-num">{% translate "CPU %" %}</th></tr>
               </thead>
               <tbody>
-                <tr><td colspan="3" class="proc-td-wait">Waiting for data...</td></tr>
+                <tr><td colspan="3" class="proc-td-wait">{% translate "Waiting for data..." %}</td></tr>
               </tbody>
             </table>
           </div>
           <div class="chart-card chart-card-flush">
             <div class="chart-card-header chart-card-header-flush">
-              <div class="chart-card-title">By Memory</div>
+              <div class="chart-card-title">{% translate "By Memory" %}</div>
             </div>
             <table class="proc-table" id="proc-table-mem">
               <thead>
-                <tr><th>Process</th><th>PID</th><th class="proc-th-num">Mem %</th></tr>
+                <tr><th>{% translate "Process" %}</th><th>{% translate "PID" %}</th><th class="proc-th-num">{% translate "Mem %" %}</th></tr>
               </thead>
               <tbody>
-                <tr><td colspan="3" class="proc-td-wait">Waiting for data...</td></tr>
+                <tr><td colspan="3" class="proc-td-wait">{% translate "Waiting for data..." %}</td></tr>
               </tbody>
             </table>
           </div>
@@ -230,13 +230,13 @@
 
         <!-- Software -->
         <div class="section-label mon-section-label-far">
-          Software<span class="section-count" id="software-count"></span>
+          {% translate "Software" %}<span class="section-count" id="software-count"></span>
         </div>
         <div class="apps-host-toolbar">
-          <input type="search" class="form-control" id="software-q" placeholder="Filter this host's software…" autocomplete="off">
+          <input type="search" class="form-control" id="software-q" placeholder="{% translate "Filter this host's software…" %}" autocomplete="off">
         </div>
         <div id="software-list">
-          <div class="apps-empty-state">No software reported for this host yet.</div>
+          <div class="apps-empty-state">{% translate "No software reported for this host yet." %}</div>
         </div>
 
       </div>

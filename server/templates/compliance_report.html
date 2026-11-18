@@ -1,10 +1,10 @@
-{# Printable patch compliance report (Business: compliance_reports). Self-contained: print → PDF. #}
+{% load i18n %}{# Printable patch compliance report (Business: compliance_reports). Self-contained: print → PDF. #}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Patch compliance — {{ product }}</title>
+<title>{% blocktranslate %}Patch compliance — {{ product }}{% endblocktranslate %}</title>
 <style nonce="{{ request.csp_nonce }}">
   :root { --accent: {{ accent }}; --ink: #1d1b22; --muted: #6e6b76; --rule: #dcd9e0;
           --pass: rgba(126, 221, 181, 0.22); --fail: rgba(243, 139, 168, 0.22); }
@@ -37,32 +37,32 @@
 <main>
   <header>
     <div>
-      <h1>Patch compliance</h1>
-      <div class="meta">Generated {{ data.generated_at|slice:":16" }} UTC · {{ product }}</div>
+      <h1>{% translate "Patch compliance" %}</h1>
+      <div class="meta">{% blocktranslate with at=data.generated_at|slice:":16" %}Generated {{ at }} UTC · {{ product }}{% endblocktranslate %}</div>
     </div>
     {% if brand.logo_url %}<img src="{{ brand.logo_url }}" alt="{{ product }}">{% endif %}
   </header>
 
   <div class="stats">
-    <div class="stat"><b>{{ data.patched_pct }}%</b>of hosts patched within SLA</div>
-    <div class="stat"><b>{{ data.hosts_patched }} / {{ data.hosts_total }}</b>hosts with nothing overdue</div>
-    <div class="stat"><b>{{ data.sla_days.critical }} / {{ data.sla_days.important }} days</b>SLA for critical / important</div>
+    <div class="stat"><b>{{ data.patched_pct }}%</b>{% translate "of hosts patched within SLA" %}</div>
+    <div class="stat"><b>{{ data.hosts_patched }} / {{ data.hosts_total }}</b>{% translate "hosts with nothing overdue" %}</div>
+    <div class="stat"><b>{% blocktranslate with c=data.sla_days.critical i=data.sla_days.important %}{{ c }} / {{ i }} days{% endblocktranslate %}</b>{% translate "SLA for critical / important" %}</div>
   </div>
 
-  <h2>By site</h2>
+  <h2>{% translate "By site" %}</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Site</th><th class="num">Hosts</th><th class="num">Hosts overdue</th><th>Result</th></tr></thead>
+    <thead><tr><th>{% translate "Site" %}</th><th class="num">{% translate "Hosts" %}</th><th class="num">{% translate "Hosts overdue" %}</th><th>{% translate "Result" %}</th></tr></thead>
     <tbody>
     {% for s in data.sites %}
       <tr><td>{{ s.site }}</td><td class="num">{{ s.hosts }}</td><td class="num">{{ s.overdue_hosts }}</td>
-        <td><span class="pill {% if s.pass %}pass{% else %}fail{% endif %}">{% if s.pass %}Pass{% else %}Fail{% endif %}</span></td></tr>
-    {% empty %}<tr><td colspan="4">No hosts.</td></tr>{% endfor %}
+        <td><span class="pill {% if s.pass %}pass{% else %}fail{% endif %}">{% if s.pass %}{% translate "Pass" %}{% else %}{% translate "Fail" %}{% endif %}</span></td></tr>
+    {% empty %}<tr><td colspan="4">{% translate "No hosts." %}</td></tr>{% endfor %}
     </tbody>
   </table></div>
 
-  <h2>Missing updates by age</h2>
+  <h2>{% translate "Missing updates by age" %}</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Severity</th><th class="num">0–7 days</th><th class="num">8–30</th><th class="num">31–90</th><th class="num">90+</th></tr></thead>
+    <thead><tr><th>{% translate "Severity" %}</th><th class="num">{% translate "0–7 days" %}</th><th class="num">{% translate "8–30" %}</th><th class="num">{% translate "31–90" %}</th><th class="num">{% translate "90+" %}</th></tr></thead>
     <tbody>
     {% for severity, buckets in data.missing_by_age.items %}
       <tr><td>{{ severity|capfirst }}</td>{% for name, count in buckets.items %}<td class="num">{{ count }}</td>{% endfor %}</tr>
@@ -70,20 +70,20 @@
     </tbody>
   </table></div>
 
-  <h2>Hosts</h2>
+  <h2>{% translate "Hosts" %}</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Host</th><th class="num">Pending</th><th class="num">Overdue</th><th class="num">Oldest overdue</th></tr></thead>
+    <thead><tr><th>{% translate "Host" %}</th><th class="num">{% translate "Pending" %}</th><th class="num">{% translate "Overdue" %}</th><th class="num">{% translate "Oldest overdue" %}</th></tr></thead>
     <tbody>
     {% for h in data.hosts %}
       <tr><td>{{ h.hostname }}</td><td class="num">{{ h.pending }}</td><td class="num">{{ h.overdue }}</td>
-        <td class="num">{% if h.overdue %}{{ h.oldest_overdue_days }} days{% else %}—{% endif %}</td></tr>
+        <td class="num">{% if h.overdue %}{% blocktranslate with d=h.oldest_overdue_days %}{{ d }} days{% endblocktranslate %}{% else %}—{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table></div>
 
   <footer>
     <span>{% if brand.footer_text %}{{ brand.footer_text }}{% else %}{{ product }}{% endif %}</span>
-    <span>{% if licensed_to %}Licensed to {{ licensed_to }}{% endif %}</span>
+    <span>{% if licensed_to %}{% blocktranslate %}Licensed to {{ licensed_to }}{% endblocktranslate %}{% endif %}</span>
   </footer>
 </main>
 </body>
