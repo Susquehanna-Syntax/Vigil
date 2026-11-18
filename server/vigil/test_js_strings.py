@@ -89,6 +89,81 @@ def bare_strings(js: str) -> list[str]:
     return found
 
 
+_T_CALL = re.compile(r"(?<![\w$.])(tn?)\(")
+_LEADING_LITERAL = re.compile(r"\s*(['\"])((?:\\.|(?!\1).)*)\1\s*,?")
+_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+def _call_end(js: str, i: int) -> int:
+    """The index of the ``)`` that closes a call whose arguments start at i,
+    stepping over strings, template literals (and their ${...}) and comments."""
+    depth, stack, n = 0, [], len(js)
+    while i < n:
+        c = js[i]
+        if stack and stack[-1] == "`":
+            if c == "\\":
+                i += 2
+                continue
+            if c == "`":
+                stack.pop()
+            elif js.startswith("${", i):
+                stack.append("{")
+                i += 1
+            i += 1
+            continue
+        if c in "'\"":
+            j = i + 1
+            while j < n and js[j] != c:
+                j += 2 if js[j] == "\\" else 1
+            i = j + 1
+            continue
+        if js.startswith("//", i):
+            i = js.find("\n", i)
+            if i < 0:
+                return n
+            continue
+        if js.startswith("/*", i):
+            i = js.find("*/", i) + 2
+            continue
+        if c == "`":
+            stack.append("`")
+        elif c == "{":
+            stack.append("{")
+        elif c == "}" and stack:
+            stack.pop()
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            if depth == 0 and not stack:
+                return i
+            depth -= 1
+        i += 1
+    return n
+
+
+def unfilled_placeholders(js: str) -> list[str]:
+    """Each t('...{name}...') / tn() call whose {name} is given no value:
+    the screen would show the literal braces."""
+    found = []
+    for m in _T_CALL.finditer(js):
+        start = m.end()
+        args = js[start:_call_end(js, start)]
+        names, rest = set(), args
+        for _ in range(2 if m.group(1) == "tn" else 1):
+            lit = _LEADING_LITERAL.match(rest)
+            if not lit:
+                break
+            names |= set(_PLACEHOLDER.findall(lit.group(2)))
+            rest = rest[lit.end():]
+        if m.group(1) == "tn":
+            names.discard("n")
+        for name in sorted(names):
+            if not re.search(r"(?<![\w$.])" + name + r"\s*[:,}]", rest):
+                line = js.count("\n", 0, start) + 1
+                found.append(f"line {line}: {{{name}}}")
+    return found
+
+
 def scanned_scripts() -> list[Path]:
     return sorted(ROOT.glob(SCRIPT_GLOB))
 
@@ -135,3 +210,19 @@ class JsStringRatchetTests(SimpleTestCase):
     def test_translated_scripts_have_no_bare_string(self):
         for rel in JS_TRANSLATED:
             self.assertEqual(bare_strings((ROOT / rel).read_text(encoding="utf-8")), [], rel)
+
+
+    def test_the_placeholder_check_reads_each_call(self):
+        self.assertEqual(unfilled_placeholders("t('{n} of {total} hosts', { n })"), ["line 1: {total}"])
+        self.assertEqual(unfilled_placeholders("t('{a} and {b}', { a, b: f(x, y) })"), [])
+        self.assertEqual(unfilled_placeholders("tn('{n} host', '{n} hosts', k)"), [])
+        self.assertEqual(unfilled_placeholders("tn('{n} of {all}', '{n} of {all}', k, { all: 3 })"), [])
+        self.assertEqual(unfilled_placeholders("tn('{n} of {all}', '{n} of {all}', k)"), ["line 1: {all}"])
+        self.assertEqual(unfilled_placeholders("t('Go {where}', {\n  // a comment's apostrophe\n  where: `${g(')')}` })"), [])
+        self.assertEqual(unfilled_placeholders("t('Hi {name}')"), ["line 1: {name}"])
+        self.assertEqual(unfilled_placeholders("rows.map(t => t.name)"), [])
+
+    def test_every_placeholder_is_given_a_value(self):
+        for path in scanned_scripts():
+            rel = str(path.relative_to(ROOT))
+            self.assertEqual(unfilled_placeholders(path.read_text(encoding="utf-8")), [], rel)
