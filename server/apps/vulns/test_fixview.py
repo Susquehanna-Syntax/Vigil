@@ -163,7 +163,7 @@ class VulnTabsTests(TestCase):
         self.assertLess(content, scans, "Recent scans stays below the tabs")
         self.assertIn('class="tab-content active" id="vulns-by-fix"', self.html)
         self.assertEqual(self.html.count('class="tab-content active"'), 1)
-        self.assertIn('<p class="apps-intro">One row per fix', self.html)
+        self.assertIn('class="apps-intro">{% translate "One row per fix', self.html)
         self.assertIn(".vuln-tabs { margin-bottom: 18px; }", self.css)
         self.assertIn(".vfix-skeleton { padding:", self.css)
         self.assertIn("pointer-events: none; }", self.css)

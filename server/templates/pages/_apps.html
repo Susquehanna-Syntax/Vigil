@@ -1,45 +1,45 @@
-{# Apps page section — installed software across the fleet, by app and by host #}
+{% load i18n %}{# Apps page section — installed software across the fleet, by app and by host #}
 {# Logic: static/js/vigil-apps.js | Styles: css/vigil/*.css .apps-* | Data: client-side fetch /api/v1/software/{apps,hosts}/ #}
     <section id="page-apps" class="page">
       <div class="page-header">
         <div>
-          <div class="page-title">Apps<span>.</span></div>
-          <div class="page-sub">Every piece of software your hosts report — by app, by host, or by the update it is missing</div>
+          <div class="page-title">{% translate "Apps" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Every piece of software your hosts report — by app, by host, or by the update it is missing" %}</div>
         </div>
         <div class="right">
           <button class="btn btn-outline btn-sm" data-act="refreshApps">
             <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            Refresh
+            {% translate "Refresh" %}
           </button>
         </div>
       </div>
 
       <div class="tab-bar" data-tab-group="apps">
-        <div class="tab t-mint active" data-tab="apps-by-app">By app</div>
-        <div class="tab t-sky" data-tab="apps-by-host">By host</div>
-        <div class="tab t-lav" data-tab="apps-by-update">By update</div>
+        <div class="tab t-mint active" data-tab="apps-by-app">{% translate "By app" %}</div>
+        <div class="tab t-sky" data-tab="apps-by-host">{% translate "By host" %}</div>
+        <div class="tab t-lav" data-tab="apps-by-update">{% translate "By update" %}</div>
       </div>
 
       <div class="tab-content active" id="apps-by-app">
-        <p class="apps-intro">Each app once, with how many hosts have it and at which versions. Click a row to see the hosts.</p>
+        <p class="apps-intro">{% translate "Each app once, with how many hosts have it and at which versions. Click a row to see the hosts." %}</p>
         <div class="hunt-toolbar">
-          <input type="search" class="form-control" id="apps-q" placeholder="Search apps…" autocomplete="off">
-          <label class="apps-filter"><input type="checkbox" id="apps-outdated"> Outdated only</label>
-          <label class="apps-filter"><input type="checkbox" id="apps-unmanaged"> Unmanaged only<span class="field-hint" tabindex="0" aria-label="About the unmanaged filter" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></label>
-          <select class="form-control" id="apps-source" aria-label="App source">
-            <option value="">All sources</option>
-            <option value="dpkg">dpkg</option>
-            <option value="rpm">rpm</option>
-            <option value="apk">apk</option>
-            <option value="pacman">pacman</option>
-            <option value="flatpak">flatpak</option>
-            <option value="snap">snap</option>
-            <option value="winget">winget</option>
-            <option value="chocolatey">chocolatey</option>
-            <option value="scoop">scoop</option>
-            <option value="registry">registry</option>
-            <option value="windows_update">Windows Update</option>
-            <option value="brew">brew</option>
+          <input type="search" class="form-control" id="apps-q" placeholder="{% translate "Search apps…" %}" autocomplete="off">
+          <label class="apps-filter"><input type="checkbox" id="apps-outdated"> {% translate "Outdated only" %}</label>
+          <label class="apps-filter"><input type="checkbox" id="apps-unmanaged"> {% translate "Unmanaged only" %}<span class="field-hint" tabindex="0" aria-label="{% translate "About the unmanaged filter" %}" data-hint="{% translate "Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date." %}">?</span></label>
+          <select class="form-control" id="apps-source" aria-label="{% translate "App source" %}">
+            <option value="">{% translate "All sources" %}</option>
+            <option value="dpkg">{% translate "dpkg" %}</option>
+            <option value="rpm">{% translate "rpm" %}</option>
+            <option value="apk">{% translate "apk" %}</option>
+            <option value="pacman">{% translate "pacman" %}</option>
+            <option value="flatpak">{% translate "flatpak" %}</option>
+            <option value="snap">{% translate "snap" %}</option>
+            <option value="winget">{% translate "winget" %}</option>
+            <option value="chocolatey">{% translate "chocolatey" %}</option>
+            <option value="scoop">{% translate "scoop" %}</option>
+            <option value="registry">{% translate "registry" %}</option>
+            <option value="windows_update">{% translate "Windows Update" %}</option>
+            <option value="brew">{% translate "brew" %}</option>
           </select>
         </div>
 
@@ -47,35 +47,35 @@
           <table class="hunt-table apps-table" id="apps-table">
             <thead>
               <tr>
-                <th>App</th>
-                <th class="num">Hosts</th>
-                <th>Versions</th>
-                <th class="num">Outdated<span class="field-hint" tabindex="0" aria-label="About the outdated count" data-hint="Hosts where the package manager reports a newer version than the one installed.">?</span></th>
-                <th class="num">Unmanaged<span class="field-hint" tabindex="0" aria-label="About the unmanaged count" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></th>
-                <th>Sources</th>
-                <th><span class="sr-only">Actions</span></th>
+                <th>{% translate "App" %}</th>
+                <th class="num">{% translate "Hosts" %}</th>
+                <th>{% translate "Versions" %}</th>
+                <th class="num">{% translate "Outdated" %}<span class="field-hint" tabindex="0" aria-label="{% translate "About the outdated count" %}" data-hint="{% translate "Hosts where the package manager reports a newer version than the one installed." %}">?</span></th>
+                <th class="num">{% translate "Unmanaged" %}<span class="field-hint" tabindex="0" aria-label="{% translate "About the unmanaged count" %}" data-hint="{% translate "Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date." %}">?</span></th>
+                <th>{% translate "Sources" %}</th>
+                <th><span class="sr-only">{% translate "Actions" %}</span></th>
               </tr>
             </thead>
             <tbody id="apps-table-body"></tbody>
           </table>
         </div>
         <div class="hunt-pager">
-          <button class="btn btn-outline btn-sm" id="apps-more" type="button" data-act="loadMoreApps" hidden>Load more</button>
+          <button class="btn btn-outline btn-sm" id="apps-more" type="button" data-act="loadMoreApps" hidden>{% translate "Load more" %}</button>
         </div>
       </div>
 
       <div class="tab-content" id="apps-by-host">
-        <p class="apps-intro">Each host's software list. Click a host to see what it has installed.</p>
+        <p class="apps-intro">{% translate "Each host's software list. Click a host to see what it has installed." %}</p>
         <div class="table-wrap">
           <table class="hunt-table apps-table" id="apps-hosts-table">
             <thead>
               <tr>
-                <th>Host</th>
-                <th class="num">Items</th>
-                <th class="num">Outdated</th>
-                <th class="num">Unmanaged<span class="field-hint" tabindex="0" aria-label="About the unmanaged count" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></th>
-                <th>Last report</th>
-                <th>Errors</th>
+                <th>{% translate "Host" %}</th>
+                <th class="num">{% translate "Items" %}</th>
+                <th class="num">{% translate "Outdated" %}</th>
+                <th class="num">{% translate "Unmanaged" %}<span class="field-hint" tabindex="0" aria-label="{% translate "About the unmanaged count" %}" data-hint="{% translate "Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date." %}">?</span></th>
+                <th>{% translate "Last report" %}</th>
+                <th>{% translate "Errors" %}</th>
               </tr>
             </thead>
             <tbody id="apps-hosts-body"></tbody>
@@ -84,38 +84,38 @@
       </div>
 
       <div class="tab-content" id="apps-by-update">
-        <p class="apps-intro">Updates your hosts are missing, grouped by KB or package. Approve or decline one to override every patch policy at once.</p>
+        <p class="apps-intro">{% translate "Updates your hosts are missing, grouped by KB or package. Approve or decline one to override every patch policy at once." %}</p>
         <div class="hunt-toolbar">
-          <input type="search" class="form-control" id="upd-q" placeholder="Search KB, package or title…" autocomplete="off">
+          <input type="search" class="form-control" id="upd-q" placeholder="{% translate "Search KB, package or title…" %}" autocomplete="off">
           <select class="form-control" id="upd-kind">
-            <option value="">Windows and Linux</option>
-            <option value="windows">Windows (by KB)</option>
-            <option value="linux">Linux (by package)</option>
+            <option value="">{% translate "Windows and Linux" %}</option>
+            <option value="windows">{% translate "Windows (by KB)" %}</option>
+            <option value="linux">{% translate "Linux (by package)" %}</option>
           </select>
           <select class="form-control" id="upd-decision">
-            <option value="">Any decision</option>
-            <option value="undecided">Undecided</option>
-            <option value="approved">Approved</option>
-            <option value="declined">Declined</option>
+            <option value="">{% translate "Any decision" %}</option>
+            <option value="undecided">{% translate "Undecided" %}</option>
+            <option value="approved">{% translate "Approved" %}</option>
+            <option value="declined">{% translate "Declined" %}</option>
           </select>
         </div>
         <div class="upd-bulk" id="upd-bulk" hidden>
           <span id="upd-bulk-count"></span>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-policy-selected>Policy…</button>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="approved">Approve</button><span class="field-hint" tabindex="0" aria-label="What Approve does" data-hint="Install this update at the next maintenance window of every policy that patches — without waiting out the policy's deferral.">?</span>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="declined">Decline</button><span class="field-hint" tabindex="0" aria-label="What Decline does" data-hint="Keep this update off every host. It joins every patch policy's exclude list until you clear the decision.">?</span>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="clear">Clear decision</button><span class="field-hint" tabindex="0" aria-label="What Clear decision does" data-hint="Forget the approval or decline. Each patch policy goes back to its own rules for this update.">?</span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-policy-selected>{% translate "Policy…" %}</button>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="approved">{% translate "Approve" %}</button><span class="field-hint" tabindex="0" aria-label="{% translate "What Approve does" %}" data-hint="{% translate "Install this update at the next maintenance window of every policy that patches — without waiting out the policy's deferral." %}">?</span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="declined">{% translate "Decline" %}</button><span class="field-hint" tabindex="0" aria-label="{% translate "What Decline does" %}" data-hint="{% translate "Keep this update off every host. It joins every patch policy's exclude list until you clear the decision." %}">?</span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="clear">{% translate "Clear decision" %}</button><span class="field-hint" tabindex="0" aria-label="{% translate "What Clear decision does" %}" data-hint="{% translate "Forget the approval or decline. Each patch policy goes back to its own rules for this update." %}">?</span>
         </div>
         <div class="table-wrap">
           <table class="hunt-table apps-table" id="apps-updates-table">
             <thead>
               <tr>
-                <th class="upd-check"><input type="checkbox" id="upd-all" aria-label="Select all"></th>
-                <th>Update</th>
-                <th>Severity</th>
-                <th class="num">Hosts</th>
-                <th class="num">Missing for</th>
-                <th>Decision<span class="field-hint" tabindex="0" aria-label="What the decisions mean" data-hint="Approved — install this update at the next maintenance window of every policy that patches, without waiting out the policy's deferral.&#10;&#10;Declined — keep this update off every host. It joins every patch policy's exclude list until you clear the decision.&#10;&#10;Undecided — each patch policy's own rules apply.">?</span></th>
+                <th class="upd-check"><input type="checkbox" id="upd-all" aria-label="{% translate "Select all" %}"></th>
+                <th>{% translate "Update" %}</th>
+                <th>{% translate "Severity" %}</th>
+                <th class="num">{% translate "Hosts" %}</th>
+                <th class="num">{% translate "Missing for" %}</th>
+                <th>{% translate "Decision" %}<span class="field-hint" tabindex="0" aria-label="{% translate "What the decisions mean" %}" data-hint="{% translate "Approved — install this update at the next maintenance window of every policy that patches, without waiting out the policy's deferral.&#10;&#10;Declined — keep this update off every host. It joins every patch policy's exclude list until you clear the decision.&#10;&#10;Undecided — each patch policy's own rules apply." %}">?</span></th>
                 <th></th>
               </tr>
             </thead>

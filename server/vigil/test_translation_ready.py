@@ -37,6 +37,17 @@ TRANSLATED_TEMPLATES: list[str] = [
     "templates/pages/_reprovision.html",
     "templates/dashboard.html",
     "templates/compliance_report.html",
+    "templates/pages/_firewall.html",
+    "templates/pages/_hunt_results.html",
+    "templates/pages/_community.html",
+    "templates/pages/_reports.html",
+    "templates/pages/_about.html",
+    "templates/pages/_containers.html",
+    "templates/pages/_apps.html",
+    "templates/pages/_vulns.html",
+    "templates/pages/_stack_editor.html",
+    "templates/status_public.html",
+    "templates/ui_kit.html",
 ]
 
 _DROP = [
@@ -52,7 +63,7 @@ _DROP = [
 ]
 _VISIBLE_ATTR = re.compile(
     r'\s(?:placeholder|title|aria-label|alt|data-tip|data-hint)='
-    r'"((?:\{%.*?%\}|\{\{.*?\}\}|[^"])*)"', re.I | re.S)
+    r'(?:"((?:\{%.*?%\}|\{\{.*?\}\}|[^"])*)"|\'((?:\{%.*?%\}|\{\{.*?\}\}|[^\'])*)\')', re.I | re.S)
 _TAG = re.compile(r"<[^>]*>", re.S)
 _ENTITY = re.compile(r"&[a-zA-Z]+;|&#\d+;")
 _LETTERS = re.compile(r"[A-Za-z]{2,}")
@@ -60,7 +71,11 @@ _LETTERS = re.compile(r"[A-Za-z]{2,}")
 
 def untranslated(text: str) -> list[str]:
     """The words a person would read that no translate tag covers."""
-    attrs = [m.group(1) for m in _VISIBLE_ATTR.finditer(text)]
+    # Code, comments and SVG first: a title= inside a script's string is not
+    # an attribute anyone reads in this template.
+    for pattern in _DROP[:6]:
+        text = pattern.sub(" ", text)
+    attrs = [m.group(1) if m.group(1) is not None else m.group(2) for m in _VISIBLE_ATTR.finditer(text)]
     body = text
     for pattern in _DROP:
         body = pattern.sub(" ", body)
@@ -81,7 +96,10 @@ class TranslationReadyTests(SimpleTestCase):
         self.assertEqual(untranslated("<p>Hosts</p>"), ["Hosts"])
         self.assertEqual(untranslated('<input placeholder="Search">'), ["[attribute] Search"])
         self.assertEqual(untranslated('<input placeholder="{% translate "Search" %}">'), [])
+        self.assertEqual(untranslated("<input placeholder='Search'>"), ["[attribute] Search"])
+        self.assertEqual(untranslated("<input placeholder='{% translate \"Search\" %}'>"), [])
         self.assertEqual(untranslated("<script>const a = 'text';</script><p>{{ host.name }}</p>"), [])
+        self.assertEqual(untranslated("<script>x = '<span title=\"' + label + '\">';</script>"), [])
 
     def test_translated_templates_have_no_bare_text(self):
         for rel in TRANSLATED_TEMPLATES:
