@@ -68,6 +68,10 @@ body {
   cursor: default;
 }
 .sidebar-logo:hover { transform: rotate(-8deg) scale(1.08); }
+/* The logo image fills the Lavender square (08e). */
+.sidebar-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.badge-dot--alert { background: var(--rose); }
+.badge-dot--pending { background: var(--peach); }
 
 .sidebar-icon {
   width: 42px; height: 42px;

@@ -181,3 +181,8 @@ class InlineStyleRatchetTests(SimpleTestCase):
             self.assertEqual(_leftover_styles(rel, script=True), [],
                              f"{rel} was moved into classes in phase 08g; only "
                              "a state colour worked out per render may remain.")
+
+    def test_base_is_done(self):
+        self.assertEqual(_leftover_styles("templates/base.html", script=False), [],
+                         "templates/base.html was moved into classes in phases "
+                         '08e and 08f; only style="display:none;" may remain.')

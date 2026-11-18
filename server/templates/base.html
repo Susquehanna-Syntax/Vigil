@@ -56,7 +56,7 @@
 
   {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
   <nav class="sidebar">
-    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;"></div>
+    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil"></div>
     {# Header site switcher (S1 04g). Logic: vigil-siteswitch.js; hidden unless the user sees more than one site. #}
     <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="Sites"
       role="button" tabindex="0" aria-label="Choose the sites to show" hidden>
@@ -112,7 +112,7 @@
     </div>
     <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
+      {% if alert_count %}<div class="badge-dot badge-dot--alert"></div>{% endif %}
     </div>
     <div class="sidebar-icon" data-page="statuspages" data-tip="Status Pages">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
@@ -122,7 +122,7 @@
     </div>
     <div class="sidebar-icon" data-page="settings" data-tip="Settings">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      {% if pending_count %}<div class="badge-dot" style="background: var(--peach);"></div>{% endif %}
+      {% if pending_count %}<div class="badge-dot badge-dot--pending"></div>{% endif %}
     </div>
 
     <div class="sidebar-spacer"></div>
@@ -163,7 +163,7 @@
   </button>
   <div class="detail-header">
     <div class="detail-hostname" id="detail-hostname">—</div>
-    <div class="detail-meta" style="display:flex;align-items:center;gap:6px;">
+    <div class="detail-meta detail-meta-inline">
       <span id="detail-os-logo"></span>
       <span id="detail-meta">—</span>
     </div>
@@ -171,34 +171,34 @@
 
   <div class="detail-section">
     <div class="detail-section-title">Status</div>
-    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+    <div class="detail-status-row">
       <div class="status-dot" id="detail-status-dot"></div>
-      <span id="detail-status-text" style="font-size: 14px; font-weight: 500;">—</span>
-      <span class="mode-badge" id="detail-mode-badge" style="margin-left: auto;">—</span>
+      <span id="detail-status-text" class="detail-status-text">—</span>
+      <span class="mode-badge" id="detail-mode-badge">—</span>
     </div>
-    <div style="font-size: 12px; color: var(--text-3);">
+    <div class="detail-sub-line">
       Last check-in: <span class="mono" id="detail-last-checkin">—</span>
     </div>
-    <div style="font-size: 12px; color: var(--text-3); display:flex; align-items:center; gap:8px;">
+    <div class="detail-sub-line detail-agent-line">
       Agent: <span class="mono" id="detail-agent-version">—</span>
-      <button class="btn btn-ghost btn-sm" id="detail-update-agent-btn"
-              style="display:none; padding:2px 8px; color:var(--sky-ink);"
+      <button class="btn btn-ghost btn-sm detail-agent-btn" id="detail-update-agent-btn"
+              style="display:none;"
               data-act="forceUpdateAgent">Update</button>
     </div>
   </div>
 
   <div class="detail-section" id="detail-jackil-section" style="display:none;">
     <div class="detail-section-title">Related in Jackil</div>
-    <div id="detail-jackil-body" style="font-size: 13px;"></div>
+    <div id="detail-jackil-body" class="detail-jackil-body"></div>
   </div>
 
   <div class="detail-section" id="detail-score-section" style="display:none;">
     <div class="detail-section-title">Security score</div>
-    <div style="display:flex;align-items:baseline;gap:12px;">
-      <span class="mono" id="detail-score" style="font-size:28px;font-weight:600;line-height:1;">—</span>
-      <span style="font-size:12px;color:var(--text-3);">/ 100</span>
+    <div class="detail-score-row">
+      <span class="mono detail-score" id="detail-score">—</span>
+      <span class="detail-sub-line">/ 100</span>
     </div>
-    <div style="font-size:12px;color:var(--text-3);margin-top:6px;">
+    <div class="detail-sub-line detail-sub-line-below">
       Last scan: <span class="mono" id="detail-last-scan">never</span>
     </div>
   </div>
@@ -208,55 +208,55 @@
     <div class="metric-grid">
       <div class="metric-card">
         <div class="metric-card-label">CPU Usage</div>
-        <div class="metric-card-value" style="color: var(--sky-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
+        <div class="metric-card-value metric-card-value-sky">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-sky"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Memory</div>
-        <div class="metric-card-value" style="color: var(--lavender-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
+        <div class="metric-card-value metric-card-value-lavender">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-lavender"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Disk</div>
-        <div class="metric-card-value" style="color: var(--mint-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
+        <div class="metric-card-value metric-card-value-mint">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-mint"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Swap</div>
-        <div class="metric-card-value" style="color: var(--peach-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
+        <div class="metric-card-value metric-card-value-peach">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-peach"></div></div>
       </div>
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">CPU History (1h)</div>
-    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+    <div class="detail-chart-box">
       <canvas id="detail-chart-cpu"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">Network I/O</div>
-    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+    <div class="detail-chart-box">
       <canvas id="detail-chart-net"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">Docker Containers</div>
-    <div style="background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">
+    <div class="detail-containers-empty">
       Container metrics will appear here once reported by the agent.
     </div>
   </div>
 
   <div class="detail-section">
     <div class="detail-section-title">Tags</div>
-    <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
+    <div id="detail-tags-row" class="host-tag-row detail-tags-gap"></div>
     <div class="host-tag-add-row">
-      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40" style="font-size:12px;padding:7px 10px;">
+      <input type="text" class="form-control detail-tag-input" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40">
     </div>
-    <div class="confirm-hint" style="margin-top:6px;">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
+    <div class="confirm-hint detail-hint-below">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
   </div>
 
   <div class="detail-section">
@@ -266,13 +266,13 @@
     </div>
   </div>
 
-  <div class="detail-section" style="margin-top:auto; padding-top:24px; border-top:1px solid var(--s3);">
-    <button type="button" class="btn btn-outline btn-rose-ghost" style="width:100%;" id="detail-delete-btn"
+  <div class="detail-section detail-section-last">
+    <button type="button" class="btn btn-outline btn-rose-ghost detail-delete-btn" id="detail-delete-btn"
             data-act="deleteHostFromDetailPanel" data-a1="$el">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
       Remove Agent
     </button>
-    <div class="confirm-hint" style="margin-top:6px;">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
+    <div class="confirm-hint detail-hint-below">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
   </div>
 </div>
 
@@ -313,12 +313,12 @@
 
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
-            <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-weight:600;">
+            <label class="deploy-run-now">
               <input type="checkbox" id="deploy-schedule-run-now" checked data-change="_onRunNowToggle">
               Run now (no schedule window — dispatch on next check-in)
             </label>
             <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
-            <div class="deploy-policy-grid" id="deploy-schedule-fields" style="margin-top:10px;">
+            <div class="deploy-policy-grid deploy-policy-grid-top" id="deploy-schedule-fields">
               <div>
                 <label class="deploy-input-label">Start time</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing.">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
@@ -337,7 +337,7 @@
           <!-- Retry (on-failure policy) -->
           <div class="deploy-panel" data-panel="retry">
             <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
                 <label class="deploy-input-label">Retry attempts</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many extra times to try a step that fails. 0 means one attempt and no retries.">?</span>
                 <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
@@ -352,7 +352,7 @@
           <!-- Success Criteria -->
           <div class="deploy-panel" data-panel="criteria">
             <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
                 <label class="deploy-input-label">Expected exit code</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The exit code that counts as success. Usually 0. Anything else marks the step failed.">?</span>
                 <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
@@ -364,7 +364,7 @@
               </div>
               <div class="full">
                 <label class="deploy-input-label">Output must match regex</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives.">?</span>
-                <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
+                <input type="text" class="form-control deploy-criteria-regex" id="deploy-criteria-regex" placeholder="(optional)">
               </div>
             </div>
           </div>
@@ -373,9 +373,9 @@
 
       <!-- RIGHT: searchable host table OR tag picker -->
       <div class="deploy-right-col">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
-          <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
-          <div class="deploy-tabs" style="margin-bottom:0;">
+        <div class="deploy-target-head">
+          <div class="deploy-col-title deploy-col-title-flush">Target</div>
+          <div class="deploy-tabs deploy-tabs-flush">
             <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">Hosts</button>
             <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">By Tag</button>
           </div>
@@ -385,7 +385,7 @@
           <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" data-input="filterDeployHosts">
           <div class="deploy-host-table">
             <div class="deploy-host-head">
-              <div><input type="checkbox" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
+              <div><input type="checkbox" class="deploy-select-all" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked"></div>
               <div>Hostname</div>
               <div>Mode</div>
             </div>
@@ -393,13 +393,13 @@
               <div class="host-pick-empty">No online, executable hosts available.</div>
             </div>
           </div>
-          <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+          <div class="confirm-hint confirm-hint-tight" id="deploy-host-summary">Select one or more hosts.</div>
         </div>
 
         <div id="deploy-target-tags" style="display:none;">
-          <div class="deploy-policy-help" style="margin-bottom:10px;">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
+          <div class="deploy-policy-help deploy-tag-help">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
           <div class="deploy-day-row" id="deploy-tag-chips"></div>
-          <div class="confirm-hint" id="deploy-tag-summary" style="margin-top:10px;">No tags selected.</div>
+          <div class="confirm-hint confirm-hint-wide" id="deploy-tag-summary">No tags selected.</div>
         </div>
       </div>
 
@@ -411,9 +411,9 @@
       <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> Send to them anyway</label>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
+    <div class="deploy-footer">
       <span id="deploy-risk-label"></span>
-      <div style="display:flex;gap:10px;">
+      <div class="deploy-footer-actions">
         <button type="button" class="btn btn-ghost" data-act="closeDeployModal">Cancel</button>
         <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -430,10 +430,10 @@
   <div class="modal-title">
     <span id="wave-editor-title">New Wave</span>
     <button class="modal-close" data-act="closeWaveEditor">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;">
+  <div class="wave-editor-body">
     <div class="form-group">
       <label class="form-label">Name</label>
       <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
@@ -441,40 +441,40 @@
     <div class="form-group" id="wave-site-field" hidden>
       <label class="form-label" for="wave-site">Site</label>
       <select class="form-control" id="wave-site"></select>
-      <div class="muted-note" style="margin-top:6px;">Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists.</div>
+      <div class="muted-note muted-note-below-field">Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists.</div>
     </div>
     <div class="form-group">
-      <label class="form-label">Groups <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = ungrouped)</span></label>
+      <label class="form-label">Groups <span class="form-label-optional">(comma-separated; blank = ungrouped)</span></label>
       <input type="text" class="form-control" id="wave-group-tags" placeholder="servers, workstations">
-      <div class="muted-note" style="margin-top:6px;">
+      <div class="muted-note muted-note-below-field">
         A group is just a tag. A rollout walks one group's waves in order, so
         keep separate ladders for machines that should not patch together. A
         wave can sit on more than one ladder — a canary wave is often the first
         rung of both. Order only has to be unique within a group.
       </div>
     </div>
-    <div style="display:flex;gap:12px;">
-      <div class="form-group" style="flex:1;">
+    <div class="wave-row">
+      <div class="form-group">
         <label class="form-label">Order</label>
         <input type="number" class="form-control" id="wave-order" min="1" value="1">
-        <div class="confirm-hint" style="margin-top:4px;">Lower numbers patch first.</div>
+        <div class="confirm-hint confirm-hint-flush">Lower numbers patch first.</div>
       </div>
-      <div class="form-group" style="flex:1;">
+      <div class="form-group">
         <label class="form-label">Validation window (hours)</label>
         <input type="number" class="form-control" id="wave-validation" min="0" max="720" value="24">
-        <div class="confirm-hint" style="margin-top:4px;">How long to wait after this wave before starting the next. 0 advances immediately.</div>
+        <div class="confirm-hint confirm-hint-flush">How long to wait after this wave before starting the next. 0 advances immediately.</div>
       </div>
     </div>
     <div class="form-group">
       <label class="form-label">Host tags</label>
       <input type="text" class="form-control" id="wave-tags" placeholder="canary, staging">
-      <div class="confirm-hint" style="margin-top:4px;">
+      <div class="confirm-hint confirm-hint-flush">
         Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
         Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
       </div>
-      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky-ink);"></div>
+      <div class="confirm-hint confirm-hint-tight wave-match-preview" id="wave-match-preview"></div>
     </div>
-    <label class="form-check" style="margin-bottom:4px;">
+    <label class="form-check wave-enabled-check">
       <input type="checkbox" id="wave-enabled" checked>
       <span>Enabled &mdash; a disabled wave is skipped entirely</span>
     </label>
@@ -495,11 +495,11 @@ settings before deciding anything.
   <div class="modal-title">
     <span id="rollout-detail-title">Rollout</span>
     <button class="modal-close" data-act="closeRolloutDetail">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;" id="rollout-detail-body"></div>
-  <div class="modal-actions" id="rollout-detail-actions" style="align-items:center;gap:10px;"></div>
+  <div class="modal-scroll-body" id="rollout-detail-body"></div>
+  <div class="modal-actions modal-actions-centered" id="rollout-detail-actions"></div>
 </div>
 
 {# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; Start asks for TOTP (totpPrompt) like a deploy. #}
@@ -508,42 +508,42 @@ settings before deciding anything.
   <div class="modal-title">
     Start Rollout
     <button class="modal-close" data-act="closeRolloutStart">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;">
-    <div class="totp-sub" style="margin-bottom:14px;">
+  <div class="modal-scroll-body">
+    <div class="totp-sub totp-sub-tight">
       Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the
       failure limit, and sit out its validation window.<br>
       Which hosts land in which wave comes from the wave's tags &mdash; change the tags to change
       who gets patched.
     </div>
-    <div class="form-group" style="margin-bottom:12px;">
+    <div class="form-group form-group-12">
       <label class="form-label">Task definition</label>
       <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
         <span id="rollout-start-def-label">Choose a task or playbook…</span>
       </button>
       <input type="hidden" id="rollout-start-def">
-      <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
+      <div class="confirm-hint confirm-hint-flush" id="rollout-start-def-hint">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
     </div>
     <div id="rollout-start-inputs" class="inputs-form" hidden></div>
-    <div class="form-group" style="margin-bottom:14px;">
-      <label class="form-label">Wave groups <span style="color:var(--text-3);font-weight:400;">(none picked = every enabled wave)</span></label>
+    <div class="form-group form-group-tight">
+      <label class="form-label">Wave groups <span class="form-label-optional">(none picked = every enabled wave)</span></label>
       <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="Wave groups"></div>
-      <div class="confirm-hint" id="rollout-start-group-hint" style="margin-top:4px;">Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it.</div>
+      <div class="confirm-hint confirm-hint-flush" id="rollout-start-group-hint">Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it.</div>
     </div>
-    <div style="display:flex;gap:12px;margin-bottom:14px;">
-      <div class="form-group" style="flex:1;margin-bottom:0;">
+    <div class="rollout-start-pair">
+      <div class="form-group">
         <label class="form-label">Halt above failure&nbsp;%</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all.">?</span>
         <input type="number" class="form-control" id="rollout-start-threshold" min="0" max="100" value="10">
       </div>
-      <div class="form-group" style="flex:1;margin-bottom:0;">
+      <div class="form-group">
         <label class="form-label">Min results before halt</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately.">?</span>
         <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
       </div>
     </div>
   </div>
-  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+  <div class="rollout-start-actions">
     <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">Cancel</button>
     <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">Start rollout</button>
   </div>
@@ -558,24 +558,24 @@ settings before deciding anything.
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div class="totp-sub" style="margin-bottom:14px;">
+  <div class="totp-sub totp-sub-tight">
     The Vigil community catalog lives on GitHub at
-    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
+    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" class="community-catalog-link">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
     Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR.
   </div>
-  <div class="totp-sub" style="margin-bottom:18px;">
+  <div class="totp-sub totp-sub-loose">
     <strong>How submission works:</strong>
-    <ol style="margin:6px 0 0 18px;padding:0;line-height:1.7;">
-      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" style="background:var(--s2);padding:2px 6px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">task.yaml</code> under <code style="background:var(--s2);padding:2px 6px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">tasks/</code>.</li>
+    <ol class="community-submit-steps">
+      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" class="code-tight">task.yaml</code> under <code class="code-tight">tasks/</code>.</li>
       <li>Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account.</li>
       <li>Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.</li>
       <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry.</li>
     </ol>
   </div>
-  <div class="totp-sub" style="margin-bottom:18px;font-size:11px;color:var(--text-3);">
-    <strong>Auto-added to your YAML</strong> if you haven't set them: <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">author</code> (your Vigil username) and <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">created</code> (today's date). Required by the catalog so every entry is attributed.
+  <div class="totp-sub totp-sub-loose totp-sub-fine">
+    <strong>Auto-added to your YAML</strong> if you haven't set them: <code class="code-tight-sm">author</code> (your Vigil username) and <code class="code-tight-sm">created</code> (today's date). Required by the catalog so every entry is attributed.
   </div>
-  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+  <div class="community-submit-actions">
     <button class="btn btn-ghost" data-act="copyCommunityYaml">Copy YAML</button>
     <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" data-act="closeCommunitySubmit">Open GitHub PR</a>
   </div>
@@ -592,9 +592,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div class="totp-sub" style="margin-bottom:16px;">
+  <div class="totp-sub totp-sub-mid">
     Opens a normal SSH session in your own terminal. Copy the command below, or use the
-    <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">ssh://</code>
+    <code class="code-tight-sm">ssh://</code>
     link if your OS has a handler registered. Vigil doesn't connect to the host for you.
   </div>
   <div class="form-group">
@@ -605,7 +605,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <code class="ssh-cmd" id="ssh-cmd">ssh host</code>
     <button class="btn btn-sky btn-sm" data-act="copySshCommand">Copy</button>
   </div>
-  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:18px;">
+  <div class="community-submit-actions community-submit-actions-tall">
     <a id="ssh-uri-link" class="btn btn-ghost" href="#">Open ssh://</a>
     <button class="btn btn-ghost" data-act="closeSshModal">Close</button>
   </div>
@@ -628,9 +628,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   <div class="form-group" id="device-site-field" hidden>
     <label class="form-label" for="device-site">Site</label>
     <select class="form-control" id="device-site"></select>
-    <div class="confirm-hint" style="margin-top:6px;">Who may see and change it.</div>
+    <div class="confirm-hint detail-hint-below">Who may see and change it.</div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div class="device-editor-pair">
     <div class="form-group">
       <label class="form-label" for="device-type">Type</label>
       <select class="form-control" id="device-type">
@@ -653,7 +653,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <input type="text" class="form-control" id="device-ip" placeholder="10.0.0.1">
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div class="device-editor-pair">
     <div class="form-group">
       <label class="form-label" for="device-mac">MAC Address</label>
       <input type="text" class="form-control" id="device-mac" placeholder="aa:bb:cc:dd:ee:ff" maxlength="17">
@@ -667,7 +667,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <label class="form-label" for="device-location">Location</label>
     <input type="text" class="form-control" id="device-location" placeholder="Rack 1 / Office" maxlength="160">
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div class="device-editor-pair">
     <div class="form-group">
       <label class="form-label" for="device-serial">Serial</label>
       <input type="text" class="form-control" id="device-serial" placeholder="SN-0001" maxlength="120">
@@ -689,9 +689,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <label class="form-label" for="device-notes">Notes</label>
     <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose-ink);" data-act="deleteDeviceFromModal">Delete</button>
-    <div style="display:flex;gap:10px;margin-left:auto;">
+  <div class="device-editor-foot">
+    <button class="btn btn-ghost device-delete-btn" id="device-delete-btn" style="display:none;" data-act="deleteDeviceFromModal">Delete</button>
+    <div class="device-editor-foot-actions">
       <button class="btn btn-ghost" data-act="closeDeviceModal">Cancel</button>
       <button class="btn btn-sky" data-act="saveDevice">Save Device</button>
     </div>
@@ -700,19 +700,19 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
 {# Task run detail modal — opened by openTaskDetail() in vigil-tasks.js #}
 <div class="modal-overlay" id="task-detail-overlay" data-act="closeTaskDetail"></div>
-<div class="modal modal-wide" id="task-detail-modal" style="max-height:80vh;display:flex;flex-direction:column;">
-  <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+<div class="modal modal-wide modal-column" id="task-detail-modal">
+  <div class="modal-title modal-title-tight">
     <span id="task-detail-title">Task Run</span>
     <button class="modal-close" data-act="closeTaskDetail">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div id="task-detail-meta" style="font-size:12px;color:var(--text-3);margin-bottom:16px;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;"></div>
-  <div id="task-detail-jackil" style="display:none; flex-shrink:0; margin-bottom: 12px; font-size: 13px;">
+  <div id="task-detail-meta" class="task-detail-meta"></div>
+  <div id="task-detail-jackil" style="display:none;" class="task-detail-jackil">
     <div class="detail-section-title">Related in Jackil</div>
     <div id="task-detail-jackil-body"></div>
   </div>
-  <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
+  <div id="task-detail-steps" class="task-detail-steps"></div>
   <div class="confirm-actions" id="task-detail-actions" hidden>
     <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">Open hunt results</button>
   </div>
@@ -720,8 +720,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
 {# Enrollment wizard — opened by openEnrollWizard() in vigil-enroll.js #}
 <div class="modal-overlay" id="enroll-overlay" data-act="closeEnrollWizard"></div>
-<div class="modal modal-wide" id="enroll-modal" style="max-height:80vh;display:flex;flex-direction:column;">
-  <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+<div class="modal modal-wide modal-column" id="enroll-modal">
+  <div class="modal-title modal-title-tight">
     <span id="enroll-title">Add Host</span>
     <button class="modal-close" data-act="closeEnrollWizard">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -729,81 +729,81 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   </div>
 
   {# Step indicator #}
-  <div class="enroll-steps" id="enroll-steps" style="display:flex;gap:8px;margin-bottom:20px;flex-shrink:0;">
+  <div class="enroll-steps" id="enroll-steps">
     <div class="auth-step-pill active" id="enroll-pip-1">1</div>
     <div class="auth-step-pill" id="enroll-pip-2">2</div>
     <div class="auth-step-pill" id="enroll-pip-3">3</div>
     <div class="auth-step-pill" id="enroll-pip-4">4</div>
-    <div style="font-size:12px;color:var(--text-3);margin-left:4px;align-self:center;" id="enroll-step-label">Generate token</div>
+    <div class="enroll-step-label" id="enroll-step-label">Generate token</div>
   </div>
 
   {# Step 1: token + install command #}
-  <div id="enroll-s1" style="flex:1;overflow-y:auto;">
-    <div class="totp-sub" style="margin-bottom:16px;">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
-    <div class="tab-bar" style="margin-bottom:14px;">
+  <div id="enroll-s1" class="enroll-step-body">
+    <div class="totp-sub totp-sub-mid">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
+    <div class="tab-bar tab-bar-tight">
       <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">Linux &amp; macOS</button>
       <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">Windows</button>
     </div>
-    <div style="margin-bottom:14px;">
+    <div class="enroll-profile-field">
       <label class="deploy-input-label" for="enroll-profile">Agent profile</label>
       <select class="form-control" id="enroll-profile" data-change="enrollUseProfile"></select>
-      <div class="confirm-hint" style="margin-top:4px;">Start from a saved profile, adjust anything below, then create the command.</div>
+      <div class="confirm-hint confirm-hint-flush">Start from a saved profile, adjust anything below, then create the command.</div>
     </div>
     <div id="enroll-config"></div>
-    <div style="display:flex;gap:8px;margin:14px 0;">
+    <div class="enroll-command-actions">
       <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">Create install command</button>
       <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">Save as profile</button>
     </div>
     <div class="confirm-hint apf-error" id="enroll-stale" hidden></div>
     <div class="confirm-hint" id="enroll-notes" hidden></div>
-    <div style="margin-bottom:12px;" id="enroll-cmd-block" hidden>
+    <div class="enroll-cmd-block" id="enroll-cmd-block" hidden>
       <label class="deploy-input-label">One-liner install command</label>
-      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" data-act="copyEnrollCmd" title="Click to copy"></div>
-      <div class="confirm-hint" style="margin-top:4px;">Valid for 24 hours, once.</div>
+      <div class="code-block mono enroll-cmd" id="enroll-cmd" data-act="copyEnrollCmd" title="Click to copy"></div>
+      <div class="confirm-hint confirm-hint-flush">Valid for 24 hours, once.</div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
+    <div class="enroll-cmd-copy">
       <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">Copy command</button>
       <button class="btn btn-sky btn-sm" data-act="enrollGoStep2">
         I ran the command — Next
-        <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        <svg viewBox="0 0 24 24" class="btn-icon-xs"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
     </div>
     <div class="confirm-hint" id="enroll-cmd-hint">Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.</div>
   </div>
 
   {# Step 2: polling #}
-  <div id="enroll-s2" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Waiting for agent to connect…</div>
+  <div id="enroll-s2" class="enroll-step-body enroll-step-centered" style="display:none;">
+    <div class="enroll-step-icon"><svg viewBox="0 0 24 24" class="enroll-icon-clock"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div class="enroll-step-title">Waiting for agent to connect…</div>
     <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
-    <div style="margin-top:20px;">
-      <div class="status-dot pending" style="display:inline-block;animation:pulse 1.5s infinite;"></div>
+    <div class="enroll-pulse-row">
+      <div class="status-dot pending enroll-pulse-dot"></div>
     </div>
   </div>
 
   {# Step 3: approve #}
-  <div id="enroll-s3" style="flex:1;overflow-y:auto;display:none;">
-    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint-ink);">Agent detected!</div>
-    <div class="enroll-card" style="margin-bottom:20px;">
+  <div id="enroll-s3" class="enroll-step-body" style="display:none;">
+    <div class="enroll-step-title enroll-step-title-mid enroll-step-title-mint">Agent detected!</div>
+    <div class="enroll-card enroll-card-below">
       <div class="status-dot pending"></div>
       <div class="enroll-info">
         <div class="enroll-hostname" id="enroll-detected-hostname">—</div>
         <div class="enroll-meta" id="enroll-detected-meta">—</div>
-        <div class="enroll-meta" id="enroll-replaces" style="display:none;margin-top:6px;"></div>
+        <div class="enroll-meta enroll-replaces" id="enroll-replaces" style="display:none;"></div>
       </div>
     </div>
-    <div class="totp-sub" style="margin-bottom:14px;">Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks.</div>
-    <div style="display:flex;gap:8px;">
+    <div class="totp-sub totp-sub-tight">Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks.</div>
+    <div class="enroll-approve-actions">
       <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">Approve &amp; Activate</button>
       <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">Cancel</button>
     </div>
   </div>
 
   {# Step 4: done #}
-  <div id="enroll-s4" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint-ink);">Host enrolled successfully</div>
-    <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
+  <div id="enroll-s4" class="enroll-step-body enroll-step-centered" style="display:none;">
+    <div class="enroll-step-icon"><svg viewBox="0 0 24 24" class="enroll-icon-check"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+    <div class="enroll-step-title enroll-step-title-done enroll-step-title-mint">Host enrolled successfully</div>
+    <div class="totp-sub totp-sub-wide" id="enroll-done-msg">The agent is now online and monitoring.</div>
     <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">Done</button>
   </div>
 </div>

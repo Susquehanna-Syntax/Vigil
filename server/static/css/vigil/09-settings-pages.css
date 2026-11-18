@@ -6,6 +6,16 @@
 .muted-note { font-size: 13px; color: var(--text-2); line-height: 1.6; }
 .inline-code, code.inline { font-family: 'IBM Plex Mono', monospace; font-size: 12px;
   background: var(--s2); padding: 2px 6px; border-radius: 6px; color: var(--text-1); }
+/* The community-submit and SSH dialogs' inline code, moved out of base.html
+   (08f): plain <code> with exactly the looks its inline styles gave it. */
+code.code-tight {
+  background: var(--s2); padding: 2px 6px; border-radius: 5px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+code.code-tight-sm {
+  background: var(--s2); padding: 1px 5px; border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+}
 .chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
   padding: 3px 10px; border-radius: 20px; background: rgba(var(--rgb-sky), var(--tint-a)); color: var(--sky-ink); }
 .chip-muted { background: var(--s3); color: var(--text-2); }
