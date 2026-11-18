@@ -17,7 +17,21 @@ from django.test import SimpleTestCase
 
 ROOT = Path(settings.BASE_DIR)
 
-TRANSLATED_TEMPLATES: list[str] = []
+TRANSLATED_TEMPLATES: list[str] = [
+    "templates/login.html",
+    "templates/login_verify.html",
+    "templates/setup.html",
+    "templates/_host_card.html",
+    "templates/pages/_alerts.html",
+    "templates/pages/_tasks.html",
+    "templates/pages/_task_editor.html",
+    "templates/pages/_inventory.html",
+    "templates/pages/_topology.html",
+    "templates/pages/_store.html",
+    "templates/pages/_dashboard.html",
+    "templates/pages/_search.html",
+    "templates/pages/_statuspages.html",
+]
 
 _DROP = [
     re.compile(r"<script\b.*?</script>", re.S | re.I),
