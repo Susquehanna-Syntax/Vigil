@@ -39,7 +39,7 @@ async function loadSites() {
     if (el) el.disabled = !_sitesLicensed;
   });
   if (note) note.textContent = _sitesLicensed
-    ? '' : 'Sites is a Business feature — Free installs use the single default site.';
+    ? '' : t('Sites is a Business feature — Free installs use the single default site.');
 
   try {
     const sites = await apiJson('/api/v1/sites/');
@@ -51,27 +51,27 @@ async function loadSites() {
       const row = document.createElement('div');
       row.className = 'site-row';
       const actions = _sitesLicensed
-        ? `<button class="btn btn-sky btn-sm site-edit" data-id="${s.id}">Edit</button>` +
-          `<button class="btn btn-sky btn-sm site-assign" data-id="${s.id}">Hosts</button>` +
-          (s.is_global ? '' : `<button class="btn btn-rose btn-sm site-del" data-id="${s.id}">Delete</button>`)
+        ? `<button class="btn btn-sky btn-sm site-edit" data-id="${s.id}">${escHtml(t('Edit'))}</button>` +
+          `<button class="btn btn-sky btn-sm site-assign" data-id="${s.id}">${escHtml(t('Hosts'))}</button>` +
+          (s.is_global ? '' : `<button class="btn btn-rose btn-sm site-del" data-id="${s.id}">${escHtml(t('Delete'))}</button>`)
         : '';
       row.innerHTML =
         `<div class="site-row-main">` +
-          `<span class="site-row-name">${escHtml(s.name)}${s.is_global ? ' <span class="site-badge">global</span>' : ''}</span>` +
+          `<span class="site-row-name">${escHtml(s.name)}${s.is_global ? ` <span class="site-badge">${escHtml(t('global'))}</span>` : ''}</span>` +
           `<span class="site-row-desc muted">${escHtml(s.description || '')}</span>` +
         `</div>` +
         `<div class="site-row-meta">` +
-          `<span class="muted">${s.host_count} host${s.host_count === 1 ? '' : 's'}</span>` +
+          `<span class="muted">${tn('{n} host', '{n} hosts', s.host_count)}</span>` +
           `<div class="site-row-actions">${actions}</div>` +
         `</div>`;
       list.appendChild(row);
     });
-    if (!sites.length) list.innerHTML = '<p class="muted">No sites yet.</p>';
+    if (!sites.length) list.innerHTML = `<p class="muted">${escHtml(t('No sites yet.'))}</p>`;
     list.querySelectorAll('.site-edit').forEach((/** @type {HTMLElement} */ b) => b.addEventListener('click', () => editSite(byId[b.dataset.id])));
     list.querySelectorAll('.site-assign').forEach((/** @type {HTMLElement} */ b) => b.addEventListener('click', () => assignHosts(byId[b.dataset.id])));
     list.querySelectorAll('.site-del').forEach((/** @type {HTMLElement} */ b) => b.addEventListener('click', () => deleteSite(byId[b.dataset.id])));
   } catch (e) {
-    list.innerHTML = `<p class="muted">Could not load sites: ${escHtml(e.message)}</p>`;
+    list.innerHTML = `<p class="muted">${escHtml(t('Could not load sites: {message}', { message: e.message }))}</p>`;
   }
 }
 
@@ -81,12 +81,12 @@ async function createSite() {
   const description = /** @type {HTMLInputElement} */ (document.getElementById('ns-description')).value.trim();
   const note = /** @type {HTMLElement} */ (document.getElementById('ns-note'));
   if (!slug) slug = _slugify(name);
-  if (!name || !slug) { note.textContent = 'Name is required.'; return; }
+  if (!name || !slug) { note.textContent = t('Name is required.'); return; }
   try {
     await apiJson('/api/v1/sites/', {
       method: 'POST', body: JSON.stringify({ name, slug, description }),
     });
-    showToast(`Created ${name}`, 'success');
+    showToast(t('Created {name}', { name }), 'success');
     /** @type {HTMLInputElement} */ (document.getElementById('ns-name')).value = '';
     /** @type {HTMLInputElement} */ (document.getElementById('ns-slug')).value = '';
     /** @type {HTMLInputElement} */ (document.getElementById('ns-description')).value = '';
@@ -102,13 +102,13 @@ function editSite(site) {
   if (!site) return;
   const m = mountModal('site-edit');
   m.setBody(`
-    <div class="modal-title"><span>Edit site</span>
+    <div class="modal-title"><span>${escHtml(t('Edit site'))}</span>
       <button class="modal-close" id="se-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="se-name"></div>
-    <div class="setting-row"><label>Description</label><input type="text" class="form-control" id="se-description"></div>
+    <div class="setting-row"><label>${escHtml(t('Name'))}</label><input type="text" class="form-control" id="se-name"></div>
+    <div class="setting-row"><label>${escHtml(t('Description'))}</label><input type="text" class="form-control" id="se-description"></div>
     <p class="muted" id="se-note"></p>
-    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="se-cancel">Cancel</button><button class="btn btn-mint btn-sm" id="se-save">Save</button></div>`);
+    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="se-cancel">${escHtml(t('Cancel'))}</button><button class="btn btn-mint btn-sm" id="se-save">${escHtml(t('Save'))}</button></div>`);
   /** @type {HTMLInputElement} */ (m.modal.querySelector('#se-name')).value = site.name;
   /** @type {HTMLInputElement} */ (m.modal.querySelector('#se-description')).value = site.description || '';
   const close = () => m.close();
@@ -121,7 +121,7 @@ function editSite(site) {
     };
     try {
       await apiJson(`/api/v1/sites/${site.id}/`, { method: 'PATCH', body: JSON.stringify(body) });
-      showToast('Site updated', 'success');
+      showToast(t('Site updated'), 'success');
       close();
       loadSites();
     } catch (e) {
@@ -134,11 +134,11 @@ function editSite(site) {
 /** @param {Site|undefined} site @returns {Promise<void>} */
 async function deleteSite(site) {
   if (!site || site.is_global) return;
-  const ok = await confirmModal(`Delete site "${site.name}"? Its hosts return to Global.`, { danger: true });
+  const ok = await confirmModal(t('Delete site "{name}"? Its hosts return to Global.', { name: `"${site.name}"` }), { danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/sites/${site.id}/`, { method: 'DELETE' });
-    showToast(`Deleted ${site.name}`, 'success');
+    showToast(t('Deleted {name}', { name: site.name }), 'success');
     loadSites();
   } catch (e) {
     showToast(e.message, 'error');
@@ -153,8 +153,10 @@ async function assignHosts(site) {
   // anything left the screen dead from click to render, which reads as lag
   // however fast the request actually is.
   const m = mountModal('site-assign', { wide: true });
+  // Same title as the loaded body below, so the skeleton does not flash a bare site name.
+  const _saTitle = t('Hosts in {site}', { site: escHtml(site.name) });
   m.setBody(`
-    <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>
+    <div class="modal-title"><span>${_saTitle}</span>
       <button class="modal-close" id="sa-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="modal-skeleton">
@@ -167,12 +169,13 @@ async function assignHosts(site) {
   /** @type {SiteHostRow[]} */
   let hosts = [];
   try { hosts = await apiJson('/api/v1/hosts/'); }
-  catch (e) { m.close(); showToast('Could not load hosts', 'error'); return; }
+  catch (e) { m.close(); showToast(t('Could not load hosts'), 'error'); return; }
 
   // Membership as it stood when the modal opened; Save diffs against this.
   const before = new Set(hosts.filter((/** @type {SiteHostRow} */ h) => h.site === site.id).map((/** @type {SiteHostRow} */ h) => h.id));
   const selected = new Set(before);
-  const allTags = [...new Set(hosts.flatMap((/** @type {SiteHostRow} */ h) => h.tags || []))].sort();
+  // A local `t` here would hide the translate helper in this scope.
+  const allTagNames = [...new Set(hosts.flatMap((/** @type {SiteHostRow} */ h) => h.tags || []))].sort();
   let qText = '';
   let qStatus = '';
   /** @type {Set<string>} */
@@ -182,20 +185,20 @@ async function assignHosts(site) {
     `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escAttr(val)}">${escHtml(label)}</button>`;
 
   m.setBody(`
-    <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>
+    <div class="modal-title"><span>${_saTitle}</span>
       <button class="modal-close" id="sa-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <p class="muted sa-intro">A host belongs to exactly one site. Unchecking returns it to Global.</p>
-    <input type="text" class="deploy-host-search" id="sa-search" placeholder="Search hosts by hostname\u2026">
+    <p class="muted sa-intro">${escHtml(t('A host belongs to exactly one site. Unchecking returns it to Global.'))}</p>
+    <input type="text" class="deploy-host-search" id="sa-search" placeholder="${escAttr(t('Search hosts by hostname…'))}">
     <div class="sa-chips" id="sa-chips">
       ${['online', 'offline', 'pending'].map((s) => chip(s, s, 'status')).join('')}
-      ${allTags.map((t) => chip(t, '#' + t, 'tag')).join('')}
+      ${allTagNames.map((tag) => chip(tag, '#' + tag, 'tag')).join('')}
     </div>
     <div class="assign-list" id="sa-rows"></div>
     <p class="muted" id="sa-note"></p>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" id="sa-cancel">Cancel</button>
-      <button class="btn btn-mint btn-sm" id="sa-save">Save changes</button>
+      <button class="btn btn-outline btn-sm" id="sa-cancel">${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint btn-sm" id="sa-save">${escHtml(t('Save changes'))}</button>
     </div>`);
 
   const rowsEl = /** @type {HTMLElement} */ (m.modal.querySelector('#sa-rows'));
@@ -204,7 +207,7 @@ async function assignHosts(site) {
     return hosts.filter((/** @type {SiteHostRow} */ h) => {
       if (qText && !h.hostname.toLowerCase().includes(qText)) return false;
       if (qStatus && h.status !== qStatus) return false;
-      if (qTags.size && !(h.tags || []).some((/** @type {string} */ t) => qTags.has(t))) return false;
+      if (qTags.size && !(h.tags || []).some((/** @type {string} */ tag) => qTags.has(tag))) return false;
       return true;
     });
   }
@@ -213,7 +216,7 @@ async function assignHosts(site) {
     const add = [...selected].filter((/** @type {string} */ id) => !before.has(id)).length;
     const rm = [...before].filter((/** @type {string} */ id) => !selected.has(id)).length;
     /** @type {HTMLElement} */ (m.modal.querySelector('#sa-note')).textContent =
-      add || rm ? `${add} to add, ${rm} to remove.` : 'No changes.';
+      add || rm ? t('{add} to add, {remove} to remove.', { add, remove: rm }) : t('No changes.');
   }
 
   function render() {
@@ -224,9 +227,9 @@ async function assignHosts(site) {
             <input type="checkbox" value="${h.id}"${selected.has(h.id) ? ' checked' : ''}>
             <span class="sa-name">${escHtml(h.hostname)}</span>
             <span class="sa-status sa-${escHtml(h.status)}">${escHtml(h.status)}</span>
-            <span class="sa-site">${escHtml(h.site_name || 'Global')}</span>
+            <span class="sa-site">${escHtml(h.site_name || t('Global'))}</span>
           </label>`).join('')
-      : '<div class="host-pick-empty">No hosts match those filters.</div>';
+      : `<div class="host-pick-empty">${escHtml(t('No hosts match those filters.'))}</div>`;
     rowsEl.querySelectorAll('input[type=checkbox]').forEach((/** @type {HTMLInputElement} */ cb) => {
       cb.addEventListener('change', () => {
         if (cb.checked) selected.add(cb.value); else selected.delete(cb.value);
@@ -276,11 +279,11 @@ async function assignHosts(site) {
     }
     if (failed.length) {
       /** @type {HTMLElement} */ (m.modal.querySelector('#sa-note')).textContent =
-        `${ok} applied, ${failed.length} failed: ${failed[0]}`;
+        t('{ok} applied, {failed} failed: {reason}', { ok, failed: failed.length, reason: failed[0] });
       loadSites();
       return;
     }
-    showToast(`Updated ${site.name}`, 'success');
+    showToast(t('Updated {name}', { name: site.name }), 'success');
     close();
     loadSites();
   };

@@ -31,7 +31,7 @@ function _alertRelTime(iso) {
   const abs = Math.abs(diff);
   const mins = Math.round(abs / 60000);
   let span;
-  if (mins < 1) span = 'moments';
+  if (mins < 1) span = t('moments');
   else if (mins < 60) span = `${mins}m`;
   else if (mins < 1440) span = `${Math.round(mins / 60)}h`;
   else span = `${Math.round(mins / 1440)}d`;
@@ -53,51 +53,51 @@ function _alertItemHtml(alert, tab) {
   const checked = alertSelection.has(alert.id) ? 'checked' : '';
   const selectable = tab !== 'resolved';
   const checkbox = selectable
-    ? `<input type="checkbox" class="alert-check" data-alert-id="${alert.id}" ${checked} aria-label="Select alert">`
+    ? `<input type="checkbox" class="alert-check" data-alert-id="${alert.id}" ${checked} aria-label="${escAttr(t('Select alert'))}">`
     : '';
 
   let sub, time, actions = '';
   if (tab === 'firing') {
     sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(alert.severity)}` +
-          (alert.metric_value != null ? ` · Value: ${alert.metric_value}` : '');
+          (alert.metric_value != null ? ` · ${t('Value: {value}', { value: alert.metric_value })}` : '');
     time = `${_alertRelTime(alert.fired_at)}`;
-    const fixBtn = `<button class="btn btn-sm btn-lav" data-alert-action="suggest-fix" data-alert-id="${alert.id}">Suggest Fix</button>`;
+    const fixBtn = `<button class="btn btn-sm btn-lav" data-alert-action="suggest-fix" data-alert-id="${alert.id}">${escHtml(t('Suggest Fix'))}</button>`;
     // An outdated image has a known fix: the built-in Update container task (M11).
     const ctr = (alert.fix_context || {}).container_name;
     const updateBtn = ctr
-      ? `<button class="btn btn-sm btn-outline" data-alert-action="update-container" data-alert-id="${escAttr(alert.id)}">Update container</button>`
+      ? `<button class="btn btn-sm btn-outline" data-alert-action="update-container" data-alert-id="${escAttr(alert.id)}">${escHtml(t('Update container'))}</button>`
       : '';
     actions = `
       <div class="alert-actions">
         ${updateBtn}${fixBtn}
         <div class="ack-menu-wrap">
           <button class="btn btn-sm btn-outline" data-ack-menu="${escAttr(alert.id)}">
-            Ack
+            ${escHtml(t('Ack'))}
             <svg class="alerts-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="ack-menu" id="ack-menu-${escAttr(alert.id)}">
-            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="3600">For 1 hour</div>
-            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="28800">For 8 hours</div>
-            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="86400">For 24 hours</div>
-            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="604800">For 7 days</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="3600">${escHtml(t('For 1 hour'))}</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="28800">${escHtml(t('For 8 hours'))}</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="86400">${escHtml(t('For 24 hours'))}</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="604800">${escHtml(t('For 7 days'))}</div>
             <div class="ack-menu-divider"></div>
-            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}">Permanently</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}">${escHtml(t('Permanently'))}</div>
           </div>
         </div>
       </div>`;
   } else if (tab === 'ack') {
     const refire = alert.acknowledged_until
-      ? `Re-fires ${_alertRelTime(alert.acknowledged_until)}`
-      : 'Permanent';
-    sub = `${escHtml(alert.host_hostname || '—')} · Ack'd ${_alertRelTime(alert.acknowledged_at)} · ${refire}`;
-    time = `Fired ${_alertRelTime(alert.fired_at)}`;
+      ? t('Re-fires {when}', { when: _alertRelTime(alert.acknowledged_until) })
+      : t('Permanent');
+    sub = `${escHtml(alert.host_hostname || '—')} · ${t("Ack'd {when}", { when: _alertRelTime(alert.acknowledged_at) })} · ${escHtml(refire)}`;
+    time = t('Fired {when}', { when: _alertRelTime(alert.fired_at) });
     actions = `
       <div class="alert-actions">
-        <button class="btn btn-sm btn-peach" data-unack="${escAttr(alert.id)}">Un-ack</button>
+        <button class="btn btn-sm btn-peach" data-unack="${escAttr(alert.id)}">${escHtml(t('Un-ack'))}</button>
       </div>`;
   } else {
-    sub = `${escHtml(alert.host_hostname || '—')} · Resolved ${_alertRelTime(alert.resolved_at)}`;
-    time = `Fired ${_alertRelTime(alert.fired_at)}`;
+    sub = `${escHtml(alert.host_hostname || '—')} · ${t('Resolved {when}', { when: _alertRelTime(alert.resolved_at) })}`;
+    time = t('Fired {when}', { when: _alertRelTime(alert.fired_at) });
   }
 
   let titleClass = 'alert-title';
@@ -122,24 +122,24 @@ const _ALERT_EMPTY = {
       <div class="empty-state-icon empty-state-mint">
         <svg viewBox="0 0 24 24" class="empty-state-svg-mint"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
-      <div class="empty-state-title">All clear</div>
-      <div class="empty-state-desc">No alerts are currently firing. Everything looks healthy.</div>
+      <div class="empty-state-title">${escHtml(t('All clear'))}</div>
+      <div class="empty-state-desc">${escHtml(t('No alerts are currently firing. Everything looks healthy.'))}</div>
     </div>`,
   ack: `
     <div class="empty-state">
       <div class="empty-state-icon empty-state-lemon">
         <svg viewBox="0 0 24 24" class="empty-state-svg-lemon"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
-      <div class="empty-state-title">No acknowledged alerts</div>
-      <div class="empty-state-desc">Alerts you acknowledge move here until they resolve or re-fire.</div>
+      <div class="empty-state-title">${escHtml(t('No acknowledged alerts'))}</div>
+      <div class="empty-state-desc">${escHtml(t('Alerts you acknowledge move here until they resolve or re-fire.'))}</div>
     </div>`,
   resolved: `
     <div class="empty-state">
       <div class="empty-state-icon empty-state-mint">
         <svg viewBox="0 0 24 24" class="empty-state-svg-mint"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       </div>
-      <div class="empty-state-title">No resolved alerts yet</div>
-      <div class="empty-state-desc">Resolved alerts keep their history here for reference.</div>
+      <div class="empty-state-title">${escHtml(t('No resolved alerts yet'))}</div>
+      <div class="empty-state-desc">${escHtml(t('Resolved alerts keep their history here for reference.'))}</div>
     </div>`,
 };
 
@@ -181,7 +181,7 @@ async function refreshAlerts() {
     _renderAlertCounts();
     _updateBulkBar();
   } catch (e) {
-    showLoadFailure(document.getElementById('alerts-list-firing'), 'alerts', e, () => refreshAlerts());
+    showLoadFailure(document.getElementById('alerts-list-firing'), t('alerts'), e, () => refreshAlerts());
   }
 }
 
@@ -192,7 +192,7 @@ function _updateBulkBar() {
   const n = alertSelection.size;
   bar.hidden = n === 0;
   const count = document.getElementById('alerts-bulk-count');
-  if (count) count.textContent = `${n} selected`;
+  if (count) count.textContent = t('{n} selected', { n });
 }
 
 function clearAlertSelection() {
@@ -209,13 +209,13 @@ async function bulkAlertAction(action, durationSeconds = null) {
     const body = { ids: [...alertSelection], action };
     if (action === 'acknowledge' && durationSeconds) body.duration_seconds = durationSeconds;
     const res = await apiJson('/api/v1/alerts/bulk/', { method: 'POST', body: JSON.stringify(body) });
-    const verb = action === 'acknowledge' ? 'acknowledged' : 're-fired';
-    showToast(`${res.updated} alert${res.updated === 1 ? '' : 's'} ${verb}` +
-              (res.skipped ? ` (${res.skipped} skipped)` : ''), 'success');
+    const verb = action === 'acknowledge' ? t('acknowledged') : t('re-fired');
+    showToast(tn('{n} alert {verb}', '{n} alerts {verb}', res.updated, { verb }) +
+              (res.skipped ? ` (${t('{n} skipped', { n: res.skipped })})` : ''), 'success');
     alertSelection.clear();
     refreshAlerts();
   } catch (e) {
-    showToast('Bulk action failed: ' + e.message, 'error');
+    showToast(t('Bulk action failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -229,10 +229,10 @@ async function acknowledgeAlert(alertId, durationSeconds = null) {
       method: 'POST',
       body: JSON.stringify(body),
     });
-    showToast(durationSeconds ? 'Acknowledged — will re-fire if still open' : 'Alert acknowledged', 'success');
+    showToast(durationSeconds ? t('Acknowledged — will re-fire if still open') : t('Alert acknowledged'), 'success');
     refreshAlerts();
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -240,10 +240,10 @@ async function acknowledgeAlert(alertId, durationSeconds = null) {
 async function unacknowledgeAlert(alertId) {
   try {
     await apiJson(`/api/v1/alerts/${alertId}/unacknowledge/`, { method: 'POST' });
-    showToast('Alert re-fired', 'success');
+    showToast(t('Alert re-fired'), 'success');
     refreshAlerts();
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -311,7 +311,7 @@ document.addEventListener('click', (/** @type {MouseEvent} */ e) => {
 function suggestAgentUpdate(hostId) {
   const yaml = [
     `name: "Update Vigil Agent"`,
-    `description: "Download the latest Vigil agent binary from the server and restart the service"`,
+    `description: "Download the latest Vigil agent binary from the server and restart the service"`, // i18n-ignore — a Playbook YAML definition's description field, not UI text
     `actions:`,
     `  - id: update`,
     `    type: update_agent`,
