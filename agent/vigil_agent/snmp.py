@@ -646,6 +646,9 @@ def _aes_cfb(key: bytes, iv: bytes, data: bytes, *, encrypt: bool) -> bytes:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     except ImportError:  # an agent installed from source without it
         raise SnmpError("SNMPv3 privacy needs the cryptography package on this agent") from None
+    # RFC 3826 fixes AES-CFB for SNMPv3, and privacy only runs as authPriv: the whole
+    # message carries an HMAC that _accept checks before anything is decrypted.
+    # nosemgrep: crypto-mode-without-authentication -- see above
     cipher = Cipher(algorithms.AES(key), modes.CFB(iv))
     worker = cipher.encryptor() if encrypt else cipher.decryptor()
     return worker.update(data) + worker.finalize()

@@ -78,14 +78,19 @@ class TwoFailuresFireTests(TestCase):
         self.assertEqual(DeviceAlert.objects.count(), 1)
 
     def test_a_long_detail_is_cut_to_the_limit(self):
-        add_result(self.check, False, detail="x" * 400)
-        add_result(self.check, False, detail="y" * 400)
-        evaluate({self.check.id})
+        # A detail is at most 300 characters (CheckResult.detail, which
+        # Postgres enforces), so the cut only bites when the target is long
+        # too: a 260-character URL plus a full detail is past 500.
+        url = "https://wiki.lan/" + "a" * 243
+        check = make_check(self.device, kind=DeviceCheck.Kind.HTTP, params={"url": url})
+        add_result(check, False, detail="x" * 300)
+        add_result(check, False, detail="y" * 300)
+        evaluate({check.id})
         message = DeviceAlert.objects.get().message
-        self.assertLessEqual(len(message), 500)
+        self.assertEqual(len(message), 500)
         # The cut takes a bite out of the poller's detail, never out of the
         # part that says which device and which check.
-        self.assertIn("core-switch is down: Ping 10.0.0.1 failed twice: ", message)
+        self.assertTrue(message.startswith(f"core-switch is down: HTTP {url} failed twice: y"))
 
     def test_the_target_is_labelled_the_way_the_ui_labels_a_check(self):
         for kind, params, expected in (
