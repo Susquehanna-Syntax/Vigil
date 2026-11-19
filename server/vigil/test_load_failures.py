@@ -63,7 +63,7 @@ class SharedHelperTests(SimpleTestCase):
         utils = _js("vigil-utils.js")
         start = utils.index("function showLoadFailure(")
         body = utils[start:utils.index("\n}", start)]
-        self.assertIn("'Try again'", body)
+        self.assertIn("t('Try again')", body)
 
 
 class LoadFailureStyleTests(SimpleTestCase):

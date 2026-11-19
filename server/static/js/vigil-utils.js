@@ -70,7 +70,7 @@ function showLoadFailure(container, what, err, retry) {
 
   const title = document.createElement('div');
   title.className = 'load-failed-title';
-  title.textContent = `Could not load ${what}`;
+  title.textContent = t('Could not load {what}', { what });
   block.appendChild(title);
 
   const raw = err && typeof /** @type {{message?: unknown}} */ (err).message === 'string'
@@ -88,7 +88,7 @@ function showLoadFailure(container, what, err, retry) {
     const button = document.createElement('button');
     button.setAttribute('type', 'button');
     button.className = 'btn btn-outline btn-sm';
-    button.textContent = 'Try again';
+    button.textContent = t('Try again');
     button.addEventListener('click', () => { retry(); });
     block.appendChild(button);
   }
@@ -374,13 +374,13 @@ function confirmModal(message, opts) {
     m.setBody(`
       <div class="modal-title">
         <span id="confirm-title"></span>
-        <button class="modal-close" id="confirm-x" aria-label="Close">
+        <button class="modal-close" id="confirm-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="confirm-msg" id="confirm-msg"></div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-outline btn-sm" id="confirm-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-sm" id="confirm-ok"></button>
       </div>`);
     m.modal.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
@@ -410,7 +410,7 @@ function promptModal(message, opts) {
     m.setBody(`
       <div class="modal-title">
         <span id="prompt-title"></span>
-        <button class="modal-close" id="prompt-x" aria-label="Close">
+        <button class="modal-close" id="prompt-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -418,7 +418,7 @@ function promptModal(message, opts) {
         <input type="text" class="form-control" id="prompt-input" maxlength="120">
       </div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="prompt-cancel">Cancel</button>
+        <button class="btn btn-outline btn-sm" id="prompt-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-mint btn-sm" id="prompt-ok"></button>
       </div>`);
     m.modal.querySelector('#prompt-title').textContent = message;
@@ -521,24 +521,24 @@ function totpPrompt(reason, opts) {
     const m = mountModal('totp', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
-        <span id="totp-title">Confirm with your authenticator</span>
-        <button class="modal-close" id="totp-x" aria-label="Close">
+        <span id="totp-title">${escHtml(t('Confirm with your authenticator'))}</span>
+        <button class="modal-close" id="totp-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="confirm-msg" id="totp-reason"></div>
       <div id="totp-key-slot" class="totp-key-slot" style="display:none;">
-        <button class="btn btn-mint btn-sm totp-key-btn" id="totp-key-btn">Use security key</button>
-        <div class="totp-sub" id="totp-key-hint">or enter the 6-digit code</div>
+        <button class="btn btn-mint btn-sm totp-key-btn" id="totp-key-btn">${escHtml(t('Use security key'))}</button>
+        <div class="totp-sub" id="totp-key-hint">${escHtml(t('or enter the 6-digit code'))}</div>
         <div class="totp-key-error" id="totp-key-error" style="display:none;"></div>
       </div>
       <div class="form-group">
         <input type="text" class="form-control totp-input" id="totp-input" inputmode="numeric"
                autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"
-               aria-label="6-digit code" placeholder="••••••">
+               aria-label="${escAttr(t('6-digit code'))}" placeholder="••••••">
       </div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="totp-cancel">Cancel</button>
+        <button class="btn btn-outline btn-sm" id="totp-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-mint btn-sm" id="totp-ok"></button>
       </div>`);
     m.modal.querySelector('#totp-title').textContent = opts.title || 'Confirm with your authenticator';
