@@ -190,7 +190,7 @@ async function uploadAnvilRecord(input) {
     showToast(msg, 'success');
     refreshVulns();
   } catch (e) {
-    showToast(t('Anvil import failed: ') + e.message, 'error');
+    showToast(t('Anvil import failed: {message}', { message: e.message }), 'error');
   } finally {
     input.value = '';
   }
@@ -217,7 +217,7 @@ function _buildVulnScanRow(s) {
   const title = document.createElement('div');
   title.className = 'task-action-name';
   const engineLabel = { nessus: 'Nessus', greenbone: 'Greenbone', trivy: 'Trivy' }[s.scanner] || 'Network';
-  title.textContent = engineLabel + ' ' + t('scan · {host}', { host: s.host_hostname || '' });
+  title.textContent = t('{engine} scan · {host}', { engine: engineLabel, host: s.host_hostname || '' });
   content.appendChild(title);
 
   const detail = document.createElement('div');
@@ -265,7 +265,7 @@ async function startVulnScan(hostId, btn) {
     showToast(t('Scan queued — the scanner will pick it up shortly'), 'success');
     setTimeout(refreshVulnScans, 600);
   } catch (e) {
-    showToast(t('Scan request failed: ') + e.message, 'error');
+    showToast(t('Scan request failed: {message}', { message: e.message }), 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }
@@ -399,9 +399,9 @@ function renderVulns(summaries) {
 
   const note = document.createElement('div');
   note.className = 'vuln-sync-note';
-  note.textContent = t('Last synced: ') + (
-    summaries[0]?.synced_at ? new Date(summaries[0].synced_at).toLocaleString() : t('Unknown')
-  );
+  note.textContent = t('Last synced: {when}', {
+    when: summaries[0]?.synced_at ? new Date(summaries[0].synced_at).toLocaleString() : t('Unknown'),
+  });
   content.appendChild(note);
 
   updateHostCardVulnBadges(summaries);
@@ -650,8 +650,8 @@ async function refreshFixGroups() {
 }
 
 function _vfixHeadline(g) {
-  const cves = g.cves.length ? t('fixes {n} CVE(s)', { n: g.cves.length })
-    : t('fixes {n} finding(s)', { n: g.finding_count });
+  const cves = g.cves.length ? tn('fixes {n} CVE', 'fixes {n} CVEs', g.cves.length)
+    : tn('fixes {n} finding', 'fixes {n} findings', g.finding_count);
   const where = tn('{n} host', '{n} hosts', g.host_count);
   if (g.fix.kind === 'none') return `${escHtml(g.package)} ${t('on {where} — {label}', { where, label: escHtml(g.fix.label.toLowerCase()) })}`;
   return t('{label} on {where}: {cves}', { label: escHtml(g.fix.label), where, cves });

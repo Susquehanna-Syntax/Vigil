@@ -72,7 +72,7 @@ function _storeCard(c) {
         <span class="store-card-sum">${escHtml(c.summary || '')}</span>
         <span class="store-card-foot">
           <span class="chip chip-muted">${escHtml(where)} · ${escHtml(c.source_label)}</span>
-          ${c.installed ? `<span class="chip store-chip-have">${escHtml(t('on {n} machine(s)', { n: c.installed }))}</span>` : ''}
+          ${c.installed ? `<span class="chip store-chip-have">${escHtml(tn('on {n} machine', 'on {n} machines', c.installed))}</span>` : ''}
         </span>
       </span>
     </button>`;
@@ -284,7 +284,7 @@ async function openStoreApp(id) {
       ${choices.map((c, i) => `<label class="store-src">
           <input type="checkbox" data-store-pick="${escAttr(c.id)}"${i === 0 || c.installed ? ' checked' : ''}>
           <span class="store-src-name">${escHtml(c.source_label)} <code>${escHtml(c.package_id)}</code></span>
-          <span class="store-src-meta">${escHtml(where[c.platform] || c.platform)}${c.version ? ' · ' + escHtml(c.version) : ''}${c.installed ? ' · ' + escHtml(t('on {n} machine(s)', { n: c.installed })) : ''}</span>
+          <span class="store-src-meta">${escHtml(where[c.platform] || c.platform)}${c.version ? ' · ' + escHtml(c.version) : ''}${c.installed ? ' · ' + escHtml(tn('on {n} machine', 'on {n} machines', c.installed)) : ''}</span>
         </label>`).join('')}
     </div>
     <div class="store-app-hint">${escHtml(t('Each package manager is a step that runs only on machines that have it, so one task or policy covers Windows and Linux together.'))}</div>
@@ -397,7 +397,7 @@ function openStoreSyncInfo() {
       <button class="btn btn-ghost btn-sm" type="button" id="store-sync-info-x" aria-label="${escAttr(t('Close'))}">${escHtml(t('Close'))}</button>
     </div>
     <div class="store-sync-lead">${failed.length
-      ? escHtml(t('{n} list(s) did not download, so their apps are missing from the Store. An admin can press Sync now to try again.', { n: failed.length }))
+      ? escHtml(tn('{n} list did not download, so its apps are missing from the Store. An admin can press Sync now to try again.', '{n} lists did not download, so their apps are missing from the Store. An admin can press Sync now to try again.', failed.length))
       : escHtml(t('Every package list downloaded on its last run.'))}</div>
     ${status.syncs.length ? rows(status.syncs, s => escHtml(t('{n} packages · {ago}', { n: (s.count || 0).toLocaleString(), ago: timeAgo(s.synced_at) || t('never') }))
       + (s.error ? `<div class="store-empty-err">${escHtml(s.error)}</div>` : '')) : ''}
