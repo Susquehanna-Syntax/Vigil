@@ -1,10 +1,8 @@
 {
   "static/js/vigil-ai.js": 32,
   "static/js/vigil-containers.js": 69,
-  "static/js/vigil-dashboards.js": 27,
   "static/js/vigil-deploy.js": 26,
   "static/js/vigil-host-cards.js": 26,
-  "static/js/vigil-instance-settings.js": 27,
   "static/js/vigil-pickers.js": 30,
   "static/js/vigil-playbook-flow.js": 81,
   "static/js/vigil-playbooks.js": 95,

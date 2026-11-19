@@ -48,21 +48,21 @@ function _dashToolbar() {
   const board = DASH.current;
   return `
     <div class="dash-toolbar">
-      <select class="form-control dash-switch" id="dash-switch" aria-label="Dashboard">${opts}</select>
+      <select class="form-control dash-switch" id="dash-switch" aria-label="${escAttr(t('Dashboard'))}">${opts}</select>
       ${mine ? `
         <button class="btn btn-${DASH.editing ? 'mint' : 'sky'} btn-sm" id="dash-edit">
-          ${DASH.editing ? 'Done' : 'Edit layout'}</button>
-        ${DASH.editing ? `<button class="btn btn-lav btn-sm" id="dash-add">+ Add widget</button>` : ''}
+          ${DASH.editing ? escHtml(t('Done')) : escHtml(t('Edit layout'))}</button>
+        ${DASH.editing ? `<button class="btn btn-lav btn-sm" id="dash-add">${escHtml(t('+ Add widget'))}</button>` : ''}
         <span class="dash-toolbar-spacer"></span>
-        <button class="btn btn-mint btn-sm" id="dash-new" title="New dashboard">+ New</button>
-        <button class="btn btn-sky btn-sm" id="dash-rename">Rename</button>
+        <button class="btn btn-mint btn-sm" id="dash-new" title="${escAttr(t('New dashboard'))}">${escHtml(t('+ New'))}</button>
+        <button class="btn btn-sky btn-sm" id="dash-rename">${escHtml(t('Rename'))}</button>
         <button class="btn btn-${board.is_default ? 'lemon' : 'peach'} btn-sm" id="dash-default"
-                ${board.is_default ? 'disabled title="This is already your landing dashboard"' : ''}>
-          ${board.is_default ? 'Default' : 'Make default'}</button>
+                ${board.is_default ? `disabled title="${escAttr(t('This is already your landing dashboard'))}"` : ''}>
+          ${board.is_default ? escHtml(t('Default')) : escHtml(t('Make default'))}</button>
         <button class="btn btn-${board.shared ? 'lemon' : 'lav'} btn-sm" id="dash-share">
-          ${board.shared ? 'Stop sharing' : 'Share'}</button>
-        <button class="btn btn-rose btn-sm" id="dash-delete">Delete</button>
-      ` : `<span class="chip">shared by ${escHtml(board.owner)} · read-only</span>`}
+          ${board.shared ? escHtml(t('Stop sharing')) : escHtml(t('Share'))}</button>
+        <button class="btn btn-rose btn-sm" id="dash-delete">${escHtml(t('Delete'))}</button>
+      ` : `<span class="chip">${escHtml(t('shared by {owner} · read-only', { owner: escHtml(board.owner) }))}</span>`}
     </div>`;
 }
 
@@ -81,13 +81,13 @@ function _widgetShell(widget) {
         <span class="dash-widget-title">${escHtml(title)}</span>
         <span class="dash-widget-actions">
           <button class="btn btn-lav btn-xs dash-w-settings" data-id="${escAttr(widget.id)}"
-                  title="Widget settings">Settings</button>
+                  title="${escAttr(t('Widget settings'))}">${escHtml(t('Settings'))}</button>
           <button class="btn btn-rose btn-xs dash-w-remove" data-id="${escAttr(widget.id)}"
-                  title="Remove widget">&times;</button>
+                  title="${escAttr(t('Remove widget'))}">${REMOVE_GLYPH}</button>
         </span>
       </div>
       <div class="dash-widget-body" data-widget-body="${escAttr(widget.id)}">
-        <span class="muted-note">Loading…</span>
+        <span class="muted-note">${escHtml(t('Loading…'))}</span>
       </div>
     </div>`;
 }
@@ -186,7 +186,7 @@ function _dashBindChrome(host) {
   };
 
   on('dash-new', async () => {
-    const name = await promptModal('Name the new dashboard', { placeholder: 'NOC wall' });
+    const name = await promptModal(t('Name the new dashboard'), { placeholder: t('NOC wall') });
     if (!name) return;
     try {
       const board = await apiJson('/api/v1/dashboards/', {
@@ -195,44 +195,44 @@ function _dashBindChrome(host) {
       DASH.current = board;
       DASH.editing = false;
       _dashRender();
-      showToast(`Created ${board.name}`, 'success');
-    } catch (e) { showToast(e.message || 'Could not create it', 'error'); }
+      showToast(t('Created {name}', { name: board.name }), 'success');
+    } catch (e) { showToast(e.message || t('Could not create it'), 'error'); }
   });
 
   on('dash-rename', async () => {
-    const name = await promptModal('Rename this dashboard', { value: DASH.current.name });
+    const name = await promptModal(t('Rename this dashboard'), { value: DASH.current.name });
     if (!name || name === DASH.current.name) return;
-    await _dashPatch({ name }, `Renamed to ${name}`);
+    await _dashPatch({ name }, t('Renamed to {name}', { name }));
   });
 
   on('dash-default', () =>
-    _dashPatch({ is_default: true }, 'This is now the dashboard you land on'));
+    _dashPatch({ is_default: true }, t('This is now the dashboard you land on')));
 
   on('dash-share', async () => {
     const turningOn = !DASH.current.shared;
     if (turningOn && !(await confirmModal(
-      'Share this dashboard with everyone on this Vigil? They will be able to '
-      + 'see it but not change it.', { confirmText: 'Share' }))) return;
+      t('Share this dashboard with everyone on this Vigil? They will be able to see it but not change it.'),
+      { confirmText: t('Share') }))) return;
     try {
       DASH.current = await apiJson(`/api/v1/dashboards/${DASH.current.id}/share/`, {
         method: 'POST', body: JSON.stringify({ shared: turningOn }) });
       _dashReplaceCurrent();
       _dashRender();
-      showToast(turningOn ? 'Shared' : 'No longer shared', 'success');
+      showToast(turningOn ? t('Shared') : t('No longer shared'), 'success');
     } catch (e) {
       // A 402 here is the Business gate, and its body explains itself.
-      showToast(e.message || 'Sharing needs SQSY Business', 'error');
+      showToast(e.message || t('Sharing needs SQSY Business'), 'error');
     }
   });
 
   on('dash-delete', async () => {
     if (DASH.boards.filter(b => b.is_mine).length < 2) {
-      showToast('This is your only dashboard — make another first', 'error');
+      showToast(t('This is your only dashboard — make another first'), 'error');
       return;
     }
     if (!(await confirmModal(
-      `Delete "${DASH.current.name}"? Its widgets and layout go with it.`,
-      { confirmText: 'Delete', danger: true }))) return;
+      t('Delete "{name}"? Its widgets and layout go with it.', { name: DASH.current.name }),
+      { confirmText: t('Delete'), danger: true }))) return;
     const gone = DASH.current.id;
     try {
       await apiJson(`/api/v1/dashboards/${gone}/`, { method: 'DELETE' });
@@ -241,7 +241,7 @@ function _dashBindChrome(host) {
     DASH.current = DASH.boards.find(b => b.is_default && b.is_mine) || DASH.boards[0];
     DASH.editing = false;
     _dashRender();
-    showToast('Dashboard deleted', 'success');
+    showToast(t('Dashboard deleted'), 'success');
   });
 
   host.querySelectorAll('.dash-w-remove').forEach(btn => btn.onclick = () => {
@@ -263,7 +263,7 @@ async function _dashPatch(body, okMessage) {
     DASH.current = await apiJson(`/api/v1/dashboards/${DASH.current.id}/`, {
       method: 'PATCH', body: JSON.stringify(body) });
   } catch (e) {
-    showToast(e.message || 'Could not save that', 'error');
+    showToast(e.message || t('Could not save that'), 'error');
     return;
   }
   // is_default is exclusive per owner, so the others in the list are stale.
@@ -330,9 +330,9 @@ async function _dashSaveLayout() {
     const i = DASH.boards.findIndex(b => b.id === DASH.current.id);
     if (i >= 0) DASH.boards[i] = DASH.current;
     DASH.dirty = false;
-    showToast('Layout saved', 'success');
+    showToast(t('Layout saved'), 'success');
   } catch (e) {
-    showToast(e.message || 'Could not save the layout', 'error');
+    showToast(e.message || t('Could not save the layout'), 'error');
   }
 }
 
@@ -346,13 +346,13 @@ function _dashPaintAll() {
       ? _renderJackilWidget
       : WIDGET_RENDERERS[w.kind];
     if (!render) {
-      body.innerHTML = '<span class="muted-note">No renderer for this widget yet.</span>';
+      body.innerHTML = `<span class="muted-note">${escHtml(t('No renderer for this widget yet.'))}</span>`;
       continue;
     }
     Promise.resolve()
       .then(() => render(body, w.settings || {}, w))
       .catch((e) => {
-        body.innerHTML = `<span class="bad">${escHtml(e.message || 'Failed to load')}</span>`;
+        body.innerHTML = `<span class="bad">${escHtml(e.message || t('Failed to load'))}</span>`;
       });
   }
 }
@@ -365,7 +365,7 @@ async function loadDashboards() {
   try {
     await _dashLoadAll();
   } catch (e) {
-    host.innerHTML = `<div class="empty-block"><h4>Couldn't load your dashboard</h4>`
+    host.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load your dashboard"))}</h4>`
       + `<p>${escHtml(e.message)}</p></div>`;
     return;
   }
@@ -392,10 +392,16 @@ const GROUP_ACCENT = {
   security: 'peach', utility: 'lemon', business: 'rose', jackil: 'lav',
 };
 const GROUP_LABEL = {
-  fleet: 'Fleet', health: 'Health', work: 'Work in flight',
-  security: 'Security', utility: 'Utility', business: 'Business', jackil: 'Jackil',
+  fleet: t('Fleet'), health: t('Health'), work: t('Work in flight'),
+  security: t('Security'), utility: t('Utility'), business: t('Business'), jackil: t('Jackil'),
 };
 const GROUP_ORDER = ['fleet', 'health', 'work', 'security', 'utility', 'business', 'jackil'];
+
+// The cross that removes a widget is the multiplication sign, which HTML writes
+// as an entity rather than a character: a glyph, not a word. It sits in a const
+// because the string checker reads text between tags only when it has a line to
+// itself.
+const REMOVE_GLYPH = '&times;'; // i18n-ignore: the multiplication sign, not a word
 
 function _railHtml() {
   const widgets = DASH.catalog.widgets || {};
@@ -424,8 +430,8 @@ function _railHtml() {
   }).join('');
   return `<aside class="dash-rail" id="dash-rail">
     <div class="rail-head">
-      <span>Add a widget</span>
-      <button class="modal-close" id="rail-close" aria-label="Close">
+      <span>${escHtml(t('Add a widget'))}</span>
+      <button class="modal-close" id="rail-close" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -453,7 +459,7 @@ function _addWidgetOfKind(kind) {
   DASH.dirty = true;
   _dashBindChrome(document.getElementById('dash-root'));
   _dashPaintAll();
-  showToast(`${spec.label} added`, 'success');
+  showToast(t('{label} added', { label: spec.label }), 'success');
 }
 
 //: The rail is fixed-position, so it has to hang off <body>. #dash-root

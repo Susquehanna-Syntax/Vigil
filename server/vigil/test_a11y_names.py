@@ -40,7 +40,9 @@ class SelectNameTests(SimpleTestCase):
         dashboards = (STATIC / "js" / "vigil-dashboards.js").read_text()
         select = re.search(r"<select[^>]*id=\"dash-switch\"[^>]*>", dashboards)
         self.assertIsNotNone(select, "the dashboard switcher is gone from vigil-dashboards.js")
-        self.assertIn('aria-label="Dashboard"', select.group(0))
+        # Wrapped for translation in phase 10k; the rendered attribute is still
+        # the same word, so assert on the t() call around it.
+        self.assertIn("aria-label=\"${escAttr(t('Dashboard'))}\"", select.group(0))
 
 
 class LabelledGroupRoleTests(SimpleTestCase):
