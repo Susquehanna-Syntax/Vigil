@@ -97,6 +97,9 @@ function _apfRelayName(ctx, id) {
 
 /* ── render ────────────────────────────────────────────────────────────── */
 
+/** The one action no allowlist can hold, named in mono inside the hint. */
+const _APF_RUN_COMMAND = '<span class="mono">run_command</span>'; // i18n-ignore — an action's code name
+
 function apfRender(container, values, ctx) {
   if (!container || !ctx) return;
   const v = _apfValues(values);
@@ -120,7 +123,7 @@ function apfRender(container, values, ctx) {
 
 <div class="apf-section"${v.mode === 'managed' ? '' : ' hidden'}>
   <div class="deploy-input-label">${escHtml(t('Allowed actions'))}</div>
-  <p class="confirm-hint apf-hint-tight">${escHtml(t('Only used in managed mode. Nothing here lets a task run arbitrary commands —'))}<!-- i18n-ignore --> <span class="mono">run_command</span>${escHtml(t('can never be allowlisted.'))}</p>
+  <p class="confirm-hint apf-hint-tight">${t('Only used in managed mode. Nothing here lets a task run arbitrary commands — {action} can never be allowlisted.', { action: _APF_RUN_COMMAND })}</p>
   <div class="apf-action-tools">
     <input type="search" class="form-control apf-action-search" placeholder="${escAttr(t('Search actions…'))}" aria-label="${escAttr(t('Search actions'))}">
     <button type="button" class="btn btn-outline btn-sm" data-act="apfSelectReadOnly" data-a1="$el">${escHtml(t('Select read-only'))}</button>

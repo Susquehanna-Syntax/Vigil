@@ -75,7 +75,7 @@ function _sourceChips(sources) {
 // "user: alice" for a user-scoped package, the scope name otherwise.
 function _scopeCell(row) {
   return row.scope === 'user'
-    ? `user: ${escHtml(row.user || t('unknown'))}` : escHtml(row.scope || '');
+    ? t('user: {name}', { name: escHtml(row.user || t('unknown')) }) : escHtml(row.scope || '');
 }
 
 /** @param {Record<string, any>|null|undefined} errors @returns {string} */
@@ -287,7 +287,7 @@ function _hostDetailHtml(id) {
   }).join('');
   const more = (!showAll && sorted.length > APPS_HOST_DETAIL_LIMIT)
     ? `<div class="apps-show-all">
-         <button class="btn btn-outline btn-xs" type="button" data-host-show-all="${escAttr(id)}">${escHtml(t('Show all'))} ${sorted.length}</button>
+         <button class="btn btn-outline btn-xs" type="button" data-host-show-all="${escAttr(id)}">${escHtml(t('Show all {n}', { n: sorted.length }))}</button>
        </div>` : '';
   return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
     <table class="hunt-table apps-table apps-host-detail">
@@ -524,7 +524,7 @@ function renderHostSoftwareList() {
         <tbody>${rows || _emptyRow(t('No software matches this filter.'))}</tbody>
       </table>
     </div>
-    ${more > 0 ? `<button type="button" class="btn btn-ghost btn-xs apps-show-all" id="software-show-all">${escHtml(t('Show all'))} ${matched.length}</button>` : ''}`;
+    ${more > 0 ? `<button type="button" class="btn btn-ghost btn-xs apps-show-all" id="software-show-all">${escHtml(t('Show all {n}', { n: matched.length }))}</button>` : ''}`;
   const showAll = document.getElementById('software-show-all');
   if (showAll) showAll.addEventListener('click', () => { _softwareShowAll = true; renderHostSoftwareList(); });
 }
