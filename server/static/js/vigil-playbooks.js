@@ -628,6 +628,18 @@ function _blSetupBuilder(box, at) {
 // step inspector offers their ids for ${{ inputs.<id> }}.
 let _blInputs = [];
 
+// A step's expression syntax is a technical sample rather than words, so the
+// placeholder keeps it out of the sentence a translator reads.
+const _BL_INPUT_EXPR_SAMPLE = '${ inputs.<id> }'; // i18n-ignore
+const _BL_INPUT_ID_HINT = t('Letters, digits and underscores, starting with a letter or underscore. A step uses it as {expr}, and a task input with the same id takes this value by itself.', { expr: _BL_INPUT_EXPR_SAMPLE });
+// The sample lines of the choices field: a value format, not a sentence.
+const _BL_CHOICE_SAMPLE_1 = 'nightly = Nightly maintenance'; // i18n-ignore
+const _BL_CHOICE_SAMPLE_2 = 'weekend = Weekend window'; // i18n-ignore
+// The auto-enrolment target is bolded, so both its halves are built apart.
+function _blEveryHostText() {
+  return t('every host tagged {tags}', { tags: `<strong>${t('EVERY approved host')}</strong>` }); // i18n-ignore
+}
+
 function _blInputChoices(inp) {
   return String(inp.choicesText || '')
     .split('\n')
@@ -660,7 +672,7 @@ function _renderBlInputs() {
   }
   box.innerHTML = _blInputs.map((inp, i) => {
     const bits = [escHtml(inp.id), escHtml(_blInputTypeMeta(inp.type))];
-    if (inp.type !== 'boolean') bits.push(escHtml(`${inp.default === '' || inp.default == null ? '(no default)' : inp.default}`));
+    if (inp.type !== 'boolean') bits.push(escHtml(`${inp.default === '' || inp.default == null ? t('(no default)') : inp.default}`));
     if (inp.required) bits.push(`<span class="bl-inputs-flag">${escHtml(t('required'))}</span>`);
     return `<div class="bl-inputs-row">
       <span class="bl-inputs-bits">${bits.join(' · ')}</span>
@@ -683,56 +695,54 @@ function _editBlInput(index) {
   const editing = index != null ? _blInputs[index] : null;
   const m = mountModal('bl-input', { variant: 'm-pop' });
   m.setBody(`<div class="modal-title">
-      <span>${editing ? 'Edit playbook input' : 'Add playbook input'}</span>
-      <button class="modal-close" data-bli-close aria-label="Close">
+      <span>${escHtml(t(editing ? 'Edit playbook input' : 'Add playbook input'))}</span>
+      <button class="modal-close" data-bli-close aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-id">Id</label>
+      <label class="form-label" for="bli-id">${escHtml(t('Id'))}</label>
       <input class="form-control" id="bli-id" maxlength="60" spellcheck="false"
-             placeholder="restart_window" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
-      <div class="muted-note bli-hint">Letters, digits and underscores, starting with a letter or underscore.
-        A step uses it as \${{ inputs.&lt;id&gt; }}, and a task input with the
-        same id takes this value by itself.</div>
+             placeholder="${escAttr(t('restart_window'))}" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
+      <div class="muted-note bli-hint">${escHtml(_BL_INPUT_ID_HINT)}</div>
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-label">Label</label>
-      <input class="form-control" id="bli-label" maxlength="120" placeholder="Restart window">
+      <label class="form-label" for="bli-label">${escHtml(t('Label'))}</label>
+      <input class="form-control" id="bli-label" maxlength="120" placeholder="${escAttr(t('Restart window'))}">
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-type">Type</label>
+      <label class="form-label" for="bli-type">${escHtml(t('Type'))}</label>
       <select class="form-control" id="bli-type">
-        <option value="text">Text</option>
-        <option value="number">Number</option>
-        <option value="boolean">Yes / no</option>
-        <option value="choice">Choice</option>
+        <option value="text">${escHtml(t('Text'))}</option>
+        <option value="number">${escHtml(t('Number'))}</option>
+        <option value="boolean">${escHtml(t('Yes / no'))}</option>
+        <option value="choice">${escHtml(t('Choice'))}</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-desc">Description</label>
-      <input class="form-control" id="bli-desc" maxlength="255" placeholder="Says what the person starting the run should type here">
+      <label class="form-label" for="bli-desc">${escHtml(t('Description'))}</label>
+      <input class="form-control" id="bli-desc" maxlength="255" placeholder="${escAttr(t('Says what the person starting the run should type here'))}">
     </div>
     <div class="form-group" id="bli-required-wrap">
-      <label class="setting-check"><input type="checkbox" id="bli-required"> Required — nobody may start a run without it</label>
+      <label class="setting-check"><input type="checkbox" id="bli-required"> ${escHtml(t('Required — nobody may start a run without it'))}</label>
     </div>
     <div class="form-group" id="bli-default-wrap">
-      <label class="form-label" for="bli-default">Default</label>
+      <label class="form-label" for="bli-default">${escHtml(t('Default'))}</label>
       <input class="form-control" id="bli-default" maxlength="500">
     </div>
     <div class="form-group" id="bli-default-choice-wrap">
-      <label class="form-label" for="bli-default-choice">Default</label>
+      <label class="form-label" for="bli-default-choice">${escHtml(t('Default'))}</label>
       <select class="form-control" id="bli-default-choice"></select>
     </div>
     <div class="form-group" id="bli-choices-wrap">
-      <label class="form-label" for="bli-choices">Choices</label>
+      <label class="form-label" for="bli-choices">${escHtml(t('Choices'))}</label>
       <textarea class="form-control" id="bli-choices" rows="4" spellcheck="false"
-                placeholder="nightly = Nightly maintenance&#10;weekend = Weekend window"></textarea>
-      <div class="muted-note bli-hint">One per line: value, or value = label.</div>
+                placeholder="${escAttr(_BL_CHOICE_SAMPLE_1)}&#10;${escAttr(_BL_CHOICE_SAMPLE_2)}"></textarea>
+      <div class="muted-note bli-hint">${escHtml(t('One per line: value, or value = label.'))}</div>
     </div>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" data-bli-close>Cancel</button>
-      <button class="btn btn-mint btn-sm" data-bli-save>${editing ? 'Save input' : 'Add input'}</button>
+      <button class="btn btn-outline btn-sm" data-bli-close>${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint btn-sm" data-bli-save>${escHtml(t(editing ? 'Save input' : 'Add input'))}</button>
     </div>`);
 
   const q = (id) => m.modal.querySelector(id);
@@ -753,14 +763,14 @@ function _editBlInput(index) {
   }
 
   const sync = () => {
-    const t = typeEl.value;
-    reqWrap.hidden = t !== 'text';
-    reqEl.disabled = t !== 'text';
-    if (t !== 'text') reqEl.checked = false;
-    choicesWrap.hidden = t !== 'choice';
-    defChoiceWrap.hidden = t !== 'choice';
-    defWrap.hidden = t === 'choice' || t === 'boolean';
-    if (t === 'choice') {
+    const type = typeEl.value;
+    reqWrap.hidden = type !== 'text';
+    reqEl.disabled = type !== 'text';
+    if (type !== 'text') reqEl.checked = false;
+    choicesWrap.hidden = type !== 'choice';
+    defChoiceWrap.hidden = type !== 'choice';
+    defWrap.hidden = type === 'choice' || type === 'boolean';
+    if (type === 'choice') {
       const keep = (editing && editing.type === 'choice') ? editing.default : '';
       defChoiceEl.replaceChildren();
       for (const c of _blInputChoices({ choicesText: choicesEl.value })) {
@@ -780,17 +790,17 @@ function _editBlInput(index) {
   m.modal.querySelector('[data-bli-save]').addEventListener('click', () => {
     const id = idEl.value.trim();
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) {
-      showToast('An input id is letters, digits and underscores, starting with a letter or underscore', 'error');
+      showToast(t('An input id is letters, digits and underscores, starting with a letter or underscore'), 'error');
       return;
     }
     if (_blInputs.some((x, i) => x.id === id && i !== index)) {
-      showToast(`The playbook already has an input named ${id}`, 'error');
+      showToast(t('The playbook already has an input named {id}', { id }), 'error');
       return;
     }
     const type = typeEl.value;
     const choices = type === 'choice' ? _blInputChoices({ choicesText: choicesEl.value }) : [];
     if (type === 'choice' && !choices.length) {
-      showToast('A choice input needs at least one choice', 'error');
+      showToast(t('A choice input needs at least one choice'), 'error');
       return;
     }
     let def;
@@ -818,7 +828,7 @@ function _editBlInput(index) {
 function _openEditor(data, editingId) {
   const modal = document.getElementById('bl-editor-modal');
   modal.dataset.editing = editingId || '';
-  /** @type {HTMLElement} */ (document.getElementById('bl-editor-title')).textContent = editingId ? 'Edit playbook' : (data && data.name ? 'Duplicate playbook' : 'New playbook');
+  /** @type {HTMLElement} */ (document.getElementById('bl-editor-title')).textContent = editingId ? t('Edit playbook') : (data && data.name ? t('Duplicate playbook') : t('New playbook'));
   /** @type {HTMLInputElement} */ (document.getElementById('bl-name')).value = data ? (data.name || '') : '';
   /** @type {HTMLTextAreaElement} */ (document.getElementById('bl-desc')).value = data ? (data.description || '') : '';
   /** @type {HTMLInputElement} */ (document.getElementById('bl-tags')).value = data ? (data.target_tags || []).join(', ') : '';
@@ -832,7 +842,10 @@ function _openEditor(data, editingId) {
   const stale = (editingId && data && data.stale_steps) || [];
   document.getElementById('bl-stale-note').hidden = !stale.length;
   document.getElementById('bl-stale-text').textContent = stale.length
-    ? `Changed since this playbook was given ${stale.length === 1 ? 'it' : 'them'}: ${stale.join(', ')}. Steps still run the earlier version.`
+    ? t(stale.length === 1
+      ? 'Changed since this playbook was given it: {names}. Steps still run the earlier version.'
+      : 'Changed since this playbook was given them: {names}. Steps still run the earlier version.',
+      { names: stale.join(', ') })
     : '';
   // Duplicating a playbook does not inherit the authorization: editingId is
   // null there, so the flag starts off and has to be re-confirmed. The
@@ -874,26 +887,26 @@ async function _savePlaybook() {
   };
   const siteId = sitePickValue(document.getElementById('bl-site'), document.getElementById('bl-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
-  if (!body.name) return showToast('Give the playbook a name', 'error');
+  if (!body.name) return showToast(t('Give the playbook a name'), 'error');
   const allSteps = flowSteps(_editingTree);
-  if (!allSteps.length) return showToast('Add at least one task', 'error');
+  if (!allSteps.length) return showToast(t('Add at least one task'), 'error');
   for (const s of allSteps) {
     const why = _blIneligible(_playbookDefs.find(d => String(d.id) === String(s.def)));
-    if (why) return showToast(`Fix ineligible steps first: ${_defName(s.def)} — ${why}`, 'error');
+    if (why) return showToast(t('Fix ineligible steps first: {name} — {why}', { name: _defName(s.def), why }), 'error');
   }
   const findings = flowFindings(_editingTree);
   if (findings.some(f => f.text.startsWith('A branch has no condition'))) {
-    return showToast('Give every branch a condition before saving', 'error');
+    return showToast(t('Give every branch a condition before saving'), 'error');
   }
   if (findings.some(f => f.text.startsWith('A go to has no target'))) {
-    return showToast('Choose a step for every go to before saving', 'error');
+    return showToast(t('Choose a step for every go to before saving'), 'error');
   }
   // Only asked when the flag is being turned on — the server ignores it
   // otherwise, and a code spent on a no-op change is a code burned for
   // nothing (they are single-use within their validity window).
   if (allowHighRisk && !_blHighRiskWasOn) {
-    const totp = await totpPrompt('High-risk steps will run unattended on every host this playbook matches.',
-      { title: 'Allow high-risk steps', confirmText: 'Authorize and save' });
+    const totp = await totpPrompt(t('High-risk steps will run unattended on every host this playbook matches.'),
+      { title: t('Allow high-risk steps'), confirmText: t('Authorize and save') });
     if (!totp) return;
     body.totp = totp;
   }
@@ -901,10 +914,10 @@ async function _savePlaybook() {
   try {
     if (editing) await apiJson(`/api/v1/playbooks/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
     else await apiJson('/api/v1/playbooks/', { method: 'POST', body: JSON.stringify(body) });
-    showToast('Playbook saved', 'success');
+    showToast(t('Playbook saved'), 'success');
     _closeBlEditor();
     loadPlaybooks();
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+  } catch (e) { showToast(t('Save failed: {message}', { message: e.message }), 'error'); }
 }
 
 /* ── Template playbooks ──────────────────────────────────────────────── */
@@ -918,34 +931,34 @@ async function _openPlaybookTemplatePicker() {
   try {
     templates = (await apiJson('/api/v1/playbooks/library/')).results || [];
   } catch (e) {
-    showToast('Could not load the templates: ' + e.message, 'error');
+    showToast(t('Could not load the templates: {message}', { message: e.message }), 'error');
     return;
   }
   if (!templates.length) {
-    showToast('No template playbooks are available.', 'info');
+    showToast(t('No template playbooks are available.'), 'info');
     return;
   }
   openPicker({
     type: 'playbook_template',
-    title: 'Start from a template playbook',
+    title: t('Start from a template playbook'),
     allowAdd: false,
-    items: templates.map(t => ({ key: t.id, name: t.name, meta: t.steps.join(' → ') })),
+    items: templates.map(tpl => ({ key: tpl.id, name: tpl.name, meta: tpl.steps.join(' → ') })),
     onSelect: async (item) => {
-      const tpl = templates.find(t => t.id === item.key);
+      const tpl = templates.find(tpl => tpl.id === item.key);
       let totp = '';
       if (tpl && tpl.allow_high_risk) {
-        const code = await totpPrompt('This template runs high-risk steps.',
-          { title: 'Use template', confirmText: 'Create playbook' });
+        const code = await totpPrompt(t('This template runs high-risk steps.'),
+          { title: t('Use template'), confirmText: t('Create playbook') });
         if (!code) return;
         totp = code;
       }
       try {
         const row = await apiJson(`/api/v1/playbooks/library/${encodeURIComponent(item.key)}/use/`,
           { method: 'POST', body: JSON.stringify({ totp }) });
-        showToast(`Created “${row.name}”`, 'success');
+        showToast(t('Created “{name}”', { name: row.name }), 'success');
         await loadPlaybooks();
         _startEdit(row.id);
-      } catch (e) { showToast('Could not create the playbook: ' + e.message, 'error'); }
+      } catch (e) { showToast(t('Could not create the playbook: {message}', { message: e.message }), 'error'); }
     },
   });
 }
@@ -988,37 +1001,36 @@ if (typeof navigateTo === 'function') {
    and how many hosts that is. */
 async function _confirmAutoEnroll(data) {
   const tags = (data.tags || '').trim();
-  const target = tags
-    ? `every host tagged <strong>${escHtml(tags)}</strong>`
-    : '<strong>EVERY approved host</strong>';
   if (!(data.done || '').trim()) {
-    showToast('Set a completion tag first — without one the playbook would '
-              + 'run again on every pass.', 'error');
+    showToast(t('Set a completion tag first — without one the playbook would run again on every pass.'), 'error');
     return false;
   }
+  // Each piece is bolded or set as code, so it is built apart and reaches the
+  // sentence as a placeholder value.
+  const strongTags = `<strong>${escHtml(tags)}</strong>`; // i18n-ignore
+  const doneTag = `<code>${escHtml(data.done)}</code>`; // i18n-ignore
+  const target = tags ? t('every host tagged {tags}', { tags: strongTags }) : _blEveryHostText(); // i18n-ignore
   let count = '';
   try {
     const hosts = await apiJson('/api/v1/hosts/');
-    const wanted = tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    const wanted = tags.split(',').map(tg => tg.trim().toLowerCase()).filter(Boolean);
     const done = (data.done || '').trim().toLowerCase();
     const matching = (hosts.results || hosts || []).filter((h) => {
-      const ht = (h.tags || []).map(t => String(t).toLowerCase());
+      const ht = (h.tags || []).map(tg => String(tg).toLowerCase());
       if (ht.includes(done)) return false;
-      return wanted.length ? wanted.some(t => ht.includes(t)) : true;
+      return wanted.length ? wanted.some(tg => ht.includes(tg)) : true;
     });
-    count = `<p><strong>${matching.length}</strong> host${matching.length === 1 ? '' : 's'} `
-          + `match right now and would start running it within five minutes.</p>`;
+    const hostsPhrase = tn('<strong>{n} host</strong>', '<strong>{n} hosts</strong>', matching.length); // i18n-ignore
+    count = `<p>${tn('{hosts} matches right now and would start running it within five minutes.', '{hosts} match right now and would start running it within five minutes.', matching.length, { hosts: hostsPhrase })}</p>`; // i18n-ignore
   } catch (e) { /* the warning stands without a count */ }
 
   return confirmModal(
-    `<p><strong>${escHtml(data.name)}</strong> will run unattended on ${target}.</p>`
+    `<p>${t('{name} will run unattended on {target}.', { name: `<strong>${escHtml(data.name)}</strong>`, target })}</p>` // i18n-ignore
     + count
-    + `<p>Each host is tagged <code>${escHtml(data.done)}</code> when it finishes, `
-    + `and is not run again while it carries that tag.</p>`
-    + `<p class="muted-note">Rollouts are the staged alternative: they cover the `
-    + `same machines a wave at a time and stop at the first wave that fails.</p>`,
-    { title: 'Run this on every matching host?',
-      confirmText: 'Yes, turn auto-enroll on', danger: true, html: true });
+    + `<p>${t('Each host is tagged {done} when it finishes, and is not run again while it carries that tag.', { done: doneTag })}</p>`
+    + `<p class="muted-note">${t('Rollouts are the staged alternative: they cover the same machines a wave at a time and stop at the first wave that fails.')}</p>`,
+    { title: t('Run this on every matching host?'),
+      confirmText: t('Yes, turn auto-enroll on'), danger: true, html: true });
 }
 
 /* Sync latest (S1 decisions-06 item 16): every step takes its task's
@@ -1030,6 +1042,6 @@ document.addEventListener('click', async (e) => {
   try {
     const row = await apiJson(`/api/v1/playbooks/${id}/sync-tasks/`, { method: 'POST', body: '{}' });
     document.getElementById('bl-stale-note').hidden = !(row.stale_steps || []).length;
-    showToast('Steps now run the latest version of their tasks', 'success');
-  } catch (err) { showToast('Sync failed: ' + err.message, 'error'); }
+    showToast(t('Steps now run the latest version of their tasks'), 'success');
+  } catch (err) { showToast(t('Sync failed: {message}', { message: err.message }), 'error'); }
 });
