@@ -62,7 +62,7 @@ function _dashToolbar() {
         <button class="btn btn-${board.shared ? 'lemon' : 'lav'} btn-sm" id="dash-share">
           ${board.shared ? escHtml(t('Stop sharing')) : escHtml(t('Share'))}</button>
         <button class="btn btn-rose btn-sm" id="dash-delete">${escHtml(t('Delete'))}</button>
-      ` : `<span class="chip">${escHtml(t('shared by {owner} · read-only', { owner: escHtml(board.owner) }))}</span>`}
+      ` : `<span class="chip">${escHtml(t('shared by {owner} · read-only', { owner: board.owner }))}</span>`}
     </div>`;
 }
 

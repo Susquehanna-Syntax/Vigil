@@ -238,3 +238,15 @@ class JsStringRatchetTests(SimpleTestCase):
         for path in scanned_scripts():
             rel = str(path.relative_to(ROOT))
             self.assertEqual(unfilled_placeholders(path.read_text(encoding="utf-8")), [], rel)
+
+    def test_no_attribute_name_runs_into_a_quote(self):
+        # `data-jk-create">` makes the attribute `data-jk-create"`, so a
+        # [data-jk-create] selector never matches and the button does nothing.
+        stray = re.compile(r'<[a-z][^<>]*?\s((?:data-[a-z0-9-]+|aria-[a-z]+|disabled|checked|selected|hidden)")')
+        self.assertEqual(stray.findall('x = `<b data-ok="1" data-x">`;'), ['data-x"'])
+        self.assertEqual(stray.findall('// a placeholder ("Cost hidden"), not a'), [])
+        for path in scanned_scripts():
+            rel = str(path.relative_to(ROOT))
+            lines = [f"line {n}" for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
+                     if stray.search(line)]
+            self.assertEqual(lines, [], rel)
