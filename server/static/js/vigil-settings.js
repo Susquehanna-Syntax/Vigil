@@ -24,22 +24,22 @@ async function refreshTotpStatus() {
     /** @type {HTMLElement} */
     const enrollView = document.getElementById('totp-enroll-view');
     if (data.enrolled) {
-      status.textContent = 'TOTP enabled';
+      status.textContent = t('TOTP enabled');
       status.className = 'totp-status enabled';
-      sub.textContent = 'Your account is protected. Task deploys require a 6-digit code.';
+      sub.textContent = t('Your account is protected. Task deploys require a 6-digit code.');
       startBtn.style.display = 'none';
       disableBtn.style.display = '';
       enrollView.style.display = 'none';
     } else if (data.pending) {
-      status.textContent = 'Enrollment pending';
+      status.textContent = t('Enrollment pending');
       status.className = 'totp-status pending';
-      sub.textContent = 'Scan the secret into an authenticator app, then enter a code to finish.';
+      sub.textContent = t('Scan the secret into an authenticator app, then enter a code to finish.');
       startBtn.style.display = 'none';
       disableBtn.style.display = 'none';
     } else {
-      status.textContent = 'TOTP not enabled';
+      status.textContent = t('TOTP not enabled');
       status.className = 'totp-status disabled';
-      sub.textContent = 'Password fallback is test-only and will be removed. Enroll TOTP to execute tasks.';
+      sub.textContent = t('Password fallback is test-only and will be removed. Enroll TOTP to execute tasks.');
       startBtn.style.display = '';
       disableBtn.style.display = 'none';
       enrollView.style.display = 'none';
@@ -57,39 +57,39 @@ async function totpStart() {
     /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).focus();
     refreshTotpStatus();
   } catch (e) {
-    showToast('TOTP enroll failed: ' + e.message, 'error');
+    showToast(t('TOTP enroll failed: {message}', { message: e.message }), 'error');
   }
 }
 
 async function totpConfirm() {
   const code = /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).value.trim();
   if (!/^\d{6}$/.test(code)) {
-    showToast('Enter a 6-digit code', 'error');
+    showToast(t('Enter a 6-digit code'), 'error');
     return;
   }
   try {
     await apiJson('/api/v1/accounts/totp/enroll/confirm/', {
       method: 'POST', body: JSON.stringify({ code }),
     });
-    showToast('TOTP enabled', 'success');
+    showToast(t('TOTP enabled'), 'success');
     refreshTotpStatus();
   } catch (e) {
-    showToast('Verify failed: ' + e.message, 'error');
+    showToast(t('Verify failed: {message}', { message: e.message }), 'error');
   }
 }
 
 async function totpDisablePrompt() {
-  const code = await totpPrompt('Turning off two-factor authentication. Enter a current code to confirm.',
-    { title: 'Disable TOTP', confirmText: 'Disable' });
+  const code = await totpPrompt(t('Turning off two-factor authentication. Enter a current code to confirm.'),
+    { title: t('Disable TOTP'), confirmText: t('Disable') });
   if (!code) return;
   try {
     await apiJson('/api/v1/accounts/totp/disable/', {
       method: 'POST', body: JSON.stringify({ code: code.trim() }),
     });
-    showToast('TOTP disabled', 'success');
+    showToast(t('TOTP disabled'), 'success');
     refreshTotpStatus();
   } catch (e) {
-    showToast('Disable failed: ' + e.message, 'error');
+    showToast(t('Disable failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -103,7 +103,7 @@ async function loadAgentInfo() {
   try {
     const data = await apiJson('/agent/info/');
     el.textContent = '';
-    if (!data.length) { el.textContent = 'No binaries uploaded yet.'; return; }
+    if (!data.length) { el.textContent = t('No binaries uploaded yet.'); return; }
     /** @param {AgentBinary} b @param {number} i @returns {void} */
     data.forEach((b, i) => {
       if (i > 0) el.appendChild(document.createTextNode('  ·  '));
@@ -115,26 +115,26 @@ async function loadAgentInfo() {
       const ver = document.createElement('span');
       ver.className = 'mono';
       ver.style.cssText = 'color:var(--sky-ink);font-size:11px;';
-      ver.textContent = `v${b.version || '?'}`;
+      ver.textContent = `v${b.version || '?'}`; // i18n-ignore
       el.appendChild(ver);
       el.appendChild(document.createTextNode(' '));
       const hash = document.createElement('span');
       hash.style.cssText = 'color:var(--text-3);font-size:11px;';
-      hash.textContent = `(sha256: ${b.sha256.slice(0, 12)}…)`;
+      hash.textContent = t('(sha256: {digest}…)', { digest: b.sha256.slice(0, 12) });
       el.appendChild(hash);
     });
   } catch (_) {}
 }
 
 function copyInstallCmd() {
-  const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
-  copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
+  const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`; // i18n-ignore
+  copyText(cmd).then((ok) => showToast(ok ? t('Copied') : t('Copy failed'),
                                        ok ? 'success' : 'error'));
 }
 
 function copyInstallCmdPs1() {
-  const cmd = `irm ${window.location.origin}/agent/install.ps1 | iex`;
-  copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
+  const cmd = `irm ${window.location.origin}/agent/install.ps1 | iex`; // i18n-ignore
+  copyText(cmd).then((ok) => showToast(ok ? t('Copied') : t('Copy failed'),
                                        ok ? 'success' : 'error'));
 }
 
@@ -143,7 +143,7 @@ async function uploadAgentBinary() {
   const version = (/** @type {HTMLInputElement} */ (document.getElementById('upload-version')).value || '').trim();
   const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('upload-binary'));
   const file = fileInput.files[0];
-  if (!file) { showToast('Select a binary file first', 'error'); return; }
+  if (!file) { showToast(t('Select a binary file first'), 'error'); return; }
 
   const formData = new FormData();
   formData.append('binary', file);
@@ -156,12 +156,12 @@ async function uploadAgentBinary() {
       body: formData,
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Upload failed');
-    showToast(`Uploaded ${platform}${version ? ' v' + version : ''}`, 'success');
+    if (!resp.ok) throw new Error(data.error || t('Upload failed'));
+    showToast(t('Uploaded {platform}{version}', { platform, version: version ? ' v' + version : '' }), 'success');
     fileInput.value = '';
     loadAgentInfo();
   } catch (e) {
-    showToast('Upload failed: ' + e.message, 'error');
+    showToast(t('Upload failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -183,8 +183,9 @@ async function loadCivilSettings() {
 function _renderCivilState(d) {
   const el = document.getElementById('civil-state');
   if (!el) return;
-  if (!d.active) { el.textContent = 'Civil sign-in is off — using local accounts only.'; return; }
-  el.textContent = `Active against ${d.effective_url} · verification key ${d.key_cached ? 'cached' : 'not yet fetched'}.`;
+  if (!d.active) { el.textContent = t('Civil sign-in is off — using local accounts only.'); return; }
+  el.textContent = t('Active against {url} · verification key {state}.',
+    { url: d.effective_url, state: d.key_cached ? t('cached') : t('not yet fetched') });
 }
 
 async function saveCivilSettings(opts) {
@@ -198,9 +199,9 @@ async function saveCivilSettings(opts) {
     const d = await apiJson('/api/v1/civil/settings/', { method: 'POST', body: JSON.stringify(body) });
     _renderCivilState(d);
     document.getElementById('civil-env-note').hidden = !d.env_override;
-    if (opts && opts.test) showToast(d.test_ok ? 'Reached Civil and fetched its key' : 'Could not reach Civil', d.test_ok ? 'success' : 'error');
-    else showToast('Civil settings saved', 'success');
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+    if (opts && opts.test) showToast(d.test_ok ? t('Reached Civil and fetched its key') : t('Could not reach Civil'), d.test_ok ? 'success' : 'error');
+    else showToast(t('Civil settings saved'), 'success');
+  } catch (e) { showToast(t('Save failed: {message}', { message: e.message }), 'error'); }
 }
 
 
@@ -218,36 +219,33 @@ async function refreshTransportAck() {
     const data = await apiJson('/api/v1/hosts/transport-ack/');
     const secure = data.request_is_secure;
     if (secure) {
-      status.textContent = 'Served over HTTPS';
+      status.textContent = t('Served over HTTPS');
       status.className = 'totp-status enabled';
-      sub.textContent = 'Secrets are encrypted in transit. No acknowledgement is needed.';
+      sub.textContent = t('Secrets are encrypted in transit. No acknowledgement is needed.');
       ackBtn.style.display = 'none';
       // Still offer to withdraw a stale one — an instance that moved to TLS
       // should not keep an acknowledgement that would apply if it moved back.
       revokeBtn.style.display = data.acknowledged ? '' : 'none';
       if (data.acknowledged) {
-        sub.textContent += ' A plain-text acknowledgement is still on record'
-          + (data.acknowledged_by ? ` from ${data.acknowledged_by}` : '') + '.';
+        sub.textContent += ' ' + t('A plain-text acknowledgement is still on record{from}.',
+          { from: data.acknowledged_by ? ' ' + t('from {who}', { who: data.acknowledged_by }) : '' });
       }
       return;
     }
     if (data.acknowledged) {
-      status.textContent = 'Plain-text transport acknowledged';
+      status.textContent = t('Plain-text transport acknowledged');
       status.className = 'totp-status pending';
-      sub.textContent = 'Rebuilds proceed without asking again. Acknowledged'
-        + (data.acknowledged_by ? ` by ${data.acknowledged_by}` : '')
-        + (data.acknowledged_at
-            ? ` on ${new Date(data.acknowledged_at).toLocaleString()}` : '')
-        + '. Put Vigil behind TLS and withdraw this.';
+      sub.textContent = t('Rebuilds proceed without asking again. Acknowledged{by}{on}. Put Vigil behind TLS and withdraw this.', {
+        by: data.acknowledged_by ? ' ' + t('by {who}', { who: data.acknowledged_by }) : '',
+        on: data.acknowledged_at
+          ? ' ' + t('on {when}', { when: new Date(data.acknowledged_at).toLocaleString() }) : '',
+      });
       ackBtn.style.display = 'none';
       revokeBtn.style.display = '';
     } else {
-      status.textContent = 'Served over plain HTTP';
+      status.textContent = t('Served over plain HTTP');
       status.className = 'totp-status disabled';
-      sub.textContent = 'A rebuild answer file carries an admin password hash, '
-        + 'SSH keys and an enrolment token, and they cross the network in the '
-        + 'clear. Rebuilds ask for an acknowledgement every time until one is '
-        + 'recorded here.';
+      sub.textContent = t('A rebuild answer file carries an admin password hash, SSH keys and an enrolment token, and they cross the network in the clear. Rebuilds ask for an acknowledgement every time until one is recorded here.');
       ackBtn.style.display = '';
       revokeBtn.style.display = 'none';
     }
@@ -263,12 +261,9 @@ async function refreshTransportAck() {
 async function transportAckSet(acknowledged) {
   if (acknowledged && typeof confirmModal === 'function') {
     const ok = await confirmModal(
-      'Vigil will stop asking during rebuilds. The answer file\u2019s admin '
-      + 'password hash, SSH keys and enrolment token will keep crossing the '
-      + 'network unencrypted until Vigil is served over HTTPS. This is '
-      + 'recorded against your account.',
-      { title: 'Acknowledge plain-text transport',
-        confirmText: 'I understand', danger: true });
+      t('Vigil will stop asking during rebuilds. The answer file\u2019s admin password hash, SSH keys and enrolment token will keep crossing the network unencrypted until Vigil is served over HTTPS. This is recorded against your account.'),
+      { title: t('Acknowledge plain-text transport'),
+        confirmText: t('I understand'), danger: true });
     if (!ok) return;
   }
   try {
@@ -276,10 +271,10 @@ async function transportAckSet(acknowledged) {
       method: 'POST',
       body: JSON.stringify({ acknowledged: !!acknowledged }),
     });
-    showToast(acknowledged ? 'Plain-text transport acknowledged'
-                           : 'Acknowledgement withdrawn', 'success');
+    showToast(acknowledged ? t('Plain-text transport acknowledged')
+                           : t('Acknowledgement withdrawn'), 'success');
   } catch (e) {
-    showToast(e.message || 'Could not save that', 'error');
+    showToast(e.message || t('Could not save that'), 'error');
   }
   refreshTransportAck();
 }
@@ -385,53 +380,52 @@ function _remoteRelays(relays) {
 
 function _relayStatusPill(r) {
   if (_relayIsBuiltin(r)) {
-    return r.enabled ? '<span class="relay-status ok">Direct</span>'
-                     : '<span class="relay-status off">Off</span>';
+    return r.enabled ? `<span class="relay-status ok">${escHtml(t('Direct'))}</span>`
+                     : `<span class="relay-status off">${escHtml(t('Off'))}</span>`;
   }
-  if (!r.enabled) return '<span class="relay-status off">Off</span>';
+  if (!r.enabled) return `<span class="relay-status off">${escHtml(t('Off'))}</span>`;
   // Enabled, but past what the license covers: the dashboard neither links to
   // it nor accepts its traffic, whatever it reported last.
   if (r.over_limit) {
-    const pill = r.connected ? 'Linked, not in use' : 'Over your limit';
-    return `<div class="relay-status-col"><span class="relay-status off">${pill}</span>`
-      + '<div class="relay-err">Past your relay limit, so agents cannot use it. Turn the built-in relay or another relay off, or add seats.</div></div>';
+    const pill = r.connected ? t('Linked, not in use') : t('Over your limit');
+    return `<div class="relay-status-col"><span class="relay-status off">${escHtml(pill)}</span>`
+      + `<div class="relay-err">${escHtml(t('Past your relay limit, so agents cannot use it. Turn the built-in relay or another relay off, or add seats.'))}</div></div>`;
   }
-  if (r.connected) return '<span class="relay-status ok">Connected</span>';
+  if (r.connected) return `<span class="relay-status ok">${escHtml(t('Connected'))}</span>`;
   // The last failure is the whole reason the row exists — a relay that has
   // never linked is otherwise indistinguishable from one still booting.
   const err = r.last_error ? `<div class="relay-err">${escHtml(r.last_error)}</div>` : '';
-  return `<div class="relay-status-col"><span class="relay-status bad">Not connected</span>${err}</div>`;
+  return `<div class="relay-status-col"><span class="relay-status bad">${escHtml(t('Not connected'))}</span>${err}</div>`;
 }
 
 function _relayRowHtml(r) {
   const builtin = _relayIsBuiltin(r);
-  const url = builtin ? 'This dashboard' : (r.url ? escHtml(r.url) : '—');
+  const url = builtin ? t('This dashboard') : (r.url ? escHtml(r.url) : '—');
   const seen = timeAgo(r.last_seen_at);
   const meta = [];
-  if (seen) meta.push(`<div class="relay-meta">Last seen ${escHtml(seen)}</div>`);
+  if (seen) meta.push(`<div class="relay-meta">${escHtml(t('Last seen {when}', { when: seen }))}</div>`);
   if (!builtin) {
-    meta.push(`<div class="relay-meta">Fallback order `
-      + `${escHtml(String(r.priority == null ? 100 : r.priority))}</div>`);
+    meta.push(`<div class="relay-meta">${escHtml(t('Fallback order {order}', { order: String(r.priority == null ? 100 : r.priority) }))}</div>`);
   }
   const actions = [`<button class="btn btn-sm ${r.enabled ? 'btn-outline' : 'btn-mint'}"`
     + ` data-act="toggleRelay" data-a1="${escAttr(r.id)}" data-a2="${r.enabled ? 'off' : 'on'}">`
-    + `${r.enabled ? 'Turn off' : 'Turn on'}</button>`];
+    + `${r.enabled ? escHtml(t('Turn off')) : escHtml(t('Turn on'))}</button>`];
   if (!builtin) {
     actions.push('<button class="btn btn-sm btn-outline" data-act="editRelay"'
-      + ` data-a1="${escAttr(r.id)}">Edit</button>`);
+      + ` data-a1="${escAttr(r.id)}">${escHtml(t('Edit'))}</button>`);
     if (r.url) {
       actions.push('<button class="btn btn-sm btn-sky" data-act="relayInstall"'
-        + ` data-a1="${escAttr(r.id)}">Install commands</button>`);
+        + ` data-a1="${escAttr(r.id)}">${escHtml(t('Install commands'))}</button>`);
     }
     actions.push('<button class="btn btn-sm btn-outline" data-act="rotateRelayKey"'
-      + ` data-a1="${escAttr(r.id)}">New key</button>`);
+      + ` data-a1="${escAttr(r.id)}">${escHtml(t('New key'))}</button>`);
     actions.push('<button class="btn btn-sm btn-rose" data-act="deleteRelay"'
-      + ` data-a1="${escAttr(r.id)}">Delete</button>`);
+      + ` data-a1="${escAttr(r.id)}">${escHtml(t('Delete'))}</button>`);
   }
   return '<div class="relay-row">'
     + '<div class="relay-main">'
       + `<div class="relay-name">${escHtml(r.name)}`
-        + (builtin ? '<span class="relay-badge">Built-in</span>' : '') + '</div>'
+        + (builtin ? `<span class="relay-badge">${escHtml(t('Built-in'))}</span>` : '') + '</div>'
       + (r.location ? `<div class="relay-meta">${escHtml(r.location)}</div>` : '')
       + `<div class="relay-url mono">${url}</div>`
       + meta.join('')
@@ -459,7 +453,7 @@ async function loadRelays() {
     data = await apiJson('/api/v1/relays/');
   } catch (e) {
     _relayStopPolling();
-    list.innerHTML = `<p class="muted">Could not load relays: ${escHtml(e.message)}</p>`;
+    list.innerHTML = `<p class="muted">${escHtml(t('Could not load relays: {message}', { message: e.message }))}</p>`;
     return;
   }
   const pane = document.querySelector('#page-settings .settings-pane[data-pane="relays"]');
@@ -472,11 +466,13 @@ async function loadRelays() {
 
   const usage = document.getElementById('relays-usage');
   if (usage) {
-    const line = `${data.used} of ${data.allowed} relays in use.`;
+    const line = t('{used} of {allowed} relays in use.', { used: data.used, allowed: data.allowed });
     if (data.used >= data.allowed) {
-      usage.innerHTML = escHtml(line)
-        + ' Business allows your seat count plus two.'
-        + ' <a href="#license-card">See Settings \u2192 License</a>.';
+      usage.innerHTML = escHtml(line) + ' '
+        + t('{before} {link} to allow more relays.', {
+            before: t('Business allows your seat count plus two.'),
+            link: `<a href="#license-card">${escHtml(t('See Settings → License'))}</a>`,
+          });
     } else {
       usage.textContent = line;
     }
@@ -484,19 +480,19 @@ async function loadRelays() {
 
   const rows = relays.filter(_relayIsBuiltin).map(_relayRowHtml)
     .concat(_remoteRelays(relays).map(_relayRowHtml));
-  list.innerHTML = rows.length ? rows.join('') : '<p class="muted">No relays yet.</p>';
+  list.innerHTML = rows.length ? rows.join('') : `<p class="muted">${escHtml(t('No relays yet.'))}</p>`;
 }
 
 async function addRelay() {
   const name = _relayField('relay-name');
   const url = _relayField('relay-url');
-  if (!name) { showToast('Give the relay a name', 'error'); return; }
+  if (!name) { showToast(t('Give the relay a name'), 'error'); return; }
   if (!url.startsWith('https://')) {
-    showToast('The address must start with https://', 'error');
+    showToast(t('The address must start with https://'), 'error');
     return;
   }
-  const code = await totpPrompt('Adding a relay creates a key that lets it carry agent traffic.',
-    { title: 'Add relay', confirmText: 'Add' });
+  const code = await totpPrompt(t('Adding a relay creates a key that lets it carry agent traffic.'),
+    { title: t('Add relay'), confirmText: t('Add') });
   if (!code) return;
   const body = {
     name, url,
@@ -515,7 +511,7 @@ async function addRelay() {
     _openRelayKeyDialog(created.name, created.key, created.key_sha256);
     loadRelays();
   } catch (e) {
-    showToast(e.status === 402 ? `${e.message} See Settings \u2192 License to allow more relays.`
+    showToast(e.status === 402 ? t('{message} See Settings → License to allow more relays.', { message: e.message })
                                : e.message, 'error');
   }
 }
@@ -543,7 +539,7 @@ function _relayComposeSnippet(keySha) {
 }
 
 function _relayCopyBtn(id) {
-  return `<button class="btn btn-sm btn-outline" id="${id}">Copy</button>`;
+  return `<button class="btn btn-sm btn-outline" id="${id}">${escHtml(t('Copy'))}</button>`;
 }
 
 function _wireRelayCopy(m, id, text) {
@@ -559,21 +555,21 @@ function _openRelayKeyDialog(name, key, keySha) {
   const snippet = _relayComposeSnippet(keySha || '');
   m.setBody(`
     <div class="modal-title"><span></span>
-      <button class="modal-close" id="rk-x" aria-label="Close">
+      <button class="modal-close" id="rk-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="muted">This key is shown once. The relay only needs its hash; keep the key itself only if you'll set up the link by hand.</p>
+    <p class="muted">${escHtml(t("This key is shown once. The relay only needs its hash; keep the key itself only if you'll set up the link by hand."))}</p>
     <div class="deploy-input-label" id="rk-compose-label"></div>
     <div class="relay-code mono" id="rk-compose"></div>
     ${_relayCopyBtn('rk-copy-compose')}
-    <div class="deploy-input-label relay-key-sub">Key</div>
+    <div class="deploy-input-label relay-key-sub">${escHtml(t('Key'))}</div>
     <div class="relay-code mono" id="rk-key"></div>
     ${_relayCopyBtn('rk-copy-key')}
-    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="rk-done">Done</button></div>`);
-  m.modal.querySelector('.modal-title span').textContent = 'Relay added \u2014 copy this now';
+    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="rk-done">${escHtml(t('Done'))}</button></div>`);
+  m.modal.querySelector('.modal-title span').textContent = t('Relay added \u2014 copy this now');
   m.modal.querySelector('#rk-compose-label').textContent =
-    `Compose snippet for ${name || 'the relay'}`;
+    t('Compose snippet for {name}', { name: name || t('the relay') });
   m.modal.querySelector('#rk-compose').textContent = snippet;
   m.modal.querySelector('#rk-key').textContent = key || '';
   _wireRelayCopy(m, 'rk-copy-compose', snippet);
@@ -611,22 +607,22 @@ function editRelay(id) {
   if (!relay || _relayIsBuiltin(relay)) return;
   const m = mountModal('relay-edit');
   m.setBody(`
-    <div class="modal-title"><span>Edit relay</span>
-      <button class="modal-close" id="re-x" aria-label="Close">
+    <div class="modal-title"><span>${escHtml(t('Edit relay'))}</span>
+      <button class="modal-close" id="re-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="re-name" maxlength="80" autocomplete="off"></div>
-    <div class="setting-row"><label>Location</label><input type="text" class="form-control" id="re-location" maxlength="120" autocomplete="off"></div>
-    <div class="setting-row"><label>Address agents use</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="https://relay.example.com"></div>
-    <div class="setting-row"><label>Order</label>
+    <div class="setting-row"><label>${escHtml(t('Name'))}</label><input type="text" class="form-control" id="re-name" maxlength="80" autocomplete="off"></div>
+    <div class="setting-row"><label>${escHtml(t('Location'))}</label><input type="text" class="form-control" id="re-location" maxlength="120" autocomplete="off"></div>
+    <div class="setting-row"><label>${escHtml(t('Address agents use'))}</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="${escAttr(t('https://relay.example.com'))}"></div>
+    <div class="setting-row"><label>${escHtml(t('Order'))}</label>
       <input type="number" class="form-control relay-order-field" id="re-priority" min="0" max="1000">
-      <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
+      <div class="totp-sub">${escHtml(t('Agents try lower numbers first when their own address stops answering.'))}</div>
     </div>
     <p class="muted" id="re-note"></p>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" id="re-cancel">Cancel</button>
-      <button class="btn btn-mint btn-sm" id="re-save">Save</button>
+      <button class="btn btn-outline btn-sm" id="re-cancel">${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint btn-sm" id="re-save">${escHtml(t('Save'))}</button>
     </div>`);
   /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-name')).value = relay.name || '';
   /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-location')).value = relay.location || '';
@@ -639,24 +635,24 @@ function editRelay(id) {
     const location = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-location')).value.trim();
     const url = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-url')).value.trim();
     const priority = Number(/** @type {HTMLInputElement} */ (m.modal.querySelector('#re-priority')).value || 0);
-    if (!name) { note().textContent = 'Name is required.'; return; }
+    if (!name) { note().textContent = t('Name is required.'); return; }
     if (!url.startsWith('https://')) {
-      note().textContent = 'The address must start with https://';
+      note().textContent = t('The address must start with https://');
       return;
     }
     const body = { name, location, priority };
     // A new address moves every agent that falls back to this relay \u2014 the same
     // weight as creating it, so a second factor for that field alone.
     if (url !== (relay.url || '')) {
-      const code = await totpPrompt('Changing the address sends agents to a different machine.',
-        { title: 'Change relay address', confirmText: 'Change' });
+      const code = await totpPrompt(t('Changing the address sends agents to a different machine.'),
+        { title: t('Change relay address'), confirmText: t('Change') });
       if (!code) return;
       body.url = url;
       body.totp = code;
     }
     try {
       await apiJson(`/api/v1/relays/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });
-      showToast('Relay updated', 'success');
+      showToast(t('Relay updated'), 'success');
       m.close();
       loadRelays();
     } catch (e) {
@@ -673,11 +669,11 @@ async function rotateRelayKey(id) {
   const relay = _relaysById[id];
   if (!relay || _relayIsBuiltin(relay)) return;
   const ok = await confirmModal(
-    'Agents keep working, but this relay disconnects until you update its RELAY_KEY_SHA256.',
-    { title: 'Generate a new key', confirmText: 'Generate', danger: true });
+    t('Agents keep working, but this relay disconnects until you update its RELAY_KEY_SHA256.'),
+    { title: t('Generate a new key'), confirmText: t('Generate'), danger: true });
   if (!ok) return;
-  const code = await totpPrompt('A new key replaces the one this relay connects with.',
-    { title: 'New relay key', confirmText: 'New key' });
+  const code = await totpPrompt(t('A new key replaces the one this relay connects with.'),
+    { title: t('New relay key'), confirmText: t('New key') });
   if (!code) return;
   try {
     const res = await apiJson(`/api/v1/relays/${id}/rotate-key/`, {
@@ -694,15 +690,15 @@ async function deleteRelay(id) {
   const relay = _relaysById[id];
   if (!relay || _relayIsBuiltin(relay)) return;
   const ok = await confirmModal(
-    `Delete ${relay.name}? Agents using it stop checking in until you add another.`,
-    { title: 'Delete relay', confirmText: 'Delete', danger: true });
+    t('Delete {name}? Agents using it stop checking in until you add another.', { name: relay.name }),
+    { title: t('Delete relay'), confirmText: t('Delete'), danger: true });
   if (!ok) return;
-  const code = await totpPrompt('Deleting a relay takes away a connection point agents may be using.',
-    { title: 'Delete relay', confirmText: 'Delete' });
+  const code = await totpPrompt(t('Deleting a relay takes away a connection point agents may be using.'),
+    { title: t('Delete relay'), confirmText: t('Delete') });
   if (!code) return;
   try {
     await apiJson(`/api/v1/relays/${id}/`, { method: 'DELETE', body: JSON.stringify({ totp: code }) });
-    showToast(`Deleted ${relay.name}`, 'success');
+    showToast(t('Deleted {name}', { name: relay.name }), 'success');
     loadRelays();
   } catch (e) {
     showToast(e.message, 'error');
@@ -720,7 +716,7 @@ async function relayInstall(id) {
   const title = `Install through ${relay.name}`;
   m.setBody(`
     <div class="modal-title"><span></span>
-      <button class="modal-close" id="ri-x" aria-label="Close">
+      <button class="modal-close" id="ri-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -753,18 +749,18 @@ async function relayInstall(id) {
   const windows = _relayWindowsCmd(origin, token, config);
   m.setBody(`
     <div class="modal-title"><span></span>
-      <button class="modal-close" id="ri-x" aria-label="Close">
+      <button class="modal-close" id="ri-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="deploy-input-label">Linux / macOS</div>
+    <div class="deploy-input-label">${escHtml(t('Linux / macOS'))}</div>
     <div class="relay-code mono" id="ri-linux"></div>
     ${_relayCopyBtn('ri-copy-linux')}
-    <div class="deploy-input-label relay-key-sub">Windows (PowerShell, run as Administrator)</div>
+    <div class="deploy-input-label relay-key-sub">${escHtml(t('Windows (PowerShell, run as Administrator)'))}</div>
     <div class="relay-code mono" id="ri-windows"></div>
     ${_relayCopyBtn('ri-copy-windows')}
-    <p class="muted relay-key-sub">New hosts installed with these commands check in through this relay and appear under Pending for approval. The commands work once, for 24 hours.</p>
-    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="ri-close">Done</button></div>`);
+    <p class="muted relay-key-sub">${escHtml(t('New hosts installed with these commands check in through this relay and appear under Pending for approval. The commands work once, for 24 hours.'))}</p>
+    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="ri-close">${escHtml(t('Done'))}</button></div>`);
   m.modal.querySelector('.modal-title span').textContent = title;
   m.modal.querySelector('#ri-linux').textContent = linux;
   m.modal.querySelector('#ri-windows').textContent = windows;
@@ -801,7 +797,7 @@ async function loadSecurityKeys() {
   try {
     [status, keys] = await Promise.all([apiJson('/api/v1/accounts/totp/'), apiJson(KEYS_API)]);
   } catch (e) {
-    list.textContent = 'Could not load your security keys.';
+    list.textContent = t('Could not load your security keys.');
     return;
   }
   const note = document.getElementById('security-keys-note');
