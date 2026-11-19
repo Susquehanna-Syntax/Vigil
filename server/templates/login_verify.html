@@ -74,6 +74,7 @@
   </div>
   <div class="auth-footer">{% translate "Vigil &mdash; A Susquehanna Syntax product" %}</div>
 </div>
-{% if keys %}<script src="{% static 'js/vigil-login-verify.js' %}"></script>{% endif %}
+{% if keys %}<script src="{% url 'javascript-catalog' %}"></script>
+<script src="{% static 'js/vigil-login-verify.js' %}"></script>{% endif %}
 </body>
 </html>

@@ -9,6 +9,9 @@
   const errBox = /** @type {HTMLElement} */ (document.getElementById('login-key-error'));
   const csrfInput = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name=csrfmiddlewaretoken]'));
   const csrf = csrfInput ? csrfInput.value : '';
+  // vigil-utils.js and its t() are not loaded here; the catalog (/jsi18n/) is.
+  /** @param {string} msg */
+  const t = (msg) => (typeof gettext === 'function' ? gettext(msg) : msg);
 
   function b64urlToBytes(value) {
     const s = String(value).replace(/-/g, '+').replace(/_/g, '/');
@@ -38,7 +41,7 @@
       body: JSON.stringify(body || {}),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || 'The key could not be checked. Try again.');
+    if (!r.ok) throw new Error(data.error || t('The key could not be checked. Try again.'));
     return data;
   }
 
@@ -72,15 +75,15 @@
     } catch (e) {
       // NotAllowedError is the browser's word for "cancelled or timed out".
       showError(e && e.name === 'NotAllowedError'
-        ? 'The key request was cancelled or timed out.'
-        : (e && e.message) || 'The key could not be checked. Try again.');
+        ? t('The key request was cancelled or timed out.')
+        : (e && e.message) || t('The key could not be checked. Try again.'));
       btn.disabled = false;
     }
   }
 
   if (!window.PublicKeyCredential) {
     btn.disabled = true;
-    showError('This browser does not support passkeys or security keys.');
+    showError(t('This browser does not support passkeys or security keys.'));
     return;
   }
   btn.addEventListener('click', useKey);
