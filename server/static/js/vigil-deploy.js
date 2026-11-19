@@ -164,14 +164,14 @@ function _renderDeployTagChips() {
     wrap.appendChild(empty);
     return;
   }
-  for (const t of deployState.availableTags) {
+  for (const tag of deployState.availableTags) {
     const chip = document.createElement('span');
-    chip.className = 'deploy-day-chip' + (deployState.selectedTags.has(t.tag) ? ' on' : '');
-    chip.textContent = `${t.tag} · ${t.host_count}`; // i18n-ignore
-    chip.dataset.tag = t.tag;
+    chip.className = 'deploy-day-chip' + (deployState.selectedTags.has(tag.tag) ? ' on' : '');
+    chip.textContent = `${tag.tag} · ${tag.host_count}`; // i18n-ignore
+    chip.dataset.tag = tag.tag;
     chip.addEventListener('click', () => {
-      if (deployState.selectedTags.has(t.tag)) deployState.selectedTags.delete(t.tag);
-      else deployState.selectedTags.add(t.tag);
+      if (deployState.selectedTags.has(tag.tag)) deployState.selectedTags.delete(tag.tag);
+      else deployState.selectedTags.add(tag.tag);
       chip.classList.toggle('on');
       updateDeployHostSummary();
     });
@@ -695,9 +695,11 @@ function updateDeployHostSummary() {
       (h.tags || []).some(tag => deployState.selectedTags.has(tag))
     );
     const totalSteps = stepCount * matched.length;
-    tagSummary.textContent = tn('{n} tag → {m} matched host · {s} step will run',
-      '{n} tags → {m} matched hosts · {s} steps will run', selectedTagList.length,
-      { m: matched.length, s: totalSteps });
+    tagSummary.textContent = t('{tags} → {hosts} · {steps}', {
+      tags: tn('{n} tag', '{n} tags', selectedTagList.length),
+      hosts: tn('{n} matched host', '{n} matched hosts', matched.length),
+      steps: tn('{n} step will run', '{n} steps will run', totalSteps),
+    });
     return;
   }
 
@@ -707,8 +709,10 @@ function updateDeployHostSummary() {
   if (!total) { summary.textContent = t('No online hosts available.'); return; }
   if (!count) { summary.textContent = tn('Select one or more of {n} host.', 'Select one or more of {n} hosts.', total); return; }
   const totalSteps = stepCount * count;
-  summary.textContent = tn('{n} host selected · {s} step will run in order',
-    '{n} hosts selected · {s} steps will run in order', count, { s: totalSteps });
+  summary.textContent = t('{hosts} · {steps}', {
+    hosts: tn('{n} host selected', '{n} hosts selected', count),
+    steps: tn('{n} step will run in order', '{n} steps will run in order', totalSteps),
+  });
 }
 
 /** @param {Event} event @returns {Promise<void>} */
