@@ -46,7 +46,7 @@ async function openRebuildModal(hostId, hostname) {
   // Mount and open before fetching — a modal that appears only after the
   // network settles reads as lag (see commit 57470af).
   const m = mountModal('rebuild', { wide: true });
-  m.setBody('<h3>Rebuild host</h3><p class="muted">Loading images…</p>');
+  m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><p class="muted">${escHtml(t('Loading images…'))}</p>`);
   m.open();
 
   let images = [];
@@ -61,19 +61,18 @@ async function openRebuildModal(hostId, hostname) {
       apiJson('/api/v1/hosts/transport-ack/').catch(() => ({ acknowledged: false })),
     ]);
   } catch (e) {
-    m.setBody('<h3>Rebuild host</h3>' +
-      '<p class="bad">Could not load the image catalog.</p>' +
-      '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">Close</button></div>');
+    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3>` +
+      `<p class="bad">${escHtml(t('Could not load the image catalog.'))}</p>` +
+      `<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">${escHtml(t('Close'))}</button></div>`);
     document.getElementById('rb-cancel').onclick = m.close;
     return;
   }
 
   const ready = images.filter((i) => i.status === 'ready');
   if (!ready.length) {
-    m.setBody('<h3>Rebuild host</h3>' +
-      '<p class="muted">No images are ready. Pull or upload one under '
-      + 'Reprovision → Add an image.</p>' +
-      '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">Close</button></div>');
+    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3>` +
+      `<p class="muted">${escHtml(t('No images are ready. Pull or upload one under Reprovision → Add an image.'))}</p>` +
+      '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">' + escHtml(t('Close')) + '</button></div>');
     document.getElementById('rb-cancel').onclick = m.close;
     return;
   }
@@ -83,27 +82,25 @@ async function openRebuildModal(hostId, hostname) {
     `<option value="${escAttr(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
 
   m.setBody(
-    `<h3>Rebuild ${escHtml(hostname)}</h3>` +
-    `<p class="bad"><strong>This erases everything on the target disk.</strong> ` +
-    `There is no undo once the installer starts.</p>` +
-    `<label>Image<select class="form-control" id="rb-image">${imageOpts}</select></label>` +
-    `<label>Profile<select class="form-control" id="rb-profile"></select></label>` +
-    `<div id="rb-summary" class="rb-summary muted">Select an image and profile…</div>` +
-    `<div id="rb-preflight" class="rb-preflight"><span class="muted">Checking rebuild readiness…</span></div>` +
+    `<h3>${escHtml(t('Rebuild'))} ${escHtml(hostname)}</h3>` +
+    `<p class="bad"><strong>${escHtml(t('This erases everything on the target disk.'))}</strong> ` +
+    `${escHtml(t('There is no undo once the installer starts.'))}</p>` +
+    `<label>${escHtml(t('Image'))}<select class="form-control" id="rb-image">${imageOpts}</select></label>` +
+    `<label>${escHtml(t('Profile'))}<select class="form-control" id="rb-profile"></select></label>` +
+    `<div id="rb-summary" class="rb-summary muted">${escHtml(t('Select an image and profile…'))}</div>` +
+    `<div id="rb-preflight" class="rb-preflight"><span class="muted">${escHtml(t('Checking rebuild readiness…'))}</span></div>` +
     (insecure
       ? `<label class="rb-warn"><input type="checkbox" id="rb-ack-plain"> ` +
-        `Vigil is served over plain HTTP. The answer file carries the admin ` +
-        `password hash, SSH keys, and the enrolment token in clear text. ` +
-        `Proceed anyway.</label>`
+        `${escHtml(t('Vigil is served over plain HTTP. The answer file carries the admin password hash, SSH keys, and the enrolment token in clear text. Proceed anyway.'))}</label>`
       : '') +
     `<hr>` +
-    `<label>Password<input class="form-control" type="password" id="rb-password" autocomplete="current-password"></label>` +
+    `<label>${escHtml(t('Password'))}<input class="form-control" type="password" id="rb-password" autocomplete="current-password"></label>` +
     // placeholder is set as a DOM property below, not interpolated: escHtml
     // does not escape quotes, and the hostname is agent-supplied.
-    `<label>Type the hostname to confirm<input class="form-control mono" id="rb-hostname" autocomplete="off"></label>` +
+    `<label>${escHtml(t('Type the hostname to confirm'))}<input class="form-control mono" id="rb-hostname" autocomplete="off"></label>` +
     `<div class="modal-actions">` +
-      `<button class="btn btn-outline" id="rb-cancel">Cancel</button>` +
-      `<button class="btn btn-danger" id="rb-go" disabled>Rebuild this machine</button>` +
+      `<button class="btn btn-outline" id="rb-cancel">${escHtml(t('Cancel'))}</button>` +
+      `<button class="btn btn-danger" id="rb-go" disabled>${escHtml(t('Rebuild this machine'))}</button>` +
     `</div>`);
 
   const imageSel = /** @type {HTMLSelectElement} */ (document.getElementById('rb-image'));
@@ -121,12 +118,12 @@ async function openRebuildModal(hostId, hostname) {
   function refreshSummary() {
     const img = ready.find((i) => i.id === imageSel.value);
     const prof = currentProfile();
-    if (!img || !prof) { summary.textContent = 'Select an image and profile…'; return; }
+    if (!img || !prof) { summary.textContent = t('Select an image and profile…'); return; }
     summary.innerHTML =
-      `<div><span class="muted">Target disk</span> <strong class="bad">${escHtml(prof.disk_target)}</strong></div>` +
-      `<div><span class="muted">Image</span> ${escHtml(img.name)}</div>` +
-      `<div><span class="muted">Checksum</span> <code>${escHtml(img.sha256)}</code></div>` +
-      `<div><span class="muted">Network</span> ${escHtml(prof.network_mode)}` +
+      `<div><span class="muted">${escHtml(t('Target disk'))}</span> <strong class="bad">${escHtml(prof.disk_target)}</strong></div>` +
+      `<div><span class="muted">${escHtml(t('Image'))}</span> ${escHtml(img.name)}</div>` +
+      `<div><span class="muted">${escHtml(t('Checksum'))}</span> <code>${escHtml(img.sha256)}</code></div>` +
+      `<div><span class="muted">${escHtml(t('Network'))}</span> ${escHtml(prof.network_mode)}` +
         (prof.network_mode === 'static' ? ` ${escHtml(prof.static_address || '')}` : '') + `</div>`;
   }
 
@@ -134,7 +131,7 @@ async function openRebuildModal(hostId, hostname) {
     const forImage = profiles.filter((p) => p.image === imageSel.value);
     profileSel.innerHTML = forImage.length
       ? forImage.map((p) => `<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join('')
-      : '<option value="">No profile for this image</option>';
+      : `<option value="">${escHtml(t('No profile for this image'))}</option>`;
     refreshSummary();
   }
 
@@ -161,8 +158,8 @@ async function openRebuildModal(hostId, hostname) {
   _runPreflight(hostId);
 
   goBtn.onclick = async () => {
-    const totp = await totpPrompt(`Rebuilding ${hostname} erases it and reinstalls the operating system.`,
-      { title: 'Rebuild this machine', confirmText: 'Rebuild' });
+    const totp = await totpPrompt(t('Rebuilding {hostname} erases it and reinstalls the operating system.', { hostname }),
+      { title: t('Rebuild this machine'), confirmText: t('Rebuild') });
     if (!totp) return;
     goBtn.disabled = true;
     try {
@@ -194,24 +191,21 @@ async function _runPreflight(hostId) {
       method: 'POST', body: JSON.stringify({ host: hostId }),
     });
     if (!result || !result.disks) {
-      box.innerHTML = '<span class="muted">Readiness check dispatched — ' +
-        'results appear after the agent next checks in.</span>';
+      box.innerHTML = `<span class="muted">${escHtml(t('Readiness check dispatched — results appear after the agent next checks in.'))}</span>`;
       return;
     }
     const rows = result.disks.map((d) =>
       `<li><code>${escHtml(d.name)}</code> ${_bytesToGiB(d.size_bytes)}` +
       (d.mountpoints && d.mountpoints.length
-        ? ` <span class="muted">mounted at ${escHtml(d.mountpoints.join(', '))}</span>` : '') +
+        ? ` <span class="muted">${escHtml(t('mounted at'))} ${escHtml(d.mountpoints.join(', '))}</span>` : '') +
       `</li>`).join('');
     box.innerHTML =
       (result.ok
-        ? '<p class="ok">Preflight passed.</p>'
-        : '<p class="bad">Preflight failed: ' +
-          escHtml((result.failures || []).join('; ')) + '</p>') +
-      `<p class="muted">Disks found on this machine — check the target above ` +
-      `is the one you mean:</p><ul class="rb-disks">${rows}</ul>`;
+        ? `<p class="ok">${escHtml(t('Preflight passed.'))}</p>`
+        : `<p class="bad">${escHtml(t('Preflight failed: {failures}', { failures: (result.failures || []).join('; ') }))}</p>`) +
+      `<p class="muted">${escHtml(t('Disks found on this machine — check the target above is the one you mean:'))}</p><ul class="rb-disks">${rows}</ul>`;
   } catch (e) {
-    box.innerHTML = '<span class="muted">Readiness check unavailable.</span>';
+    box.innerHTML = `<span class="muted">${escHtml(t('Readiness check unavailable.'))}</span>`;
   }
 }
 
@@ -228,21 +222,20 @@ function _showJobProgress(m, job, hostname) {
   function render(current) {
     const abortable = ABORTABLE.includes(current.state);
     m.setBody(
-      `<h3>Rebuilding ${escHtml(hostname)}</h3>` +
+      `<h3>${escHtml(t('Rebuilding {hostname}', { hostname }))}</h3>` +
       `<p class="rb-state ${_stateClass(current.state)}">${escHtml(current.state)}</p>` +
       (current.failure_reason
         ? `<p class="bad">${escHtml(current.failure_reason)}</p>` : '') +
       (abortable
-        ? `<p class="muted">Abort is still possible — nothing has been erased yet.` +
-          (remaining > 0 ? ` Staging begins in ${remaining}s.` : '') + `</p>`
+        ? `<p class="muted">${escHtml(t('Abort is still possible — nothing has been erased yet.'))}` +
+          (remaining > 0 ? ` ${escHtml(t('Staging begins in {seconds}s.', { seconds: remaining }))}</p>` : '</p>')
         : (TERMINAL.includes(current.state)
           ? ''
-          : `<p class="bad">Past the point of no return — the disk is being ` +
-            `rewritten and this can no longer be stopped.</p>`)) +
+          : `<p class="bad">${escHtml(t('Past the point of no return — the disk is being rewritten and this can no longer be stopped.'))}</p>`)) +
       `<div class="modal-actions">` +
         (abortable
-          ? `<button class="btn btn-danger" id="rb-abort">Abort rebuild</button>` : '') +
-        `<button class="btn btn-outline" id="rb-close">Close</button>` +
+          ? `<button class="btn btn-danger" id="rb-abort">${escHtml(t('Abort rebuild'))}</button>` : '') +
+        `<button class="btn btn-outline" id="rb-close">${escHtml(t('Close'))}</button>` +
       `</div>`);
     document.getElementById('rb-close').onclick = () => { stop(); m.close(); };
     const abortBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('rb-abort'));
@@ -253,7 +246,7 @@ function _showJobProgress(m, job, hostname) {
           const updated = await apiJson(
             `/api/v1/reprovision/jobs/${job.id}/abort/`,
             { method: 'POST', body: JSON.stringify({}) });
-          showToast('Rebuild aborted — nothing was erased', 'success');
+          showToast(t('Rebuild aborted — nothing was erased'), 'success');
           render(updated);
         } catch (e) {
           showToast(e.message || 'Too late to abort', 'error');
