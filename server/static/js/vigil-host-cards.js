@@ -62,17 +62,17 @@ function openHostDetail(card) {
   // Quick actions based on mode
   const actions = /** @type {HTMLElement} */ (document.getElementById('detail-actions'));
   if (d.mode === 'monitor') {
-    actions.innerHTML = '<div class="detail-actions-note">This host is in monitor mode — no task execution.</div>';
+    actions.innerHTML = `<div class="detail-actions-note">${escHtml(t('This host is in monitor mode — no task execution.'))}</div>`;
   } else {
     actions.innerHTML = `
       <button class="btn btn-sm btn-sky" disabled>
         <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        Restart Service
+        ${escHtml(t('Restart Service'))}
       </button>
-      <button class="btn btn-sm btn-outline" disabled>Clear Temp Files</button>
-      <button class="btn btn-sm btn-outline" disabled>Run Updates</button>
-      ${d.mode === 'full_control' ? '<button class="btn btn-sm btn-rose" disabled>Reboot</button>' : ''}
-      <button class="btn btn-sm btn-rose" id="detail-rebuild-btn">Rebuild OS…</button>
+      <button class="btn btn-sm btn-outline" disabled>${escHtml(t('Clear Temp Files'))}</button>
+      <button class="btn btn-sm btn-outline" disabled>${escHtml(t('Run Updates'))}</button>
+      ${d.mode === 'full_control' ? `<button class="btn btn-sm btn-rose" disabled>${escHtml(t('Reboot'))}</button>` : ''}
+      <button class="btn btn-sm btn-rose" id="detail-rebuild-btn">${escHtml(t('Rebuild OS…'))}</button>
     `;
     // Rebuild is offered wherever tasks run. Whether this particular agent
     // will accept it depends on allow_reprovision in its own agent.yml, and
@@ -135,7 +135,7 @@ async function renderJackilRelated(section, body, kind, id, stillCurrent) {
   const links = data.links || [];
   const items = data.items || [];
   if (!links.length && !items.length) {
-    body.innerHTML = `<div class="muted-span">Nothing in Jackil is linked to this ${escHtml(kind)} yet.</div>`;
+    body.innerHTML = `<div class="muted-span">${escHtml(t('Nothing in Jackil is linked to this {kind} yet.', { kind }))}</div>`;
     return;
   }
 
@@ -147,7 +147,7 @@ async function renderJackilRelated(section, body, kind, id, stillCurrent) {
     html += `<div>${escHtml(link.relation)} · ${_jackilLink(link.url, link.label)}</div>${status}`;
   }
   if (items.length) {
-    html += '<div class="jackil-related-label">Jackil Items</div>';
+    html += `<div class="jackil-related-label">${escHtml(t('Jackil Items'))}</div>`;
     for (const item of items) {
       html += `<div>${_jackilLink(item.url, item.name)}</div>`;
     }
@@ -182,7 +182,7 @@ function _jackilLink(url, label) {
 async function forceUpdateAgent() {
   const hostId = panel.dataset.hostId;
   if (!hostId) return;
-  const totp = await totpPrompt('Force the agent to self-update on this host. It applies on the next check-in.');
+  const totp = await totpPrompt(t('Force the agent to self-update on this host. It applies on the next check-in.'));
   if (!totp) return;
   try {
     const resp = await fetch(`/api/v1/hosts/${hostId}/update-agent/`, {
@@ -193,14 +193,14 @@ async function forceUpdateAgent() {
     });
     const body = await resp.json().catch(() => ({}));
     if (resp.status === 201) {
-      showToast('Agent update queued — applies on the next check-in', 'success');
+      showToast(t('Agent update queued — applies on the next check-in'), 'success');
     } else if (resp.status === 409) {
-      showToast('An agent update is already queued for this host', 'info');
+      showToast(t('An agent update is already queued for this host'), 'info');
     } else {
       throw new Error(body.error || `HTTP ${resp.status}`);
     }
   } catch (e) {
-    showToast('Update failed: ' + e.message, 'error');
+    showToast(t('Update failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -232,14 +232,14 @@ async function _renderDetailAgentVersion(reported) {
   const el = document.getElementById('detail-agent-version');
   if (!el) return;
   if (!reported) {
-    el.textContent = 'Unknown';
+    el.textContent = t('Unknown');
     el.style.color = 'var(--text-3)';
     return;
   }
   el.textContent = 'v' + reported;
   const expected = await _getExpectedAgentVersion();
   if (expected && isOlderVersion(reported, expected)) {
-    el.textContent = `v${reported} (outdated → v${expected})`;
+    el.textContent = t('v{reported} (outdated → v{expected})', { reported, expected });
     el.style.color = 'var(--peach-ink)';
   } else if (expected) {
     el.style.color = 'var(--mint-ink)';
@@ -291,22 +291,22 @@ function _renderDetailTags(hostId, tags) {
   if (!_detailTagState.tags.length) {
     const empty = document.createElement('div');
     empty.className = 'confirm-hint';
-    empty.textContent = 'No tags yet.';
+    empty.textContent = t('No tags yet.');
     wrap.appendChild(empty);
     return;
   }
-  for (const t of _detailTagState.tags) {
-    const isAuto = /^(os|os_family|pkg|arch):/.test(t);
+  for (const tag of _detailTagState.tags) {
+    const isAuto = /^(os|os_family|pkg|arch):/.test(tag);
     const chip = document.createElement('span');
     chip.className = 'host-tag-chip' + (isAuto ? ' host-tag-auto' : '');
     if (isAuto) {
-      chip.title = 'Auto-classified from inventory — recomputed on every check-in.';
-      chip.textContent = t;
+      chip.title = t('Auto-classified from inventory — recomputed on every check-in.');
+      chip.textContent = tag;
     } else {
       chip.style.cursor = 'pointer';
-      chip.title = 'Click to remove';
-      chip.textContent = t + '  ✕';
-      chip.addEventListener('click', () => _removeDetailTag(t));
+      chip.title = t('Click to remove');
+      chip.textContent = tag + '  ✕';
+      chip.addEventListener('click', () => _removeDetailTag(tag));
     }
     wrap.appendChild(chip);
   }
@@ -327,9 +327,9 @@ async function _saveDetailTags(tags) {
       body: JSON.stringify({ tags }),
     });
     _renderDetailTags(_detailTagState.hostId, host.tags || []);
-    showToast('Tags updated', 'success');
+    showToast(t('Tags updated'), 'success');
   } catch (e) {
-    showToast('Failed to update tags: ' + e.message, 'error');
+    showToast(t('Failed to update tags: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -413,7 +413,7 @@ async function loadDetailMetrics(hostId) {
     type: 'line',
     data: {
       datasets: [{
-        label: 'CPU',
+        label: t('CPU'),
         data: cpuFiltered,
         borderColor: '#82c4ee',
         backgroundColor: '#82c4ee18',
@@ -445,8 +445,8 @@ async function loadDetailMetrics(hostId) {
     type: 'line',
     data: {
       datasets: [
-        { label: 'Received', data: recvRates, borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
-        { label: 'Sent', data: sentRates, borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
+        { label: t('Received'), data: recvRates, borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
+        { label: t('Sent'), data: sentRates, borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
       ]
     },
     options: {
@@ -475,7 +475,7 @@ document.addEventListener('keydown', e => {
 
 /* ── Approve / reject / delete actions ───────────────────────────────── */
 async function approveHost(hostId, btn) {
-  const totp = await totpPrompt('Approve this host.');
+  const totp = await totpPrompt(t('Approve this host.'));
   if (!totp) return;
   try {
     btn.disabled = true;
@@ -483,11 +483,11 @@ async function approveHost(hostId, btn) {
       method: 'POST',
       body: JSON.stringify({ totp }),
     });
-    showToast('Host approved', 'success');
+    showToast(t('Host approved'), 'success');
     btn.closest('.enroll-card').style.opacity = '0.4';
     setTimeout(() => location.reload(), 800);
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
     btn.disabled = false;
   }
 }
@@ -496,11 +496,11 @@ async function rejectHost(hostId, btn) {
   try {
     btn.disabled = true;
     await apiPost(`/api/v1/hosts/${hostId}/reject/`);
-    showToast('Host rejected', 'success');
+    showToast(t('Host rejected'), 'success');
     btn.closest('.enroll-card').style.opacity = '0.4';
     setTimeout(() => location.reload(), 800);
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
     btn.disabled = false;
   }
 }
@@ -528,7 +528,7 @@ async function deleteHost(hostId, hostname, btn) {
       credentials: 'same-origin',
     });
     if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Delete failed');
-    showToast(`${hostname} removed`, 'success');
+    showToast(t('{hostname} removed', { hostname }), 'success');
     closeHostDetail();
     // Remove the card from the DOM immediately.
     const card = document.querySelector(`.host-card[data-id="${hostId}"]`);
@@ -536,7 +536,7 @@ async function deleteHost(hostId, hostname, btn) {
     // Invalidate fleet cache so the deploy modal won't show the deleted host.
     _deployHostCache = null;
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
     btn.disabled = false;
   }
 }
@@ -920,14 +920,14 @@ async function openConnectMenu(hostId, hostname, anchorEl) {
     menu.appendChild(row);
   };
 
-  addRow('Web shell', opts.shell, () => {
+  addRow(t('Web shell'), opts.shell, () => {
     loadTerminalAssets()
       .then(() => openSession(hostId, 'shell'))
       .catch((err) => showToast(err.message, 'error'));
   });
   // Windows serves RDP itself, Linux through xrdp, and a Mac's desktop is its
   // own Screen Sharing (VNC): the same session either way, named for what it is.
-  addRow(opts.os_family === 'macos' ? 'Screen sharing' : 'Web RDP', opts.rdp, () => {
+  addRow(opts.os_family === 'macos' ? t('Screen sharing') : t('Web RDP'), opts.rdp, () => {
     // vigil-host-cards.js is loaded by base.html; guacamole-common.js and
     // vigil-rdp.js only when a desktop is first opened, so the reference to
     // openRdpSession has to stay dynamic. The item is offered only when
@@ -938,16 +938,16 @@ async function openConnectMenu(hostId, hostname, anchorEl) {
       .catch((err) => showToast(err.message, 'error'));
   });
   if (opts.is_windows) {
-    addRow('Download .rdp file', always,
+    addRow(t('Download .rdp file'), always,
       () => downloadHostRdp(hostId, hostname || opts.host));
   } else {
-    addRow('SSH command', always,
+    addRow(t('SSH command'), always,
       () => openSshFor(hostname || opts.host, opts.ssh_target));
   }
   if (opts.recorded) {
     const note = document.createElement('div');
     note.className = 'connect-note';
-    note.textContent = 'Sessions on this install are recorded.';
+    note.textContent = t('Sessions on this install are recorded.');
     menu.appendChild(note);
   }
 

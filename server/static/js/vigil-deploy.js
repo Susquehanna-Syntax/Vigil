@@ -42,7 +42,7 @@ function openDeployForHost(hostId) {
   // pre-seed the deploy modal so this host is preselected.
   navigateTo('tasks');
   window._pendingDeployPreselectHost = hostId;
-  showToast('Pick a task to deploy to this host', 'info');
+  showToast(t('Pick a task to deploy to this host'), 'info');
 }
 
 /* ── Modal close + YAML highlighter ──────────────────────────────────── */
@@ -155,12 +155,11 @@ function _renderDeployTagChips() {
     // already tagged.
     if (deployState.tagsUnavailable) {
       empty.className = 'deploy-policy-help dash-failed';
-      empty.textContent =
-        'Could not load the tag list — the request failed. Close and reopen '
-        + 'this dialog to try again; deploying by host still works.';
+      empty.textContent = t(
+        'Could not load the tag list — the request failed. Close and reopen this dialog to try again; deploying by host still works.');
     } else {
       empty.className = 'deploy-policy-help';
-      empty.textContent = 'No tags exist yet. Tag agents in the host detail panel or via agent.yml.';
+      empty.textContent = t('No tags exist yet. Tag agents in the host detail panel or via agent.yml.');
     }
     wrap.appendChild(empty);
     return;
@@ -168,7 +167,7 @@ function _renderDeployTagChips() {
   for (const t of deployState.availableTags) {
     const chip = document.createElement('span');
     chip.className = 'deploy-day-chip' + (deployState.selectedTags.has(t.tag) ? ' on' : '');
-    chip.textContent = `${t.tag} · ${t.host_count}`;
+    chip.textContent = `${t.tag} · ${t.host_count}`; // i18n-ignore
     chip.dataset.tag = t.tag;
     chip.addEventListener('click', () => {
       if (deployState.selectedTags.has(t.tag)) deployState.selectedTags.delete(t.tag);
@@ -332,7 +331,7 @@ function _renderDeployInputs(inputs) {
     if (inp.type === 'text' && inp.required) {
       const req = document.createElement('span');
       req.className = 'deploy-input-req';
-      req.textContent = ' (required)';
+      req.textContent = t(' (required)');
       label.appendChild(req);
     }
 
@@ -395,10 +394,10 @@ function _firstInvalidDeployInput() {
     if (!ctrl) continue;
     const name = (/** @type {HTMLElement} */ (row.querySelector('.deploy-input-label'))?.firstChild?.textContent || /** @type {HTMLElement} */ (row).dataset.inputId).trim();
     if (/** @type {HTMLElement} */ (row).dataset.inputType === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
-      return { control: ctrl, message: `${name}: enter a number` };
+      return { control: ctrl, message: t('{name}: enter a number', { name }) };
     }
     if (ctrl.required && !ctrl.value.trim()) {
-      return { control: ctrl, message: `${name} is required` };
+      return { control: ctrl, message: t('{name} is required', { name }) };
     }
   }
   return null;
@@ -434,7 +433,7 @@ function _renderDeployHostRows() {
     rowsEl.replaceChildren();
     const empty = document.createElement('div');
     empty.className = 'host-pick-empty';
-    empty.textContent = 'No online, executable hosts available.';
+    empty.textContent = t('No online, executable hosts available.');
     rowsEl.appendChild(empty);
     return;
   }
@@ -442,7 +441,7 @@ function _renderDeployHostRows() {
   if (!visible.length) {
     const empty = document.createElement('div');
     empty.className = 'host-pick-empty';
-    empty.textContent = 'No hosts match your search.';
+    empty.textContent = t('No hosts match your search.');
     rowsEl.appendChild(empty);
     return;
   }
@@ -480,7 +479,7 @@ function _renderDeployHostRows() {
     if (refused) {
       const chip = document.createElement('span');
       chip.className = 'chip chip-rose dh-refuse';
-      chip.textContent = `will refuse: ${refused.join(', ')}`;
+      chip.textContent = t('will refuse: {actions}', { actions: refused.join(', ') });
       chip.title = "This host's agent allowlist does not include these actions.";
       nameWrap.appendChild(chip);
     }
@@ -543,7 +542,7 @@ async function _ensureFleetCache(force) {
 async function openDeployModal(definitionId, prefill) {
   prefill = prefill || {};
   // Show modal skeleton immediately so the UI feels instant.
-  document.getElementById('deploy-modal-title').textContent = 'Loading…';
+  document.getElementById('deploy-modal-title').textContent = t('Loading…');
   document.getElementById('deploy-risk-label').innerHTML = '';
   document.getElementById('deploy-yaml-view').innerHTML = '';
   /** @type {HTMLInputElement} */ (document.getElementById('deploy-host-search')).value = '';
@@ -568,7 +567,7 @@ async function openDeployModal(definitionId, prefill) {
 
     deployState.spec = def.parsed_spec;
     setDeployTargetMode('hosts');
-    document.getElementById('deploy-modal-title').textContent = `Deploy — ${def.name}`;
+    document.getElementById('deploy-modal-title').textContent = t('Deploy — {name}', { name: def.name });
     document.getElementById('deploy-risk-label').innerHTML = riskBadgeHtml(def.risk_level || 'standard');
 
     // YAML highlighting deferred one frame so the modal paints first.
@@ -610,7 +609,7 @@ async function openDeployModal(definitionId, prefill) {
   } catch (e) {
     document.getElementById('deploy-overlay').classList.remove('open');
     document.getElementById('deploy-modal').classList.remove('open');
-    showToast('Failed to open deploy modal: ' + e.message, 'error');
+    showToast(t('Failed to open deploy modal: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -622,12 +621,12 @@ async function openBuiltinTask(name, hostId, inputs) {
   try {
     defs = await apiJson('/api/v1/tasks/definitions/?scope=community');
   } catch (e) {
-    showToast('Could not load tasks: ' + e.message, 'error');
+    showToast(t('Could not load tasks: {message}', { message: e.message }), 'error');
     return;
   }
   const def = (defs || []).find(d => d.name === name && !d.owner);
   if (!def) {
-    showToast(`The built-in "${name}" task is missing — run migrations`, 'error');
+    showToast(t('The built-in "{name}" task is missing — run migrations', { name }), 'error');
     return;
   }
   openDeployModal(def.id, { hostId, inputs });
@@ -687,26 +686,29 @@ function updateDeployHostSummary() {
     const tagSummary = document.getElementById('deploy-tag-summary');
     const selectedTagList = [...deployState.selectedTags];
     if (!selectedTagList.length) {
-      tagSummary.textContent = 'No tags selected.';
+      tagSummary.textContent = t('No tags selected.');
       return;
     }
     // Estimate matched hosts using the available host list, since the
     // server makes the final decision (this is just a preview).
     const matched = (deployState.availableHosts || []).filter(h =>
-      (h.tags || []).some(t => deployState.selectedTags.has(t))
+      (h.tags || []).some(tag => deployState.selectedTags.has(tag))
     );
     const totalSteps = stepCount * matched.length;
-    tagSummary.textContent = `${selectedTagList.length} tag${selectedTagList.length === 1 ? '' : 's'} → ${matched.length} matched host${matched.length === 1 ? '' : 's'} · ${totalSteps} step${totalSteps === 1 ? '' : 's'} will run`;
+    tagSummary.textContent = tn('{n} tag → {m} matched host · {s} step will run',
+      '{n} tags → {m} matched hosts · {s} steps will run', selectedTagList.length,
+      { m: matched.length, s: totalSteps });
     return;
   }
 
   const total = (deployState.availableHosts || []).length;
   const count = deployState.selectedHosts ? deployState.selectedHosts.size : 0;
   const summary = document.getElementById('deploy-host-summary');
-  if (!total) { summary.textContent = 'No online hosts available.'; return; }
-  if (!count) { summary.textContent = `Select one or more of ${total} host${total === 1 ? '' : 's'}.`; return; }
+  if (!total) { summary.textContent = t('No online hosts available.'); return; }
+  if (!count) { summary.textContent = tn('Select one or more of {n} host.', 'Select one or more of {n} hosts.', total); return; }
   const totalSteps = stepCount * count;
-  summary.textContent = `${count} host${count === 1 ? '' : 's'} selected · ${totalSteps} step${totalSteps === 1 ? '' : 's'} will run in order`;
+  summary.textContent = tn('{n} host selected · {s} step will run in order',
+    '{n} hosts selected · {s} steps will run in order', count, { s: totalSteps });
 }
 
 /** @param {Event} event @returns {Promise<void>} */
@@ -733,20 +735,20 @@ async function submitDeploy(event) {
 
   if (deployState.targetMode === 'tags') {
     const tags = [...deployState.selectedTags];
-    if (!tags.length) { showToast('Select at least one tag', 'error'); return; }
+    if (!tags.length) { showToast(t('Select at least one tag'), 'error'); return; }
     body.tags = tags;
   } else {
     const host_ids = [...(deployState.selectedHosts || [])];
-    if (!host_ids.length) { showToast('Select at least one host', 'error'); return; }
+    if (!host_ids.length) { showToast(t('Select at least one host'), 'error'); return; }
     body.host_ids = host_ids;
   }
 
   body.send_to_refusing = !!(/** @type {HTMLInputElement|null} */ (document.getElementById('deploy-send-refusing')))?.checked;
 
   const target = body.tags
-    ? `every host tagged ${body.tags.join(', ')}`
-    : `${body.host_ids.length} host${body.host_ids.length === 1 ? '' : 's'}`;
-  const totp = await totpPrompt(`Deploying to ${target}.`, { title: 'Confirm deploy', confirmText: 'Deploy' });
+    ? t('every host tagged {tags}', { tags: body.tags.join(', ') })
+    : tn('{n} host', '{n} hosts', body.host_ids.length);
+  const totp = await totpPrompt(t('Deploying to {target}.', { target }), { title: t('Confirm deploy'), confirmText: t('Deploy') });
   if (!totp) return;
   body.totp = totp;
 
@@ -758,11 +760,11 @@ async function submitDeploy(event) {
       body: JSON.stringify(body),
     });
     const skipped = (run.skipped || []).length;
-    showToast(`Deployed to ${run.host_count} host${run.host_count === 1 ? '' : 's'}`
-      + (skipped ? ` · skipped ${skipped} that would refuse` : ''), 'success');
+    showToast(tn('Deployed to {n} host', 'Deployed to {n} hosts', run.host_count)
+      + (skipped ? ' · ' + t('skipped {n} that would refuse', { n: skipped }) : ''), 'success');
     closeDeployModal();
   } catch (e) {
-    showToast('Deploy failed: ' + e.message, 'error');
+    showToast(t('Deploy failed: {message}', { message: e.message }), 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }
