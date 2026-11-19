@@ -331,7 +331,7 @@ function _renderDeployInputs(inputs) {
     if (inp.type === 'text' && inp.required) {
       const req = document.createElement('span');
       req.className = 'deploy-input-req';
-      req.textContent = t(' (required)');
+      req.textContent = ' ' + t('(required)');
       label.appendChild(req);
     }
 

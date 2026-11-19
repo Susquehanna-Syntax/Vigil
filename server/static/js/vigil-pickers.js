@@ -232,7 +232,7 @@ async function openInputsModal(opts) {
       const required = (entry.required || []).includes(name);
       const current = (override[String(i)] || {})[name];
       const fallback = (a.params || {})[name];
-      return `<label>${escHtml(name)}${required ? ' ' + escHtml(t('(required)')) : ''}</label>
+      return `<label>${escHtml(name)}${required ? ' *' : ''}</label>
         <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escAttr(name)}"
           value="${current != null ? escHtml(String(current)) : ''}"
           placeholder="${fallback != null ? escHtml(String(fallback)) : ''}">`;
@@ -241,7 +241,7 @@ async function openInputsModal(opts) {
   }).join('');
   m.setBody(`
     <div class="modal-title">
-      <span>${t('Inputs — {name}', { name: def.name })}</span>
+      <span>${escHtml(t('Inputs — {name}', { name: def.name }))}</span>
       <button class="modal-close" id="inputs-close" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -299,7 +299,7 @@ function inputsFormMount(container, inputs, values) {
     if (inp.type === 'text' && inp.required) {
       const req = document.createElement('span');
       req.className = 'inputs-form-req';
-      req.textContent = t('(required)');
+      req.textContent = ' ' + t('(required)');
       label.appendChild(req);
     }
 
@@ -383,6 +383,9 @@ let _taskModalId = null;
 /** @type {number|null} */
 let _taskValidateTimer = null;
 
+/** A sample task shown in the empty editor: YAML, not a sentence. */
+const _TE_YAML_SAMPLE = 'name: My task&#10;risk: standard&#10;actions:&#10;  - type: run_command&#10;    params:&#10;      command: uptime'; // i18n-ignore
+
 /** @param {TaskModalOpts=} opts @returns {void} */
 function openTaskModal(opts) {
   opts = opts || {};
@@ -403,7 +406,7 @@ function openTaskModal(opts) {
         <div class="te-editor" id="te-editor">
           <pre class="te-highlight" id="te-highlight" aria-hidden="true"></pre>
           <textarea class="te-yaml" id="te-yaml" spellcheck="false" autocapitalize="off" autocorrect="off"
-            placeholder="${escAttr(t('name: My task{"nl"}risk: standard{"nl"}actions:{"nl"}  - type: run_command{"nl"}    params:{"nl"}      command: uptime', { nl: '\n' }))}"></textarea>
+            placeholder="${_TE_YAML_SAMPLE}"></textarea>
         </div>
       </div>
       <div class="te-pane">
