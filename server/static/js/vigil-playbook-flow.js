@@ -631,6 +631,9 @@ function _flJumpPath(a, b, apexY) {
 
 const _FLOW_COUNT_WORDS = { ok: 'ok', failed: 'failed', not_applicable: 'n/a', skipped: 'skipped', pending: 'waiting' };
 
+// A technical reference, not a sentence: how the text names a playbook input.
+const INPUT_REF_TOKEN = '${{ inputs.<id> }}'; // i18n-ignore
+
 function _flStepNodeHtml(ln, num, opts) {
   const s = ln.node;
   const { ctx, stats, selected } = opts;
@@ -738,7 +741,7 @@ function flowCanvasHtml(tree, opts = {}) {
   const paths = (lay.edges.map(e => `<path class="fce t-${e.tone}${faded(e) || e.afterGoto ? ' fce-off' : ''}" d="${_flEdgePath(e.a, e.b)}"/>`).join('')
     + lay.jumps.map(j => `<path class="fce fce-jump${j.back ? ' fce-back' : ''}" d="${_flJumpPath(j.a, j.b, j.apexY)}"/>`).join(''));
   const adds = edit ? lay.edges.filter(e => e.insert).map(e => `<button type="button" class="fce-add t-${e.tone}" data-flow-insert="${escAttr(e.insert)}"
-      data-css="left:${(e.a.x + e.b.x) / 2}px;top:${(e.a.y + e.b.y) / 2}px" aria-label="Add a step here" title="Add a task or an if / else here">+</button>`).join('') : '';
+      data-css="left:${(e.a.x + e.b.x) / 2}px;top:${(e.a.y + e.b.y) / 2}px" aria-label="${escAttr(t('Add a step here'))}" title="${escAttr(t('Add a task or an if / else here'))}">+</button>`).join('') : '';
   const jumpLabels = lay.jumps.map((j) => {
     const max = _flowGotoNodeAt(tree, j.at).max;
     return `<span class="fcj-label" data-css="left:${(j.a.x + j.b.x) / 2}px;top:${j.apexY}px">`
@@ -753,11 +756,11 @@ function flowCanvasHtml(tree, opts = {}) {
       ${nodes}${jumpLabels}${adds}
     </div>
     <div class="fcv-tools">
-      <button type="button" class="fcv-btn" data-fcv="out" aria-label="Zoom out" title="Zoom out">−</button>
-      <button type="button" class="fcv-btn" data-fcv="in" aria-label="Zoom in" title="Zoom in">+</button>
-      <button type="button" class="fcv-btn fcv-fit" data-fcv="fit" title="Fit the whole flow">Fit</button>
+      <button type="button" class="fcv-btn" data-fcv="out" aria-label="${escAttr(t('Zoom out'))}" title="${escAttr(t('Zoom out'))}">−</button>
+      <button type="button" class="fcv-btn" data-fcv="in" aria-label="${escAttr(t('Zoom in'))}" title="${escAttr(t('Zoom in'))}">+</button>
+      <button type="button" class="fcv-btn fcv-fit" data-fcv="fit" title="${escAttr(t('Fit the whole flow'))}">${escHtml(t('Fit'))}</button>
     </div>
-    <div class="fcv-hint">Drag to pan · Ctrl + scroll to zoom</div>
+    <div class="fcv-hint">${escHtml(t('Drag to pan · Ctrl + scroll to zoom'))}</div>
   </div>`;
 }
 
@@ -897,33 +900,33 @@ function flowInspectorHtml(tree, at, ctx) {
   })() : null;
   if (!node) {
     return `<div class="fi-empty">
-      <p><b>Select a step or an if</b> to change it.</p>
-      <p>Press <span class="fi-plus">+</span> on any line to add a task or an if / else at that point.</p>
-      <p>Each if forks the flow: the <span class="fi-then">true</span> band runs when its condition holds, the <span class="fi-else">otherwise</span> band when it doesn't, and both meet again at the dot. Add an <span class="fi-elif">or if</span> exit for anything in between.</p>
+      <p><b>${escHtml(t('Select a step or an if'))}</b> ${escHtml(t('to change it.'))}</p>
+      <p>${escHtml(t('Press'))} <span class="fi-plus">+</span> ${escHtml(t('on any line to add a task or an if / else at that point.'))}</p>
+      <p>${t('Each if forks the flow: the {trueBand} band runs when its condition holds, the {otherwiseBand} band when it doesn\'t, and both meet again at the dot. Add an {orIfExit} exit for anything in between.', { trueBand: `<span class="fi-then">${escHtml(t('true'))}</span>`, otherwiseBand: `<span class="fi-else">${escHtml(t('otherwise'))}</span>`, orIfExit: `<span class="fi-elif">${escHtml(t('or if'))}</span>` })}</p>
     </div>`;
   }
   const [lane, idx] = at.split('|');
   const siblings = flowLane(tree, lane);
   const i = +idx;
   const moves = `<div class="fi-actions">
-      <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>Move earlier</button>
-      <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="1" ${i === siblings.length - 1 || (siblings[i + 1] && siblings[i + 1].kind === 'goto') ? 'disabled' : ''}>Move later</button>
-      <button type="button" class="btn btn-rose btn-xs" data-flow-rm="${escAttr(at)}">Remove</button>
+      <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>${escHtml(t('Move earlier'))}</button>
+      <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="1" ${i === siblings.length - 1 || (siblings[i + 1] && siblings[i + 1].kind === 'goto') ? 'disabled' : ''}>${escHtml(t('Move later'))}</button>
+      <button type="button" class="btn btn-rose btn-xs" data-flow-rm="${escAttr(at)}">${escHtml(t('Remove'))}</button>
     </div>`;
   if (node.kind === 'goto') {
     const targets = flowGotoTargets(tree, at);
-    const options = ['<option value="">Choose a step…</option>'].concat(targets.map(sid =>
-      `<option value="${escAttr(sid)}"${node.target === sid ? ' selected' : ''}>${escHtml(sid)} — ${escHtml(ctx.defName(_flowStepBySid(tree, sid).def))}</option>`)).join('');
+    const options = [`<option value="">${escHtml(t('Choose a step…'))}</option>`].concat(targets.map(tgt =>
+      `<option value="${escAttr(tgt.sid)}"${node.target === tgt.sid ? ' selected' : ''}>${escHtml(tgt.sid)} — ${escHtml(ctx.defName(_flowStepBySid(tree, tgt.sid).def))}</option>`)).join('');
     return `<div class="fi">
-      <div class="fi-head"><span class="fcn-goto-mark">go to</span> Jump</div>
-      <label class="fi-field">Jump to
+      <div class="fi-head"><span class="fcn-goto-mark">${escHtml(t('go to'))}</span> ${escHtml(t('Jump'))}</div>
+      <label class="fi-field">${escHtml(t('Jump to'))}
         <select data-flow-goto-target="${escAttr(at)}">${options}</select></label>
-      <label class="fi-field">At most, going back
+      <label class="fi-field">${escHtml(t('At most, going back'))}
         <input type="number" min="1" max="10" data-flow-goto-max="${escAttr(at)}" value="${escAttr(node.max || 3)}"></label>
-      <div class="muted-note">A step later in the playbook: hosts skip ahead to it, so branches meet.
-        An earlier step: hosts go back and run from there again, at most this many times, then carry on.</div>
+      <div class="muted-note">${escHtml(t('A step later in the playbook: hosts skip ahead to it, so branches meet. An earlier step: hosts go back and run from there again, at most this many times, then carry on.'))}
+      </div>
       <div class="fi-actions">
-        <button type="button" class="btn btn-rose btn-xs" data-flow-rm="${escAttr(at)}">Remove</button>
+        <button type="button" class="btn btn-rose btn-xs" data-flow-rm="${escAttr(at)}">${escHtml(t('Remove'))}</button>
       </div>
     </div>`;
   }
@@ -933,45 +936,45 @@ function flowInspectorHtml(tree, at, ctx) {
     const inside = arms.reduce((k, arm) => k + flowSteps(arm.list).length, 0);
     const builder = (addr, cond, label) => `<div class="flow-builder" data-flow-builder="${escAttr(addr)}">
         ${before.length ? `<div class="fi-sub">${label}</div>
-        <div class="fb-mode" data-fb-mode-wrap>Run this exit when
-          <select data-fb-mode><option value="all">all of these hold</option><option value="any">any of these holds</option></select>
+        <div class="fb-mode" data-fb-mode-wrap>${escHtml(t('Run this exit when'))}
+          <select data-fb-mode><option value="all">${escHtml(t('all of these hold'))}</option><option value="any">${escHtml(t('any of these holds'))}</option></select>
         </div>
         <div class="fb-rows" data-fb-rows></div>
-        <button type="button" class="btn btn-outline btn-xs" data-fb-add>Add a condition</button>
-        <div class="muted-note" data-fb-raw hidden>This condition is written by hand, so it can only be edited as text above.
-          <button type="button" class="btn btn-outline btn-xs" data-fb-reset>Start again with rows</button></div>`
-    : '<div class="muted-note">Add a step before this if first: a condition tests an earlier step.</div>'}
+        <button type="button" class="btn btn-outline btn-xs" data-fb-add>${escHtml(t('Add a condition'))}</button>
+        <div class="muted-note" data-fb-raw hidden>${escHtml(t('This condition is written by hand, so it can only be edited as text above.'))}
+          <button type="button" class="btn btn-outline btn-xs" data-fb-reset>${escHtml(t('Start again with rows'))}</button></div>`
+    : `<div class="muted-note">${escHtml(t('Add a step before this if first: a condition tests an earlier step.'))}</div>`}
       </div>`;
     const elifs = arms.slice(1, -1).map((arm, k) => `<div class="fi">
-      <div class="fi-head"><span class="fi-elif">or if ${k + 1}</span> Another exit</div>
-      <label class="fi-field">Expression
-        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(`${at}#elif${k + 1}`)}" placeholder="steps.check.result.count > 5" spellcheck="false">${escHtml(arm.cond || '')}</textarea></label>
+      <div class="fi-head"><span class="fi-elif">${escHtml(t('or if'))} ${k + 1}</span> ${escHtml(t('Another exit'))}</div>
+      <label class="fi-field">${escHtml(t('Expression'))}
+        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(`${at}#elif${k + 1}`)}" placeholder="steps.check.result.count > 5" spellcheck="false>${escHtml(arm.cond || '')}</textarea></label>
       <div class="fi-words" data-flow-words="${escAttr(`${at}#elif${k + 1}`)}">${arm.cond ? escHtml(flowCondSummary(arm.cond)) : ''}</div>
       ${builder(`${at}#elif${k + 1}`, arm.cond, 'Conditions')}
       <div class="fi-actions">
-        <button type="button" class="btn btn-rose btn-xs" data-flow-elif-rm="${escAttr(`${at}#elif${k + 1}`)}">Remove this exit</button>
+        <button type="button" class="btn btn-rose btn-xs" data-flow-elif-rm="${escAttr(`${at}#elif${k + 1}`)}">${escHtml(t('Remove this exit'))}</button>
       </div>
     </div>`).join('');
     return `<div class="fi">
-      <div class="fi-head"><span class="fcn-if-mark">if</span> Decision</div>
-      <label class="fi-field">Expression
+      <div class="fi-head"><span class="fcn-if-mark">${escHtml(t('if'))}</span> ${escHtml(t('Decision'))}</div>
+      <label class="fi-field">${escHtml(t('Expression'))}
         <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(at)}" placeholder="steps.check.result.count > 0" spellcheck="false">${escHtml(node.cond || '')}</textarea></label>
       <div class="fi-words" data-flow-words="${escAttr(at)}">${node.cond ? escHtml(flowCondSummary(node.cond)) : ''}</div>
       ${builder(at, node.cond, 'Conditions')}
-      ${inside ? `<div class="muted-note">Removing this if also removes the ${inside} step${inside === 1 ? '' : 's'} inside it.</div>` : ''}
+      ${inside ? `<div class="muted-note">${escHtml(tn('Removing this if also removes the {inside} step inside it.', 'Removing this if also removes the {inside} steps inside it.', inside, { inside }))}</div>` : ''}
       ${moves}
     </div>
     ${elifs}
     <div class="fi-actions">
-      <button type="button" class="btn btn-sky btn-xs" data-flow-elif-add="${escAttr(at)}" ${arms.length >= 10 ? 'disabled' : ''}>Add an or-if exit</button>
+      <button type="button" class="btn btn-sky btn-xs" data-flow-elif-add="${escAttr(at)}" ${arms.length >= 10 ? 'disabled' : ''}>${escHtml(t('Add an or-if exit'))}</button>
     </div>
-    <div class="muted-note">Exits are checked in order: the first one that holds wins, and otherwise runs when none do.</div>`;
+    <div class="muted-note">${escHtml(t('Exits are checked in order: the first one that holds wins, and otherwise runs when none do.'))}</div>`;
   }
   const s = node;
   const why = ctx.ineligible(s.def);
   const nOv = Object.values(s.ov || {}).reduce((k, p) => k + Object.keys(p).length, 0);
-  const swatches = ['', ...FLOW_COLORS].map(c => `<button type="button" class="flow-swatch ${_flowColorClass(c)}${(s.color || '') === c ? ' on' : ''}"
-      data-flow-color="${escAttr(at)}" data-c="${escAttr(c)}" aria-label="${escAttr(c ? 'Colour ' + c : 'No colour')}" title="${escAttr(c || 'no colour')}"></button>`).join('');
+  const swatches = ['', ...FLOW_COLORS].map(color => `<button type="button" class="flow-swatch ${_flowColorClass(color)}${(s.color || '') === color ? ' on' : ''}"
+      data-flow-color="${escAttr(at)}" data-c="${escAttr(color)}" aria-label="${escAttr(color ? t('Colour {colour}', { colour: color }) : t('No colour'))}" title="${escAttr(color || t('no colour'))}"></button>`).join('');
   /* Task inputs — how this step gets the values its task asks for. Rows only
      for a definition that declares inputs; the text may name a playbook input
      as ${{ inputs.<id> }} (see apps/playbooks/inputs.py). */
@@ -980,18 +983,19 @@ function flowInspectorHtml(tree, at, ctx) {
   if (declared.length) {
     const nodeInputs = s.inp || {};
     const pbIds = ((ctx && ctx.playbookInputs) ? ctx.playbookInputs() : []) || [];
+    const insertNote = pbIds.length ? `<span class="muted-note">${escHtml(t('Insert… puts {token} in the field.', { token: INPUT_REF_TOKEN }))}</span>` : ''; // i18n-ignore
     const rows = declared.map((ti) => {
       const id = ti.id || '';
       const val = nodeInputs[id] != null ? nodeInputs[id] : '';
       const ph = pbIds.indexOf(id) >= 0
-        ? `from playbook input "${id}"`
-        : (ti.default !== '' && ti.default != null ? `default: ${ti.default}` : 'required');
+        ? t('from playbook input "{name}"', { name: id })
+        : (ti.default !== '' && ti.default != null ? t('default: {value}', { value: ti.default }) : t('required'));
       const ins = pbIds.length
-        ? `<select class="fci-insert" data-flow-inp-ins="${escAttr(at)}" data-inp-id="${escAttr(id)}" title="Insert a playbook input">
-             <option value="">Insert…</option>${pbIds.map(p => `<option value="${escAttr(p)}">${escHtml(p)}</option>`).join('')}
+        ? `<select class="fci-insert" data-flow-inp-ins="${escAttr(at)}" data-inp-id="${escAttr(id)}" title="${escAttr(t('Insert a playbook input'))}">
+             <option value="">${escHtml(t('Insert…'))}</option>${pbIds.map(p => `<option value="${escAttr(p)}">${escHtml(p)}</option>`).join('')}
            </select>`
         : '';
-      return `<label class="fi-field">Task input ${escHtml(ti.label || id)}${ti.required ? ' (required)' : ''}
+      return `<label class="fi-field">${escHtml(t('Task input {input}', { input: ti.label || id }))}${ti.required ? ' ' + escHtml(t('(required)')) : ''}
           <span class="fci-ctl">
             <input class="flow-sid" data-flow-inp="${escAttr(at)}" data-inp-id="${escAttr(id)}"
                    value="${escAttr(val)}" maxlength="500" spellcheck="false"
@@ -999,33 +1003,30 @@ function flowInspectorHtml(tree, at, ctx) {
           </span>
         </label>`;
     }).join('');
-    inputsHtml = `<div class="fi-sub">Task inputs</div>${rows}`
-      + (pbIds.length
-        ? '<span class="muted-note">Insert… puts ${{ inputs.&lt;id&gt; }} in the field.</span>'
-        : '');
+    inputsHtml = `<div class="fi-sub">${escHtml(t('Task inputs'))}</div>${rows}` + insertNote;
   }
 
   return `<div class="fi">
     <div class="fi-head">${escHtml(ctx.defName(s.def))}
       <span class="risk-badge risk-${escHtml(ctx.defRisk(s.def))}">${escHtml(ctx.defRisk(s.def))}</span></div>
     ${why ? `<div class="bl-step-warn">${escHtml(why)}</div>` : ''}
-    <label class="fi-field">Step id <input class="flow-sid" data-flow-sid="${escAttr(at)}" value="${escAttr(s.sid)}" maxlength="60" spellcheck="false"></label>
-    <label class="fi-field">When not applicable
+    <label class="fi-field">${escHtml(t('Step id'))} <input class="flow-sid" data-flow-sid="${escAttr(at)}" value="${escAttr(s.sid)}" maxlength="60" spellcheck="false"></label>
+    <label class="fi-field">${escHtml(t('When not applicable'))}
       <select data-flow-ona="${escAttr(at)}">
-        <option value="stop"${s.ona !== 'skip' ? ' selected' : ''}>stop here</option>
-        <option value="skip"${s.ona === 'skip' ? ' selected' : ''}>go on to the next step</option>
+        <option value="stop"${s.ona !== 'skip' ? ' selected' : ''}>${escHtml(t('stop here'))}</option>
+        <option value="skip"${s.ona === 'skip' ? ' selected' : ''}>${escHtml(t('go on to the next step'))}</option>
       </select></label>
-    <label class="fi-field">If it fails
+    <label class="fi-field">${escHtml(t('If it fails'))}
       <select data-flow-onf="${escAttr(at)}">
-        <option value="stop"${s.onf !== 'continue' ? ' selected' : ''}>stop here</option>
-        <option value="continue"${s.onf === 'continue' ? ' selected' : ''}>carry on, so an if can recover</option>
+        <option value="stop"${s.onf !== 'continue' ? ' selected' : ''}>${escHtml(t('stop here'))}</option>
+        <option value="continue"${s.onf === 'continue' ? ' selected' : ''}>${escHtml(t('carry on, so an if can recover'))}</option>
       </select></label>
-    <label class="fi-field">Outcome <input class="flow-outcome-in" data-flow-outcome="${escAttr(at)}" value="${escAttr(s.outcome || '')}" maxlength="40" placeholder="e.g. Recovered"></label>
-    <div class="fi-field">Colour <span class="flow-swatches" role="group" aria-label="Step colour">${swatches}</span></div>
+    <label class="fi-field">${escHtml(t('Outcome'))} <input class="flow-outcome-in" data-flow-outcome="${escAttr(at)}" value="${escAttr(s.outcome || '')}" maxlength="40" placeholder="${escAttr(t('e.g. Recovered'))}"></label>
+    <div class="fi-field">${escHtml(t('Colour'))} <span class="flow-swatches" role="group" aria-label="${escAttr(t('Step colour'))}">${swatches}</span></div>
     ${inputsHtml}
     <div class="fi-actions">
-      <button type="button" class="btn btn-lav btn-xs" data-flow-inputs="${escAttr(at)}">Inputs${nOv ? ' · ' + nOv : ''}</button>
-      <button type="button" class="btn btn-sky btn-xs" data-flow-view="${escAttr(s.def)}">View task</button>
+      <button type="button" class="btn btn-lav btn-xs" data-flow-inputs="${escAttr(at)}">${escHtml(t('Inputs'))}${nOv ? ' · ' + nOv : ''}</button>
+      <button type="button" class="btn btn-sky btn-xs" data-flow-view="${escAttr(s.def)}">${escHtml(t('View task'))}</button>
     </div>
     ${moves}
   </div>`;
@@ -1052,19 +1053,18 @@ function flowAnalysisHtml(tree, ctx) {
   const paths = flowPaths(tree);
   const lengths = paths.map(p => p.length);
   const findings = flowFindings(tree);
-  const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(s => s.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(s =>
-    `<span class="flow-path-step ${_flowColorClass(s.color)}">${escHtml(s.sid)}</span>`).join('<span class="flow-path-arrow" aria-hidden="true">›</span>') || '<em>nothing runs</em>'}</li>`).join('');
-  const risks = steps.map(s => ctx.defRisk(s.def));
-  const top = risks.includes('high') ? 'high' : risks.includes('standard') ? 'standard' : 'low';
+  const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(x => x.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(step =>
+    `<span class="flow-path-step ${_flowColorClass(step.color)}">${escHtml(step.sid)}</span>`).join('<span class="flow-path-arrow" aria-hidden="true">›</span>') || `<em>${escHtml(t('nothing runs'))}</em>`}</li>`).join('');
+  const risks = steps.map(step => ctx.defRisk(step.def));
   return `<div class="flow-analysis">
     <div class="flow-analysis-head">
-      <span><b>${steps.length}</b> step${steps.length === 1 ? '' : 's'}</span>
-      <span><b>${paths.length}${paths.length >= 64 ? '+' : ''}</b> possible path${paths.length === 1 ? '' : 's'}</span>
-      <span>a host runs <b>${Math.min(...lengths)}${Math.max(...lengths) !== Math.min(...lengths) ? '–' + Math.max(...lengths) : ''}</b> of them</span>
-      <span>highest risk <span class="risk-badge risk-${top}">${top}</span></span>
+      <span><b>${steps.length}</b> ${escHtml(tn('{n} step', '{n} steps', steps.length))}</span>
+      <span><b>${paths.length}${paths.length >= 64 ? '+' : ''}</b> ${escHtml(tn('{n} possible path', '{n} possible paths', paths.length))}</span>
+      <span>${escHtml(t('a host runs'))} <b>${Math.min(...lengths)}${Math.max(...lengths) !== Math.min(...lengths) ? '–' + Math.max(...lengths) : ''}</b> ${escHtml(t('of them'))}</span>
+      <span>${escHtml(t('highest risk'))} <span class="risk-badge risk-${top}">${top}</span></span>
     </div>
-    ${findings.length ? `<ul class="flow-findings">${findings.map(f => `<li class="${f.level}">${escHtml(f.text)}</li>`).join('')}</ul>` : '<div class="flow-findings-ok">No problems found in this flow.</div>'}
-    ${paths.length > 1 ? `<details class="flow-paths"><summary>Every path a host can take (hover one to light it up)</summary><ol>${pathList}</ol>${paths.length > 8 ? `<div class="muted-note">…and ${paths.length - 8} more.</div>` : ''}</details>` : ''}
+    ${findings.length ? `<ul class="flow-findings">${findings.map(f => `<li class="${f.level}">${escHtml(f.text)}</li>`).join('')}</ul>` : `<div class="flow-findings-ok">${escHtml(t('No problems found in this flow.'))}</div>`}
+    ${paths.length > 1 ? `<details class="flow-paths"><summary>${escHtml(t('Every path a host can take (hover one to light it up)'))}</summary><ol>${pathList}</ol>${paths.length > 8 ? `<div class="muted-note">${escHtml(t('…and {n} more.', { n: paths.length - 8 }))}</div>` : ''}</details>` : ''}
   </div>`;
 }
 
@@ -1123,7 +1123,7 @@ function flowRunHtml(run) {
   const tree = flowTreeFromRow({ steps: snap.steps, flow: snap.flow });
   const hosts = new Set((run.tasks || []).map(t => t.host)).size;
   return `<div class="flow-run">
-    <div class="flow-run-head">How this run went on ${hosts} host${hosts === 1 ? '' : 's'}</div>
+    <div class="flow-run-head">${escHtml(tn('How this run went on {n} host', 'How this run went on {n} hosts', hosts))}</div>
     ${flowReadOnlyHtml(tree, flowRunStats(run.tasks), 520)}
   </div>`;
 }
