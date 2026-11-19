@@ -12,7 +12,5 @@
   "static/js/vigil-reprovision.js": 71,
   "static/js/vigil-settings.js": 113,
   "static/js/vigil-stacks.js": 65,
-  "static/js/vigil-store.js": 30,
-  "static/js/vigil-utils.js": 12,
-  "static/js/vigil-vulns.js": 30
+  "static/js/vigil-utils.js": 12
 }

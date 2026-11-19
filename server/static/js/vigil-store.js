@@ -72,7 +72,7 @@ function _storeCard(c) {
         <span class="store-card-sum">${escHtml(c.summary || '')}</span>
         <span class="store-card-foot">
           <span class="chip chip-muted">${escHtml(where)} · ${escHtml(c.source_label)}</span>
-          ${c.installed ? `<span class="chip store-chip-have">on ${c.installed} machine${c.installed === 1 ? '' : 's'}</span>` : ''}
+          ${c.installed ? `<span class="chip store-chip-have">${escHtml(t('on {n} machine(s)', { n: c.installed }))}</span>` : ''}
         </span>
       </span>
     </button>`;
@@ -84,9 +84,8 @@ function _storeEmpty(status) {
   if (status.enabled) {
     const errors = status.syncs.filter(s => s.error);
     grid.innerHTML = `<div class="store-empty">
-        <div class="store-empty-title">Fetching the catalog…</div>
-        <div class="store-empty-text">Vigil is downloading the package lists your machines use. This takes a minute;
-          the Store fills in by itself.</div>
+        <div class="store-empty-title">${escHtml(t('Fetching the catalog…'))}</div>
+        <div class="store-empty-text">${escHtml(t('Vigil is downloading the package lists your machines use. This takes a minute; the Store fills in by itself.'))}</div>
         ${errors.map(e => `<div class="store-empty-err">${escHtml(e.source_label)}${e.release ? ' ' + escHtml(e.release) : ''}: ${escHtml(e.error)}</div>`).join('')}
       </div>`;
     if (!storeState.poll) {
@@ -104,13 +103,11 @@ function _storeEmpty(status) {
     }
     return;
   }
+  const note = status.locked ? `<br>${escHtml(t('It is set by VIGIL_CATALOG_SYNC in the environment; change it there.'))}` : '';
   grid.innerHTML = `<div class="store-empty">
-      <div class="store-empty-title">The Store needs the package catalog</div>
-      <div class="store-empty-text">To show what your machines can install, Vigil downloads the public package
-        lists they use, once a day: winget for Windows, Flathub for Linux desktops, and the repositories of the
-        Ubuntu and Debian releases you run. Vigil does not reach out on its own, so an admin turns this on.
-        ${status.locked ? '<br>It is set by VIGIL_CATALOG_SYNC in the environment; change it there.' : ''}</div>
-      ${status.locked ? '' : '<button class="btn btn-mint btn-sm" type="button" data-store-enable>Turn on the catalog</button>'}
+      <div class="store-empty-title">${escHtml(t('The Store needs the package catalog'))}</div>
+      <div class="store-empty-text">${escHtml(t('To show what your machines can install, Vigil downloads the public package lists they use, once a day: winget for Windows, Flathub for Linux desktops, and the repositories of the Ubuntu and Debian releases you run. Vigil does not reach out on its own, so an admin turns this on.'))}${note}</div>
+      ${status.locked ? '' : `<button class="btn btn-mint btn-sm" type="button" data-store-enable>${escHtml(t('Turn on the catalog'))}</button>`}
     </div>`;
 }
 
@@ -124,10 +121,10 @@ function _storeEmptyPlatform(status, platform) {
   const wanted = ((status && status.wanted) || []).filter(w => w.platform === platform);
   if (!wanted.length) {
     const sentence = platform === 'windows'
-      ? "No Windows machines are enrolled, so Vigil has not downloaded winget's list."
-      : "No Linux machines are enrolled, so Vigil has not downloaded Flathub's or apt's lists.";
+      ? t("No Windows machines are enrolled, so Vigil has not downloaded winget's list.")
+      : t("No Linux machines are enrolled, so Vigil has not downloaded Flathub's or apt's lists.");
     grid.innerHTML = `<div class="store-empty">
-        <div class="store-empty-title">Nothing to show yet</div>
+        <div class="store-empty-title">${escHtml(t('Nothing to show yet'))}</div>
         <div class="store-empty-text">${escHtml(sentence)}</div>
       </div>`;
     return;
@@ -138,15 +135,15 @@ function _storeEmptyPlatform(status, platform) {
     const detail = sync && sync.error
       ? `<span class="store-empty-err">${escHtml(sync.error)}</span>`
       : sync
-        ? `<span class="store-empty-text">${(sync.count || 0).toLocaleString()} packages · ${escHtml(timeAgo(sync.synced_at) || 'unknown')}</span>`
-        : '<span class="store-empty-text">not synced yet</span>';
+        ? `<span class="store-empty-text">${escHtml(t('{n} packages · {ago}', { n: (sync.count || 0).toLocaleString(), ago: timeAgo(sync.synced_at) || t('unknown') }))}</span>`
+        : `<span class="store-empty-text">${escHtml(t('not synced yet'))}</span>`;
     return `<div class="store-empty-src">
         <span class="store-empty-src-name">${escHtml(w.source_label)}${w.release ? ' · ' + escHtml(w.release) : ''}</span>
         ${detail}</div>`;
   }).join('');
   grid.innerHTML = `<div class="store-empty">
-      <div class="store-empty-title">Nothing to show yet</div>
-      <div class="store-empty-text">Vigil downloads these package lists for the machines you have.</div>
+      <div class="store-empty-title">${escHtml(t('Nothing to show yet'))}</div>
+      <div class="store-empty-text">${escHtml(t('Vigil downloads these package lists for the machines you have.'))}</div>
       ${rows}
     </div>`;
 }
@@ -157,9 +154,9 @@ function _storeEmptyPlatform(status, platform) {
 function _storeStatusButtons(el, failed) {
   if (failed.length) {
     el.appendChild(_statusButton('store-status-warn',
-      `${failed.length} sync problem${failed.length === 1 ? '' : 's'}`, 'storeSyncInfo'));
+      tn('{n} sync problem', '{n} sync problems', failed.length), 'storeSyncInfo'));
   }
-  el.appendChild(_statusButton('btn btn-outline btn-xs', 'Sync now', 'storeSync'));
+  el.appendChild(_statusButton('btn btn-outline btn-xs', t('Sync now'), 'storeSync'));
 }
 
 function _renderStoreStatus(status) {
@@ -168,9 +165,9 @@ function _renderStoreStatus(status) {
   storeState.status = status;
   const ok = status.syncs.filter(s => s.synced_at);
   const newest = ok.map(s => s.synced_at).sort().pop();
+  const head = t('{n} packages · {sources}', { n: status.packages.toLocaleString(), sources: [...new Set(ok.map(s => s.source_label))].join(', ') });
   el.textContent = status.packages
-    ? `${status.packages.toLocaleString()} packages · ${[...new Set(ok.map(s => s.source_label))].join(', ')}`
-      + (newest && typeof timeAgo === 'function' ? ` · synced ${timeAgo(newest)}` : '')
+    ? head + (newest && typeof timeAgo === 'function' ? ' · ' + t('synced {when}', { when: timeAgo(newest) }) : '')
     : '';
   _storeStatusButtons(el, status.syncs.filter(s => s.error));
 }
@@ -195,7 +192,7 @@ async function loadStore(reset) {
   if (storeState.q) params.set('q', storeState.q);
   if (storeState.platform) params.set('platform', storeState.platform);
   if (storeState.category) params.set('category', storeState.category);
-  if (reset) grid.innerHTML = '<div class="store-loading">Loading…</div>';
+  if (reset) grid.innerHTML = `<div class="store-loading">${escHtml(t('Loading…'))}</div>`;
   let body;
   try {
     body = await apiJson(`/api/v1/catalog/?${params}`);
@@ -217,7 +214,7 @@ async function loadStore(reset) {
     // that platform was never downloaded, or the download failed.
     _storeEmptyPlatform(storeState.status, storeState.platform);
   } else {
-    grid.innerHTML = `<div class="apps-empty-state">Nothing matched${storeState.q ? ` “${escHtml(storeState.q)}”` : ''}.</div>`;
+    grid.innerHTML = `<div class="apps-empty-state">${storeState.q ? escHtml(t('Nothing matched “{q}”.', { q: storeState.q })) : escHtml(t('Nothing matched.'))}</div>`;
   }
   _wireIcons(grid);
   _storeEl('store-more').hidden = storeState.cards.length >= body.count;
@@ -232,7 +229,7 @@ async function loadStoreCategories() {
     cats = (await apiJson(`/api/v1/catalog/categories/${qs}`)).results || [];
   } catch { cats = []; }
   wrap.innerHTML = cats.length
-    ? [`<button class="chip store-cat${storeState.category ? '' : ' is-on'}" type="button" data-store-cat="">All</button>`,
+    ? [`<button class="chip store-cat${storeState.category ? '' : ' is-on'}" type="button" data-store-cat="">${escHtml(t('All'))}</button>`,
        ...cats.map(c => `<button class="chip store-cat${storeState.category === c.name ? ' is-on' : ''}" type="button"
            data-store-cat="${escAttr(c.name)}">${escHtml(c.name)}</button>`)].join('')
     : '';
@@ -258,14 +255,14 @@ async function openStoreApp(id) {
   storeState.current = d;
   const m = mountModal('store', { wide: true, variant: 'm-pop' });
   const choices = _storeChoices(d);
-  const where = { windows: 'Windows', linux: 'Linux', macos: 'macOS' };
+  const where = { windows: 'Windows', linux: 'Linux', macos: 'macOS' }; // i18n-ignore — platform names, as on the card
   const releases = d.releases.length > 1
     ? `<div class="store-app-rel">${d.releases.map(r => `<span class="chip chip-muted">${escHtml(r.release.replace(':', ' '))} ${escHtml(r.version)}</span>`).join('')}</div>`
     : '';
   m.setBody(`
     <div class="modal-title">
       <span>${escHtml(d.name)}</span>
-      <button class="modal-close" id="store-x" aria-label="Close">
+      <button class="modal-close" id="store-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -282,20 +279,19 @@ async function openStoreApp(id) {
     </div>
     ${d.description ? `<div class="store-app-desc">${escHtml(d.description)}</div>` : ''}
     ${releases}
-    <div class="store-app-label">Install from</div>
+    <div class="store-app-label">${escHtml(t('Install from'))}</div>
     <div class="store-app-sources">
       ${choices.map((c, i) => `<label class="store-src">
           <input type="checkbox" data-store-pick="${escAttr(c.id)}"${i === 0 || c.installed ? ' checked' : ''}>
           <span class="store-src-name">${escHtml(c.source_label)} <code>${escHtml(c.package_id)}</code></span>
-          <span class="store-src-meta">${escHtml(where[c.platform] || c.platform)}${c.version ? ' · ' + escHtml(c.version) : ''}${c.installed ? ` · on ${c.installed} machine${c.installed === 1 ? '' : 's'}` : ''}</span>
+          <span class="store-src-meta">${escHtml(where[c.platform] || c.platform)}${c.version ? ' · ' + escHtml(c.version) : ''}${c.installed ? ' · ' + escHtml(t('on {n} machine(s)', { n: c.installed })) : ''}</span>
         </label>`).join('')}
     </div>
-    <div class="store-app-hint">Each package manager is a step that runs only on machines that have it, so one
-      task or policy covers Windows and Linux together.</div>
+    <div class="store-app-hint">${escHtml(t('Each package manager is a step that runs only on machines that have it, so one task or policy covers Windows and Linux together.'))}</div>
     <div class="modal-actions">
-      <button class="btn btn-outline btn-sm" type="button" data-store-policy>Add to policy…</button>
-      <button class="btn btn-outline btn-sm" type="button" data-store-save>Save as task</button>
-      <button class="btn btn-mint btn-sm" type="button" data-store-install>Install…</button>
+      <button class="btn btn-outline btn-sm" type="button" data-store-policy>${escHtml(t('Add to policy…'))}</button>
+      <button class="btn btn-outline btn-sm" type="button" data-store-save>${escHtml(t('Save as task'))}</button>
+      <button class="btn btn-mint btn-sm" type="button" data-store-install>${escHtml(t('Install…'))}</button>
     </div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#store-x')).onclick = m.close;
   _wireIcons(m.modal);
@@ -314,7 +310,7 @@ function _closeStoreApp() {
 
 async function storeInstall() {
   const picked = _storePicked();
-  if (!picked.length) { showToast('Pick at least one package manager', 'error'); return; }
+  if (!picked.length) { showToast(t('Pick at least one package manager'), 'error'); return; }
   try {
     const res = await apiJson('/api/v1/catalog/install-task/', {
       method: 'POST', body: JSON.stringify({ packages: picked.map(p => p.id) }) });
@@ -325,7 +321,7 @@ async function storeInstall() {
 
 function storeAddToPolicy() {
   const picked = _storePicked().filter(p => POLICY_APP_SOURCES.includes(p.source));
-  if (!picked.length) { showToast('Pick at least one package manager', 'error'); return; }
+  if (!picked.length) { showToast(t('Pick at least one package manager'), 'error'); return; }
   _closeStoreApp();
   policyFromApp(storeState.current.name, picked.map(p => ({ app: p.package_id, source: p.source })));
 }
@@ -334,14 +330,14 @@ function storeAddToPolicy() {
  *  instead of being sent now: the operator adds the hosts and the window. */
 async function storeSaveTask() {
   const picked = _storePicked();
-  if (!picked.length) { showToast('Pick at least one package manager', 'error'); return; }
+  if (!picked.length) { showToast(t('Pick at least one package manager'), 'error'); return; }
   try {
     const res = await apiJson('/api/v1/catalog/install-task/', {
       method: 'POST', body: JSON.stringify({ packages: picked.map(p => p.id) }) });
     _closeStoreApp();
     navigateTo('tasks');
     if (typeof openDefinitionEditor === 'function') await openDefinitionEditor(res.definition_id);
-    showToast(`Saved “${res.name}” to your tasks`, 'success');
+    showToast(t('Saved “{name}” to your tasks', { name: res.name }), 'success');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -356,7 +352,7 @@ function _newestSyncedAt(status) {
 function storeSyncNow() {
   apiJson('/api/v1/catalog/sync/', { method: 'POST', body: '{}' })
     .then(() => {
-      showToast('Syncing the package lists', 'success');
+      showToast(t('Syncing the package lists'), 'success');
       // The 202 body is the status before the thread got anywhere, so the
       // moment to watch for is the newest time on the page right now.
       storeState.syncAt = _newestSyncedAt(storeState.status);
@@ -397,18 +393,18 @@ function openStoreSyncInfo() {
         <div class="store-sync-meta">${note(s)}</div>
       </div>`).join('')}</div>`;
   m.setBody(`<div class="modal-title">
-      <span>Package lists</span>
-      <button class="btn btn-ghost btn-sm" type="button" id="store-sync-info-x" aria-label="Close">Close</button>
+      <span>${escHtml(t('Package lists'))}</span>
+      <button class="btn btn-ghost btn-sm" type="button" id="store-sync-info-x" aria-label="${escAttr(t('Close'))}">${escHtml(t('Close'))}</button>
     </div>
     <div class="store-sync-lead">${failed.length
-      ? escHtml(`${failed.length} list${failed.length === 1 ? '' : 's'} did not download, so their apps are missing from the Store. An admin can press Sync now to try again.`)
-      : escHtml('Every package list downloaded on its last run.')}</div>
-    ${status.syncs.length ? rows(status.syncs, s => `${(s.count || 0).toLocaleString()} packages · ${escHtml(timeAgo(s.synced_at) || 'never')}`
+      ? escHtml(t('{n} list(s) did not download, so their apps are missing from the Store. An admin can press Sync now to try again.', { n: failed.length }))
+      : escHtml(t('Every package list downloaded on its last run.'))}</div>
+    ${status.syncs.length ? rows(status.syncs, s => escHtml(t('{n} packages · {ago}', { n: (s.count || 0).toLocaleString(), ago: timeAgo(s.synced_at) || t('never') }))
       + (s.error ? `<div class="store-empty-err">${escHtml(s.error)}</div>` : '')) : ''}
     ${(status.wanted || []).filter(w => !status.syncs.some(s => s.source === w.source)).length
-      ? `<div class="store-app-label">Not synced yet</div>${
+      ? `<div class="store-app-label">${escHtml(t('Not synced yet'))}</div>${
           rows((status.wanted || []).filter(w => !status.syncs.some(s => s.source === w.source)),
-            () => 'not synced yet')}` : ''}`);
+            () => escHtml(t('not synced yet')))}` : ''}`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#store-sync-info-x')).onclick = m.close;
   m.open();
 }
@@ -442,7 +438,7 @@ delegateClick('[data-store-enable]', async (el) => {
   el.disabled = true;
   try {
     const status = await apiJson('/api/v1/catalog/enable/', { method: 'POST', body: '{}' });
-    showToast('Catalog on: fetching the package lists now', 'success');
+    showToast(t('Catalog on: fetching the package lists now'), 'success');
     _storeEmpty(status);
   } catch (e) {
     el.disabled = false;

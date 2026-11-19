@@ -124,15 +124,15 @@ async function _renderFleetHeadline() {
     if (worstEl) {
       worstEl.replaceChildren();
       if (d.worst) {
-        worstEl.append('Worst offender: ');
+        worstEl.append(t('Worst offender: '));
         const name = document.createElement('strong');
         name.style.color = 'var(--text-1)';
         name.textContent = d.worst.hostname;
-        worstEl.append(name, ` · score ${d.worst.score}`);
+        worstEl.append(name, t(' · score {score}', { score: d.worst.score }));
       } else if (d.host_count) {
-        worstEl.textContent = `${d.host_count} host${d.host_count === 1 ? '' : 's'} scanned · nothing flagged`;
+        worstEl.textContent = tn('{n} host scanned · nothing flagged', '{n} hosts scanned · nothing flagged', d.host_count);
       } else {
-        worstEl.textContent = 'No scanned hosts yet.';
+        worstEl.textContent = t('No scanned hosts yet.');
       }
     }
   } catch {
@@ -183,14 +183,14 @@ async function uploadAnvilRecord(input) {
       body: formData,
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || 'Import failed');
-    let msg = `Imported ${data.imported} finding(s)`;
-    if (data.false_positive > 0) msg += `, ${data.false_positive} false positive(s) skipped`;
-    if (data.no_host > 0) msg += `, ${data.no_host} with no matching host`;
+    if (!resp.ok) throw new Error(data.detail || t('Import failed'));
+    let msg = t('Imported {n} finding(s)', { n: data.imported });
+    if (data.false_positive > 0) msg += t(', {n} false positive(s) skipped', { n: data.false_positive });
+    if (data.no_host > 0) msg += t(', {n} with no matching host', { n: data.no_host });
     showToast(msg, 'success');
     refreshVulns();
   } catch (e) {
-    showToast('Anvil import failed: ' + e.message, 'error');
+    showToast(t('Anvil import failed: ') + e.message, 'error');
   } finally {
     input.value = '';
   }
@@ -217,16 +217,16 @@ function _buildVulnScanRow(s) {
   const title = document.createElement('div');
   title.className = 'task-action-name';
   const engineLabel = { nessus: 'Nessus', greenbone: 'Greenbone', trivy: 'Trivy' }[s.scanner] || 'Network';
-  title.textContent = engineLabel + ' scan · ' + (s.host_hostname || '');
+  title.textContent = engineLabel + ' ' + t('scan · {host}', { host: s.host_hostname || '' });
   content.appendChild(title);
 
   const detail = document.createElement('div');
   detail.className = 'task-detail';
   const requester = s.requested_via_task
-    ? 'requested by agent task'
-    : (s.requested_by_username ? 'by ' + s.requested_by_username : 'by system');
+    ? t('requested by agent task')
+    : (s.requested_by_username ? t('by {name}', { name: s.requested_by_username }) : t('by system'));
   const when = s.requested_at ? new Date(s.requested_at).toLocaleString() : '';
-  detail.textContent = `${requester} · ${when}` + (s.target ? ' · target ' + s.target : '');
+  detail.textContent = t('{requester} · {when}', { requester, when }) + (s.target ? t(' · target {target}', { target: s.target }) : '');
   content.appendChild(detail);
 
   row.appendChild(content);
@@ -262,10 +262,10 @@ async function startVulnScan(hostId, btn) {
       method: 'POST',
       body: JSON.stringify({ totp }),
     });
-    showToast('Scan queued — the scanner will pick it up shortly', 'success');
+    showToast(t('Scan queued — the scanner will pick it up shortly'), 'success');
     setTimeout(refreshVulnScans, 600);
   } catch (e) {
-    showToast('Scan request failed: ' + e.message, 'error');
+    showToast(t('Scan request failed: ') + e.message, 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }
@@ -308,7 +308,7 @@ function renderVulns(summaries) {
   if (!summaries.length) {
     const empty = document.createElement('div');
     empty.style.cssText = 'background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;';
-    empty.textContent = 'No scan results yet. Run a Trivy scan from the Tasks tab, or configure Nessus or Greenbone and results appear after the next hourly sync.';
+    empty.textContent = t('No scan results yet. Run a Trivy scan from the Tasks tab, or configure Nessus or Greenbone and results appear after the next hourly sync.');
     content.appendChild(empty);
     return;
   }
@@ -320,13 +320,13 @@ function renderVulns(summaries) {
   const headRow = document.createElement('tr');
   const headers = [
     ['', null],                            // expander chevron column
-    ['Host', null], ['IP', null],
-    ['Score', null],
-    ['Critical', 'var(--rose-ink)'], ['High', 'var(--coral-ink)'],
-    ['Medium', 'var(--lemon-ink)'], ['Low', 'var(--sky-ink)'],
-    ['Info', 'var(--text-3)'],
-    ['Overdue', 'var(--rose-ink)'], ['Due soon', 'var(--lemon-ink)'],
-    ['Last Scan', null], ['', null],
+    [t('Host'), null], [t('IP'), null],
+    [t('Score'), null],
+    [t('Critical'), 'var(--rose-ink)'], [t('High'), 'var(--coral-ink)'],
+    [t('Medium'), 'var(--lemon-ink)'], [t('Low'), 'var(--sky-ink)'],
+    [t('Info'), 'var(--text-3)'],
+    [t('Overdue'), 'var(--rose-ink)'], [t('Due soon'), 'var(--lemon-ink)'],
+    [t('Last Scan'), null], ['', null],
   ];
   for (const [label, color] of headers) {
     const th = document.createElement('th');
@@ -380,8 +380,8 @@ function renderVulns(summaries) {
     actTd.style.textAlign = 'right';
     const btn = document.createElement('button');
     btn.className = 'btn btn-outline btn-sm';
-    btn.textContent = 'Scan now';
-    btn.title = 'Launch a network scan against this host (Nessus or Greenbone, whichever is configured)';
+    btn.textContent = t('Scan now');
+    btn.title = t('Launch a network scan against this host (Nessus or Greenbone, whichever is configured)');
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();         // don't expand the row
       startVulnScan(s.host, btn);
@@ -399,8 +399,8 @@ function renderVulns(summaries) {
 
   const note = document.createElement('div');
   note.className = 'vuln-sync-note';
-  note.textContent = 'Last synced: ' + (
-    summaries[0]?.synced_at ? new Date(summaries[0].synced_at).toLocaleString() : 'Unknown'
+  note.textContent = t('Last synced: ') + (
+    summaries[0]?.synced_at ? new Date(summaries[0].synced_at).toLocaleString() : t('Unknown')
   );
   content.appendChild(note);
 
@@ -444,7 +444,7 @@ function _toggleFindingsRow(tr, summary) {
   const loading = document.createElement('div');
   loading.style.color = 'var(--text-3)';
   loading.style.fontSize = '12px';
-  loading.textContent = 'Loading findings…';
+  loading.textContent = t('Loading findings…');
   td.appendChild(loading);
   drawer.appendChild(td);
   tr.parentNode.insertBefore(drawer, tr.nextSibling);
@@ -460,7 +460,7 @@ async function _loadFindingsInto(container, summary) {
   try {
     findings = await apiJson(`/api/v1/vulns/findings/?host=${summary.host}&state=open`);
   } catch (e) {
-    showLoadFailure(container, 'the findings', e, () => _loadFindingsInto(container, summary));
+    showLoadFailure(container, t('the findings'), e, () => _loadFindingsInto(container, summary));
     return;
   }
 
@@ -470,7 +470,7 @@ async function _loadFindingsInto(container, summary) {
     const empty = document.createElement('div');
     empty.style.color = 'var(--text-3)';
     empty.style.fontSize = '12px';
-    empty.textContent = 'No open findings for this host yet. Network-scanner detail lands on the next sync cycle; Trivy findings arrive as soon as a scan task completes.';
+    empty.textContent = t('No open findings for this host yet. Network-scanner detail lands on the next sync cycle; Trivy findings arrive as soon as a scan task completes.');
     container.appendChild(empty);
     return;
   }
@@ -508,7 +508,7 @@ async function _loadFindingsInto(container, summary) {
     scanner.className = 'mono';
     scanner.style.fontSize = '11px';
     scanner.style.color = 'var(--text-3)';
-    scanner.textContent = `${f.scanner}#${f.plugin_id_or_oid}`;
+    scanner.textContent = `${f.scanner}#${f.plugin_id_or_oid}`; // i18n-ignore: a scanner/plugin id, not a sentence
     row.appendChild(scanner);
 
     const title = document.createElement('div');
@@ -516,7 +516,7 @@ async function _loadFindingsInto(container, summary) {
     title.style.alignItems = 'center';
     title.style.gap = '8px';
     title.style.minWidth = '0';
-    const titleText = f.title || '(no title)';
+    const titleText = f.title || t('(no title)');
     const text = document.createElement('span');
     text.style.fontSize = '12px';
     text.style.color = 'var(--text-1)';
@@ -524,7 +524,7 @@ async function _loadFindingsInto(container, summary) {
     text.style.textOverflow = 'ellipsis';
     text.style.whiteSpace = 'nowrap';
     text.title = f.title || '';
-    text.textContent = f.cve_id ? `${f.cve_id} · ${titleText}` : titleText;
+    text.textContent = f.cve_id ? t('{cve} · {title}', { cve: f.cve_id, title: titleText }) : titleText;
     title.appendChild(text);
     // reason is user-supplied free text — always through escHtml, never
     // interpolated raw into innerHTML.
@@ -534,7 +534,7 @@ async function _loadFindingsInto(container, summary) {
       chip.style.fontSize = '10px';
       chip.style.color = 'var(--sky-ink)';
       chip.style.flexShrink = '0';
-      chip.title = `${f.exception.kind}: ${f.exception.reason} (until ${f.exception.expires_on})`;
+      chip.title = t('{kind}: {reason} (until {expires})', { kind: f.exception.kind, reason: f.exception.reason, expires: f.exception.expires_on });
       chip.innerHTML =
         `<span class="vuln-exception-kind">${escHtml(f.exception.kind)} ·</span> ` +
         `${escHtml(f.exception.reason)}`;
@@ -551,24 +551,24 @@ async function _loadFindingsInto(container, summary) {
     } else if (f.overdue) {
       due.style.color = 'var(--rose-ink)';
       due.style.fontWeight = '600';
-      due.textContent = `${Math.abs(f.days_remaining)}d overdue`;
+      due.textContent = tn('{n}d overdue', '{n}d overdue', Math.abs(f.days_remaining));
     } else {
       due.style.color = f.days_remaining <= 14 ? 'var(--lemon-ink)' : 'var(--text-3)';
-      due.textContent = f.days_remaining === 0 ? 'due today' : `due in ${f.days_remaining}d`;
+      due.textContent = f.days_remaining === 0 ? t('due today') : tn('due in {n}d', 'due in {n}d', f.days_remaining);
     }
     row.appendChild(due);
 
     const fix = document.createElement('button');
     fix.className = 'btn btn-sm btn-outline';
-    fix.textContent = 'Suggest Fix';
+    fix.textContent = t('Suggest Fix');
     // Count the siblings the same upgrade would clear, so the built-in task
     // can say so — one update_package fixes every CVE open against a package.
     const siblings = f.package_name
       ? findings.filter(o => o.package_name === f.package_name && o.id !== f.id).length
       : 0;
     fix.title = siblings
-      ? `Suggest a fix — also clears ${siblings} other finding(s) against ${f.package_name}`
-      : 'Suggest a remediation task for this finding';
+      ? t('Suggest a fix — also clears {n} other finding(s) against {pkg}', { n: siblings, pkg: f.package_name })
+      : t('Suggest a remediation task for this finding');
     fix.addEventListener('click', () => {
       if (typeof suggestFixForVuln !== 'function') return;
       suggestFixForVuln({ ...f, sibling_count: siblings });
@@ -598,13 +598,13 @@ function updateHostCardVulnBadges(summaries) {
     if (s.critical > 0) {
       badge = document.createElement('span');
       badge.className = 'host-vuln-badge vuln-badge vuln-critical';
-      badge.textContent = s.critical + 'C';
-      badge.title = `${s.critical} critical, ${s.high} high vulnerabilities`;
+      badge.textContent = `${s.critical}C`; // i18n-ignore
+      badge.title = t('{n} critical, {high} high vulnerabilities', { n: s.critical, high: s.high });
     } else if (s.high > 0) {
       badge = document.createElement('span');
       badge.className = 'host-vuln-badge vuln-badge vuln-high';
       badge.textContent = s.high + 'H';
-      badge.title = `${s.high} high vulnerabilities`;
+      badge.title = tn('{n} high vulnerability', '{n} high vulnerabilities', s.high);
     }
     if (badge) {
       // Sits in the name row beside the mode badge (the card has no
@@ -630,7 +630,7 @@ const _VFIX_CONF = { urgent: 'chip-rose', confirmed: 'apps-chip-warn', file: 'ch
 
 function _fixSkeleton() {
   const row = w => `<div class="vfix-row vfix-skeleton" aria-hidden="true"><div class="sk-line sk-w${w}"></div><div class="sk-line sk-w40"></div></div>`;
-  return `<div role="status" aria-label="Loading fixes">${[80, 60, 80, 60, 80].map(row).join('')}</div>`;
+  return `<div role="status" aria-label="${escAttr(t('Loading fixes'))}">${[80, 60, 80, 60, 80].map(row).join('')}</div>`;
 }
 
 async function refreshFixGroups() {
@@ -650,11 +650,11 @@ async function refreshFixGroups() {
 }
 
 function _vfixHeadline(g) {
-  const cves = g.cves.length ? `fixes ${g.cves.length} CVE${g.cves.length === 1 ? '' : 's'}`
-    : `fixes ${g.finding_count} finding${g.finding_count === 1 ? '' : 's'}`;
-  const where = `${g.host_count} host${g.host_count === 1 ? '' : 's'}`;
-  if (g.fix.kind === 'none') return `${escHtml(g.package)} on ${where} — ${escHtml(g.fix.label.toLowerCase())}`;
-  return `${escHtml(g.fix.label)} on ${where}: ${cves}`;
+  const cves = g.cves.length ? t('fixes {n} CVE(s)', { n: g.cves.length })
+    : t('fixes {n} finding(s)', { n: g.finding_count });
+  const where = tn('{n} host', '{n} hosts', g.host_count);
+  if (g.fix.kind === 'none') return `${escHtml(g.package)} ${t('on {where} — {label}', { where, label: escHtml(g.fix.label.toLowerCase()) })}`;
+  return t('{label} on {where}: {cves}', { label: escHtml(g.fix.label), where, cves });
 }
 
 function renderFixGroups(q) {
@@ -663,35 +663,35 @@ function renderFixGroups(q) {
   wrap.innerHTML = fixState.rows.map(g => {
     const chips = [
       `<span class="chip ${g.severity === 'critical' ? 'chip-rose' : g.severity === 'high' ? 'apps-chip-warn' : 'chip-muted'}">${escHtml(g.severity)}</span>`,
-      g.kev ? '<span class="chip chip-rose" title="On CISA\'s Known Exploited Vulnerabilities list">KEV</span>' : '',
-      g.running ? '<span class="chip chip-rose" title="Installed and running or listening on at least one host">running</span>' : '',
-      g.epss != null ? `<span class="chip chip-muted" title="FIRST EPSS: chance of exploitation in 30 days">EPSS ${(g.epss * 100).toFixed(1)}%</span>` : '',
-      g.cvss != null ? `<span class="chip chip-muted">CVSS ${g.cvss}</span>` : '',
+      g.kev ? `<span class="chip chip-rose" title="${escAttr(t("On CISA's Known Exploited Vulnerabilities list"))}">${escHtml(t('KEV'))}</span>` : '',
+      g.running ? `<span class="chip chip-rose" title="${escAttr(t('Installed and running or listening on at least one host'))}">${escHtml(t('running'))}</span>` : '', // i18n-ignore
+      g.epss != null ? `<span class="chip chip-muted" title="${escAttr(t('FIRST EPSS: chance of exploitation in 30 days'))}">EPSS ${(g.epss * 100).toFixed(1)}%</span>` : '', // i18n-ignore: an EPSS score, not a sentence
+      g.cvss != null ? `<span class="chip chip-muted">CVSS ${g.cvss}</span>` : '', // i18n-ignore: a CVSS score, not a sentence
     ].join('');
     const deploy = g.fix.kind === 'detection'
-      ? `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">Deploy detection task</button>`
+      ? `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">${escHtml(t('Deploy detection task'))}</button>`
       : g.fix.kind === 'none'
-      ? `<button class="btn btn-lav btn-xs" type="button" data-vfix-mitigate="${escAttr(g.fix_key)}">Suggest mitigations</button>`
-      : `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">Deploy fix</button>`;
+      ? `<button class="btn btn-lav btn-xs" type="button" data-vfix-mitigate="${escAttr(g.fix_key)}">${escHtml(t('Suggest mitigations'))}</button>`
+      : `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">${escHtml(t('Deploy fix'))}</button>`;
     let detail = '';
     if (fixState.open[g.fix_key]) {
       const hosts = g.hosts.map(h => `<div class="apps-detail-item">
           <span class="apps-name">${escHtml(h.hostname)}</span>
-          <span class="chip ${_VFIX_CONF[h.confidence] || 'chip-muted'}">${escHtml(h.confidence === 'file' ? 'file evidence' : h.confidence)}</span>
+          <span class="chip ${_VFIX_CONF[h.confidence] || 'chip-muted'}">${escHtml(h.confidence === 'file' ? t('file evidence') : h.confidence)}</span>
           <span class="apps-detail-scope">${escHtml(h.evidence_text.join(' · '))}</span>
         </div>`).join('');
       detail = `<div class="vfix-detail">
-        <div><div class="vfix-k">What</div><div>${escHtml(g.package)}${g.installed_version ? ` <span class="apps-mono">${escHtml(g.installed_version)}</span>` : ''}${g.affected_path ? `<div class="apps-detail-pkg">${escHtml(g.affected_path)}</div>` : ''}</div></div>
-        <div><div class="vfix-k">Why</div><div>${escHtml(g.title || '')}<div class="vfix-cves">${g.cves.map(c => `<span class="chip chip-muted apps-src">${escHtml(c)}</span>`).join('')}</div></div></div>
-        <div><div class="vfix-k">Fix</div><div>${escHtml(g.fix.label)}${g.vendor_status ? ` <span class="apps-zero">(vendor: ${escHtml(g.vendor_status.replace(/_/g, ' '))})</span>` : ''}${g.due_date ? `<div class="apps-zero">due ${escHtml(g.due_date)}</div>` : ''}</div></div>
-        <div class="vfix-where"><div class="vfix-k">Where</div>${hosts}</div>
+        <div><div class="vfix-k">${escHtml(t('What'))}</div><div>${escHtml(g.package)}${g.installed_version ? ` <span class="apps-mono">${escHtml(g.installed_version)}</span>` : ''}${g.affected_path ? `<div class="apps-detail-pkg">${escHtml(g.affected_path)}</div>` : ''}</div></div>
+        <div><div class="vfix-k">${escHtml(t('Why'))}</div><div>${escHtml(g.title || '')}<div class="vfix-cves">${g.cves.map(c => `<span class="chip chip-muted apps-src">${escHtml(c)}</span>`).join('')}</div></div></div>
+        <div><div class="vfix-k">${escHtml(t('Fix'))}</div><div>${escHtml(g.fix.label)}${g.vendor_status ? ` <span class="apps-zero">${escHtml(t('(vendor: {status})', { status: g.vendor_status.replace(/_/g, ' ') }))}</span>` : ''}${g.due_date ? `<div class="apps-zero">${escHtml(t('due {date}', { date: g.due_date }))}</div>` : ''}</div></div>
+        <div class="vfix-where"><div class="vfix-k">${escHtml(t('Where'))}</div>${hosts}</div>
       </div>`;
     }
     return `<div class="vfix-row" data-vfix-row="${escAttr(g.fix_key)}">
         <div class="vfix-line"><span class="vfix-title">${_vfixHeadline(g)}</span><span class="vfix-chips">${chips}</span>${deploy}</div>
         ${detail}
       </div>`;
-  }).join('') || `<div class="apps-empty-state">${q ? 'No open findings match.' : 'No open findings — nothing to fix.'}</div>`;
+  }).join('') || `<div class="apps-empty-state">${q ? escHtml(t('No open findings match.')) : escHtml(t('No open findings — nothing to fix.'))}</div>`;
 }
 
 async function deployFixGroup(fixKey) {

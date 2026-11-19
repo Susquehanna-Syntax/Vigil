@@ -171,7 +171,7 @@ class VulnTabsTests(TestCase):
     def test_fix_skeleton(self):
         self.assertIn("function _fixSkeleton", self.js)
         self.assertIn("vfix-skeleton", self.js)
-        self.assertIn('aria-label="Loading fixes"', self.js)
+        self.assertIn("${escAttr(t('Loading fixes'))}", self.js)
         start = self.js.index("async function refreshFixGroups()")
         body = self.js[start:self.js.index("\n}", start)]
         self.assertLess(body.index("_fixSkeleton()"), body.index("apiJson("),
@@ -185,8 +185,8 @@ class VulnTabsTests(TestCase):
         self.assertIn("  .modal-skeleton .sk-line, .vfix-skeleton", reduced)
 
     def test_empty_state_names_its_case(self):
-        self.assertIn("'No open findings match.' : 'No open findings", self.js)
-        self.assertIn("nothing to fix.'", self.js)
+        self.assertIn("t('No open findings match.')", self.js)
+        self.assertIn("t('No open findings — nothing to fix.')", self.js)
 
     def test_section_no_longer_hides(self):
         self.assertNotIn("section.hidden =", self.js)
