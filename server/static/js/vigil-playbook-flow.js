@@ -1052,7 +1052,7 @@ function flowAnalysisHtml(tree, ctx) {
   const paths = flowPaths(tree);
   const lengths = paths.map(p => p.length);
   const findings = flowFindings(tree);
-  const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(step => step.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(step =>
+  const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(step => step.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(step => // i18n-ignore
     `<span class="flow-path-step ${_flowColorClass(step.color)}">${escHtml(step.sid)}</span>`).join('<span class="flow-path-arrow" aria-hidden="true">›</span>') || `<em>${escHtml(t('nothing runs'))}</em>`}</li>`).join('');
   const risks = steps.map(step => ctx.defRisk(step.def));
   return `<div class="flow-analysis">
