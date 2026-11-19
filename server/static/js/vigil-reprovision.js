@@ -30,8 +30,10 @@ const ABORT_WINDOW_SECONDS = 60;
 const ABORTABLE = ['pending', 'staging', 'staged'];
 const TERMINAL = ['completed', 'failed', 'aborted', 'timed_out'];
 
+// A file size in GiB. The unit is part of the sentence: a translation may want
+// "2,3 GB" with the number after it or a different unit name entirely.
 function _bytesToGiB(n) {
-  return (Number(n || 0) / 1024 / 1024 / 1024).toFixed(1) + ' GiB';
+  return t('{size} GiB', { size: (Number(n || 0) / 1024 / 1024 / 1024).toFixed(1) });
 }
 
 function _stateClass(state) {
@@ -194,11 +196,12 @@ async function _runPreflight(hostId) {
       box.innerHTML = `<span class="muted">${escHtml(t('Readiness check dispatched — results appear after the agent next checks in.'))}</span>`;
       return;
     }
-    const rows = result.disks.map((d) =>
-      `<li><code>${escHtml(d.name)}</code> ${_bytesToGiB(d.size_bytes)}` +
-      (d.mountpoints && d.mountpoints.length
-        ? ` <span class="muted">${escHtml(t('mounted at'))} ${escHtml(d.mountpoints.join(', '))}</span>` : '') +
-      `</li>`).join('');
+    const rows = result.disks.map((d) => {
+      return `<li><code>${escHtml(d.name)}</code> ${escHtml(_bytesToGiB(d.size_bytes))}` +
+        (d.mountpoints && d.mountpoints.length
+          ? ` <span class="muted">${escHtml(t('mounted at'))} ${escHtml(d.mountpoints.join(', '))}</span>` : '') +
+        `</li>`;
+    }).join('');
     box.innerHTML =
       (result.ok
         ? `<p class="ok">${escHtml(t('Preflight passed.'))}</p>`
@@ -278,7 +281,7 @@ async function loadOSImages() {
     const images = await apiJson('/api/v1/reprovision/images/');
     list.innerHTML = '';
     if (!images.length) {
-      list.innerHTML = '<p class="muted">No OS images registered yet.</p>';
+      list.innerHTML = `<p class="muted">${escHtml(t('No OS images registered yet.'))}</p>`;
       return;
     }
     images.forEach((img) => {
@@ -296,14 +299,14 @@ async function loadOSImages() {
           `<span class="${_stateClass(img.status === 'ready' ? 'completed' : img.status)}">` +
             `${escHtml(img.status)}</span>` +
           `<div class="site-row-actions">` +
-            `<button class="btn btn-rose btn-sm img-del" data-id="${escAttr(img.id)}">Delete</button>` +
+            `<button class="btn btn-rose btn-sm img-del" data-id="${escAttr(img.id)}">${escHtml(t('Delete'))}</button>` +
           `</div>` +
         `</div>`;
       list.appendChild(row);
     });
     list.querySelectorAll('.img-del').forEach((/** @type {HTMLElement} */ btn) => {
       btn.onclick = async () => {
-        if (!await confirmModal('Delete this image? Rebuilds using it will fail.')) return;
+        if (!await confirmModal(t('Delete this image? Rebuilds using it will fail.'))) return;
         try {
           await apiJson(`/api/v1/reprovision/images/${btn.dataset.id}/`,
                         { method: 'DELETE' });
@@ -314,7 +317,7 @@ async function loadOSImages() {
   } catch (e) {
     // Non-admins simply do not see this pane; a 403/404 here is not an error
     // worth shouting about.
-    list.innerHTML = '<p class="muted">OS image management requires an admin account.</p>';
+    list.innerHTML = `<p class="muted">${escHtml(t('OS image management requires an admin account.'))}</p>`;
   }
 }
 
@@ -335,11 +338,11 @@ function _reproAge(iso) {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
   const mins = Math.max(0, Math.floor((Date.now() - then) / 60000));
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('just now');
+  if (mins < 60) return t('{m}m ago', { m: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 24) return t('{h}h ago', { h: hrs });
+  return t('{d}d ago', { d: Math.floor(hrs / 24) });
 }
 
 // Maps the ok/bad/pending vocabulary from _stateClass() to a plain colored
@@ -351,7 +354,7 @@ function _reproStatusSpan(rawValue, classifyAs) {
   const cls = _stateClass(classifyAs !== undefined ? classifyAs : rawValue);
   const colorMap = { ok: 'var(--mint)', bad: 'var(--rose)', pending: 'var(--peach)' };
   span.style.color = colorMap[cls] || 'var(--text-3)';
-  span.textContent = rawValue || 'unknown'; // server-controlled enum either way
+  span.textContent = rawValue || t('unknown'); // server-controlled enum either way
   return span;
 }
 
@@ -380,7 +383,7 @@ async function _reproLoadImages() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Image library requires an admin account.';
+    p.textContent = t('Image library requires an admin account.');
     list.appendChild(p);
     return;
   }
@@ -400,7 +403,7 @@ function _reproRenderImageTable(list, images) {
   if (!images.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No OS images registered yet — pull one below.';
+    p.textContent = t('No OS images registered yet — pull one below.');
     list.appendChild(p);
     return;
   }
@@ -410,7 +413,7 @@ function _reproRenderImageTable(list, images) {
 
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  for (const label of ['Name', 'Family', 'Version', 'Size', 'Status', '']) {
+  for (const label of [t('Name'), t('Family'), t('Version'), t('Size'), t('Status'), '']) {
     const th = document.createElement('th');
     th.textContent = label;
     headRow.appendChild(th);
@@ -451,7 +454,7 @@ function _reproImageRow(img) {
 
   const sizeTd = document.createElement('td');
   sizeTd.className = 'mono';
-  sizeTd.textContent = img.size_bytes ? formatBytes(img.size_bytes) : 'unknown';
+  sizeTd.textContent = img.size_bytes ? formatBytes(img.size_bytes) : t('unknown');
   tr.appendChild(sizeTd);
 
   const statusTd = document.createElement('td');
@@ -462,7 +465,7 @@ function _reproImageRow(img) {
   actTd.style.textAlign = 'right';
   const delBtn = document.createElement('button');
   delBtn.className = 'btn btn-outline btn-sm';
-  delBtn.textContent = 'Delete';
+  delBtn.textContent = t('Delete');
   delBtn.addEventListener('click', () => _reproDeleteImage(img.id, img.name));
   actTd.appendChild(delBtn);
   tr.appendChild(actTd);
@@ -492,8 +495,8 @@ function _reproImageStatusCell(img) {
     const label = document.createElement('div');
     label.style.cssText = 'margin-top:4px;font-size:11px;color:var(--text-3);';
     label.textContent = size > 0
-      ? `${formatBytes(downloaded)} / ${formatBytes(size)}`
-      : `${formatBytes(downloaded)} downloaded (total size unknown)`;
+      ? t('{downloaded} / {total}', { downloaded: formatBytes(downloaded), total: formatBytes(size) })
+      : t('{downloaded} downloaded (total size unknown)', { downloaded: formatBytes(downloaded) });
     wrap.appendChild(label);
   }
 
@@ -503,7 +506,7 @@ function _reproImageStatusCell(img) {
     // import_error is free text produced by a failed import — the whole
     // diagnostic for a multi-gigabyte fetch, and operator-supplied on the
     // custom-URL path. textContent only; see SECURITY note atop this file.
-    err.textContent = img.import_error || 'Import failed';
+    err.textContent = img.import_error || t('Import failed');
     wrap.appendChild(err);
   }
 
@@ -513,10 +516,10 @@ function _reproImageStatusCell(img) {
 async function _reproDeleteImage(id, name) {
   // confirmModal sets `message` via textContent internally (vigil-utils.js),
   // so interpolating the operator-supplied name here is safe.
-  if (!await confirmModal(`Delete "${name}"? Rebuilds using it will fail.`)) return;
+  if (!await confirmModal(t('Delete "{name}"? Rebuilds using it will fail.', { name }))) return;
   try {
     await apiJson(`/api/v1/reprovision/images/${id}/`, { method: 'DELETE' });
-    showToast('Image deleted', 'success');
+    showToast(t('Image deleted'), 'success');
     _reproLoadImages();
   } catch (e) {
     showToast(e.message || 'Could not delete image', 'error');
@@ -600,9 +603,9 @@ function _reproCatalogCard(entry, existing) {
     btn.classList.add('btn-outline');
     btn.disabled = true;
     const status = String(existing.status || '').toLowerCase();
-    btn.textContent = status === 'ready' ? 'In library'
-      : status === 'failed' ? 'Retry pull'
-      : 'Downloading…';
+    btn.textContent = status === 'ready' ? t('In library')
+      : status === 'failed' ? t('Retry pull')
+      : t('Downloading…');
     if (status === 'failed') {
       // A failed pull retries in place on the same row — the one case where
       // pulling again is the right move rather than a duplicate.
@@ -611,7 +614,7 @@ function _reproCatalogCard(entry, existing) {
     }
   } else {
     btn.classList.add('btn-mint');
-    btn.textContent = 'Pull';
+    btn.textContent = t('Pull');
   }
   btn.addEventListener('click', () => _reproPullFromCatalog(entry.id, btn));
   card.appendChild(btn);
@@ -623,14 +626,14 @@ async function _reproPullFromCatalog(catalogId, btn) {
   const label = btn ? btn.textContent : '';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Queueing…';
+    btn.textContent = t('Queueing…');
   }
   try {
     await apiJson('/api/v1/reprovision/images/pull/', {
       method: 'POST',
       body: JSON.stringify({ catalog_id: catalogId }),
     });
-    showToast('Download queued', 'success');
+    showToast(t('Download queued'), 'success');
     // Repaints the card as held — _reproLoadImages re-renders the catalog.
     await _reproLoadImages();
   } catch (e) {
@@ -699,7 +702,7 @@ async function _reproSubmitCustom() {
         sha256: shaEl.value.trim(),
       }),
     });
-    showToast('Download queued', 'success');
+    showToast(t('Download queued'), 'success');
     nameEl.value = '';
     versionEl.value = '';
     urlEl.value = '';
@@ -751,7 +754,7 @@ async function _reproSubmitUpload() {
 
   btn.disabled = true;
   const originalLabel = btn.textContent;
-  btn.textContent = 'Uploading…';
+  btn.textContent = t('Uploading…');
   try {
     const resp = await fetch('/api/v1/reprovision/images/upload/', {
       method: 'POST',
@@ -761,7 +764,7 @@ async function _reproSubmitUpload() {
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(body.error || 'Upload failed');
-    showToast('Image uploaded and imported', 'success');
+    showToast(t('Image uploaded and imported'), 'success');
     nameEl.value = '';
     versionEl.value = '';
     shaEl.value = '';
@@ -798,7 +801,7 @@ function _reproFillProfileAgentProfiles() {
   sel.replaceChildren();
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = 'none';
+  none.textContent = t('none');
   sel.appendChild(none);
   for (const ap of _reproAgentProfiles) {
     const opt = document.createElement('option');
@@ -818,7 +821,7 @@ async function _reproLoadProfiles() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Install profiles require an admin account.';
+    p.textContent = t('Install profiles require an admin account.');
     list.appendChild(p);
     return;
   }
@@ -826,7 +829,7 @@ async function _reproLoadProfiles() {
   if (!profiles.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No install profiles yet.';
+    p.textContent = t('No install profiles yet.');
     list.appendChild(p);
     return;
   }
@@ -850,13 +853,14 @@ function _reproProfileRow(prof) {
   const desc = document.createElement('span');
   desc.className = 'site-row-desc muted';
   const img = _reproImagesById[prof.image];
-  const imgLabel = img ? img.name : `image ${prof.image || '?'}`;
-  let descText = `${imgLabel} · disk ${prof.disk_target || '?'} · ${prof.network_mode || '?'}`;
+  const imgLabel = img ? img.name : t('image {image}', { image: prof.image || '?' });
+  const diskLabel = prof.disk_target ? t('disk {disk}', { disk: prof.disk_target }) : '?';
+  let descText = t('{image} · {disk} · {mode}', { image: imgLabel, disk: diskLabel, mode: prof.network_mode || '?' });
   if (prof.network_mode === 'static' && prof.static_address) {
     descText += ` ${prof.static_address}`;
   }
   if (Array.isArray(prof.completion_tags) && prof.completion_tags.length) {
-    descText += ` · tags ${prof.completion_tags.join(', ')}`;
+    descText += ` · ${t('tags {tags}', { tags: prof.completion_tags.join(', ') })}`;
   }
   desc.textContent = descText; // built from operator-authored fields — textContent
   main.appendChild(desc);
@@ -873,14 +877,14 @@ function _reproProfileRow(prof) {
   const edit = document.createElement('button');
   edit.className = 'btn btn-outline btn-sm';
   edit.type = 'button';
-  edit.textContent = 'Edit';
+  edit.textContent = t('Edit');
   edit.addEventListener('click', () => _reproOpenProfile(prof));
   meta.appendChild(edit);
 
   const del = document.createElement('button');
   del.className = 'btn btn-outline btn-sm img-del';
   del.type = 'button';
-  del.textContent = 'Delete';
+  del.textContent = t('Delete');
   del.addEventListener('click', () => _reproDeleteProfile(prof));
   meta.appendChild(del);
 
@@ -928,13 +932,15 @@ function _reproFillProfileImages(selectedId) {
   for (const img of ready) {
     const opt = document.createElement('option');
     opt.value = img.id;
-    opt.textContent = `${img.name || img.id}${img.status === 'ready' ? '' : ' (not ready)'}`;
+    opt.textContent = img.status === 'ready'
+      ? (img.name || img.id)
+      : t('{name} (not ready)', { name: img.name || img.id });
     sel.appendChild(opt);
   }
   if (selectedId) sel.value = String(selectedId);
   if (hint) {
     hint.textContent = ready.length ? ''
-      : 'No image is ready yet — pull or upload one first.';
+      : t('No image is ready yet — pull or upload one first.');
   }
 }
 
@@ -944,7 +950,7 @@ function _reproOpenProfile(prof) {
   const editing = prof && prof.id ? String(prof.id) : '';
   modal.dataset.editing = editing;
   document.getElementById('repro-profile-title').textContent =
-    editing ? 'Edit install profile' : 'New install profile';
+    editing ? t('Edit install profile') : t('New install profile');
 
   const set = (/** @type {string} */ id, /** @type {string|number|null|undefined} */ value) => {
     const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
@@ -976,8 +982,8 @@ function _reproOpenProfile(prof) {
   const pwHint = document.getElementById('repro-prof-password-hint');
   if (pwHint) {
     pwHint.textContent = editing
-      ? 'Leave blank to keep the stored hash. A crypt hash, never a plaintext password.'
-      : 'A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with mkpasswd -m sha-512.';
+      ? t('Leave blank to keep the stored hash. A crypt hash, never a plaintext password.')
+      : t('A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with {command}', { command: 'mkpasswd -m sha-512' });
   }
 
   sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('repro-prof-site')), /** @type {HTMLElement} */ (document.getElementById('repro-prof-site-field')),
@@ -1029,10 +1035,10 @@ async function _reproSaveProfile() {
                                document.getElementById('repro-prof-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
 
-  if (!body.name) return showToast('Give the profile a name', 'error');
-  if (!body.image) return showToast('Pick an image', 'error');
-  if (!body.disk_target) return showToast('Name the target disk', 'error');
-  if (!body.admin_username) return showToast('Set an admin username', 'error');
+  if (!body.name) return showToast(t('Give the profile a name'), 'error');
+  if (!body.image) return showToast(t('Pick an image'), 'error');
+  if (!body.disk_target) return showToast(t('Name the target disk'), 'error');
+  if (!body.admin_username) return showToast(t('Set an admin username'), 'error');
 
   const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-profile-save'));
   if (btn) btn.disabled = true;
@@ -1044,7 +1050,7 @@ async function _reproSaveProfile() {
       await apiJson('/api/v1/reprovision/profiles/',
                     { method: 'POST', body: JSON.stringify(body) });
     }
-    showToast('Profile saved', 'success');
+    showToast(t('Profile saved'), 'success');
     _reproSetProfileOpen(false);
     _reproLoadProfiles();
   } catch (e) {
@@ -1057,12 +1063,12 @@ async function _reproSaveProfile() {
 async function _reproDeleteProfile(prof) {
   if (!prof || !prof.id) return;
   const ok = await confirmModal(
-    `Delete install profile “${prof.name || prof.id}”?`,
-    { confirmText: 'Delete', danger: true });
+    t('Delete install profile "{name}"?', { name: prof.name || prof.id }),
+    { confirmText: t('Delete'), danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/reprovision/profiles/${prof.id}/`, { method: 'DELETE' });
-    showToast('Profile deleted', 'success');
+    showToast(t('Profile deleted'), 'success');
     _reproLoadProfiles();
   } catch (e) {
     showToast(e.message || 'Could not delete the profile', 'error');
@@ -1081,7 +1087,7 @@ async function _reproLoadJobs() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Could not load rebuild jobs.';
+    p.textContent = t('Could not load rebuild jobs.');
     list.appendChild(p);
     return;
   }
@@ -1089,7 +1095,7 @@ async function _reproLoadJobs() {
   if (!jobs.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No rebuild jobs yet.';
+    p.textContent = t('No rebuild jobs yet.');
     list.appendChild(p);
     return;
   }
@@ -1112,8 +1118,7 @@ function _reproJobRow(job) {
 
   const desc = document.createElement('span');
   desc.className = 'site-row-desc muted';
-  desc.textContent = `${job.image_name || ''} · ${job.profile_name || ''} · ` +
-    `requested ${_reproAge(job.requested_at)}`;
+  desc.textContent = t('{image} · {profile} · requested {ago}', { image: job.image_name || '', profile: job.profile_name || '', ago: _reproAge(job.requested_at) });
   main.appendChild(desc);
 
   if (job.state === 'failed' && job.failure_reason) {
@@ -1165,7 +1170,7 @@ document.getElementById('repro-profile-new-btn')
 document.getElementById('repro-rebuild-btn')?.addEventListener('click', () => {
   openPicker({
     type: 'machine',
-    title: 'Which host should be rebuilt?',
+    title: t('Which host should be rebuilt?'),
     allowAdd: false,
     onSelect: (item) => {
       closePicker();
