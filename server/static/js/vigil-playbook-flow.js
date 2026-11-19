@@ -631,8 +631,7 @@ function _flJumpPath(a, b, apexY) {
 
 const _FLOW_COUNT_WORDS = { ok: 'ok', failed: 'failed', not_applicable: 'n/a', skipped: 'skipped', pending: 'waiting' };
 
-// A technical reference, not a sentence: how the text names a playbook input.
-const INPUT_REF_TOKEN = '${{ inputs.<id> }}'; // i18n-ignore
+const INPUT_REF_TOKEN = '${{ inputs.<id> }}'; // i18n-ignore: not a sentence, the text names an input reference
 
 function _flStepNodeHtml(ln, num, opts) {
   const s = ln.node;
@@ -983,7 +982,6 @@ function flowInspectorHtml(tree, at, ctx) {
   if (declared.length) {
     const nodeInputs = s.inp || {};
     const pbIds = ((ctx && ctx.playbookInputs) ? ctx.playbookInputs() : []) || [];
-    const insertNote = pbIds.length ? `<span class="muted-note">${escHtml(t('Insert… puts {token} in the field.', { token: INPUT_REF_TOKEN }))}</span>` : ''; // i18n-ignore
     const rows = declared.map((ti) => {
       const id = ti.id || '';
       const val = nodeInputs[id] != null ? nodeInputs[id] : '';
@@ -1003,7 +1001,8 @@ function flowInspectorHtml(tree, at, ctx) {
           </span>
         </label>`;
     }).join('');
-    inputsHtml = `<div class="fi-sub">${escHtml(t('Task inputs'))}</div>${rows}` + insertNote;
+    inputsHtml = `<div class="fi-sub">${escHtml(t('Task inputs'))}</div>${rows}`
+      + (pbIds.length ? `<span class="muted-note">${escHtml(t('Insert… puts {token} in the field.', { token: INPUT_REF_TOKEN }))}</span>` : ''); // i18n-ignore
   }
 
   return `<div class="fi">
@@ -1053,7 +1052,7 @@ function flowAnalysisHtml(tree, ctx) {
   const paths = flowPaths(tree);
   const lengths = paths.map(p => p.length);
   const findings = flowFindings(tree);
-  const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(x => x.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(step =>
+  const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(step => step.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(step =>
     `<span class="flow-path-step ${_flowColorClass(step.color)}">${escHtml(step.sid)}</span>`).join('<span class="flow-path-arrow" aria-hidden="true">›</span>') || `<em>${escHtml(t('nothing runs'))}</em>`}</li>`).join('');
   const risks = steps.map(step => ctx.defRisk(step.def));
   return `<div class="flow-analysis">
