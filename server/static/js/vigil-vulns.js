@@ -216,7 +216,8 @@ function _buildVulnScanRow(s) {
 
   const title = document.createElement('div');
   title.className = 'task-action-name';
-  const engineLabel = { nessus: 'Nessus', greenbone: 'Greenbone', trivy: 'Trivy' }[s.scanner] || 'Network';
+  const engineNames = { nessus: 'Nessus', greenbone: 'Greenbone', trivy: 'Trivy' }; // i18n-ignore — product names
+  const engineLabel = engineNames[s.scanner] || 'Network';
   title.textContent = t('{engine} scan · {host}', { engine: engineLabel, host: s.host_hostname || '' });
   content.appendChild(title);
 

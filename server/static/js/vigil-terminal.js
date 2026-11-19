@@ -69,7 +69,7 @@ function _mountTermDialog(started, kind, container) {
 
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: 'IBM Plex Mono, ui-monospace, monospace',
+    fontFamily: 'IBM Plex Mono, ui-monospace, monospace', // i18n-ignore — a font stack
     fontSize: 13,
     theme: {
       background: cssVar('--bg') || '#15161b',

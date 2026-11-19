@@ -300,7 +300,7 @@ function flowCondRow(row) {
   if (row.what === 'status' || !/^(-?\d+(\.\d+)?|true|false|True|False)$/.test(rhs)) {
     return `${lhs} ${row.op} ${JSON.stringify(rhs)}`;
   }
-  const literal = /^(true|True)$/.test(rhs) ? 'True' : /^(false|False)$/.test(rhs) ? 'False' : rhs;
+  const literal = /^(true|True)$/.test(rhs) ? 'True' : /^(false|False)$/.test(rhs) ? 'False' : rhs; // i18n-ignore — the expression's literals
   return `${lhs} ${row.op} ${literal}`;
 }
 

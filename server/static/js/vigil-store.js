@@ -63,7 +63,7 @@ function _wireIcons(root) {
 
 /** @param {StoreCard} c @returns {string} */
 function _storeCard(c) {
-  const where = c.platform === 'windows' ? 'Windows' : c.platform === 'macos' ? 'macOS' : 'Linux';
+  const where = c.platform === 'windows' ? 'Windows' : c.platform === 'macos' ? 'macOS' : 'Linux'; // i18n-ignore — platform names
   return `<button class="store-card" type="button" data-store-open="${escAttr(c.id)}">
       ${_storeIcon(c, 48)}
       <span class="store-card-body">
