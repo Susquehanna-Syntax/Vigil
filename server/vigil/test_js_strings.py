@@ -254,3 +254,14 @@ class JsStringRatchetTests(SimpleTestCase):
             lines = [f"line {n}" for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
                      if stray.search(line)]
             self.assertEqual(lines, [], rel)
+
+    def test_attribute_values_use_the_attribute_escaper(self):
+        # escHtml escapes & < > only, so inside title="..." a value with a quote
+        # breaks out of the attribute; escAttr also escapes " and '.
+        wrong = re.compile(r'=\s*"\$\{escHtml\(')
+        self.assertTrue(wrong.search('x = `<i title="${escHtml(name)}">`;'))
+        for path in scanned_scripts():
+            rel = str(path.relative_to(ROOT))
+            lines = [f"line {n}" for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
+                     if wrong.search(line)]
+            self.assertEqual(lines, [], rel)

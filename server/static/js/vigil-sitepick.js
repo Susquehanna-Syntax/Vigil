@@ -39,10 +39,10 @@ async function sitePickFill(select, field, current, { editing = false, currentNa
     opts.push(`<option value=""${want === '' ? ' selected' : ''}>${escHtml(t('Global (every site)'))}</option>`);
   }
   for (const s of info.sites) {
-    opts.push(`<option value="${escHtml(s.id)}"${want === s.id ? ' selected' : ''}>${escHtml(s.name)}</option>`);
+    opts.push(`<option value="${escAttr(s.id)}"${want === s.id ? ' selected' : ''}>${escHtml(s.name)}</option>`);
   }
   if (editing && want && !info.sites.some((s) => s.id === want)) {
-    opts.push(`<option value="${escHtml(want)}" selected>${escHtml(currentName || 'Another site')}</option>`);
+    opts.push(`<option value="${escAttr(want)}" selected>${escHtml(currentName || 'Another site')}</option>`);
   }
   select.innerHTML = opts.join('');
   // A user who may only create in one site gets that site, not a choice.
@@ -79,7 +79,7 @@ async function sitePickChoose(title) {
       <div class="form-group">
         <label class="form-label" for="sitepick-select">${escHtml(t('Site'))}</label>
         <select class="form-control" id="sitepick-select">${choices.map((s) =>
-          `<option value="${escHtml(s.id)}">${escHtml(s.name)}</option>`).join('')}</select>
+          `<option value="${escAttr(s.id)}">${escHtml(s.name)}</option>`).join('')}</select>
       </div>
       <div class="confirm-actions">
         <button class="btn btn-outline btn-sm" id="sitepick-cancel">${escHtml(t('Cancel'))}</button>
