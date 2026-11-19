@@ -145,7 +145,7 @@ function _renderPlaybookList(playbooks) {
         <div>
           <span class="bl-name">${escHtml(b.name)}</span>
           <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? escHtml(t('auto-enroll on')) : escHtml(t('auto-enroll off'))}</span>
-          ${b.completion_tag ? `<span class="chip">${escHtml(t('done:'))} ${escHtml(b.completion_tag)}</span>` : ''}
+          ${b.completion_tag ? `<span class="chip">${escHtml(t('done: {tag}', { tag: b.completion_tag }))}</span>` : ''}
           ${b.failing_hosts ? `<span class="chip chip-rose">${escHtml(tn('held back on {n} host', 'held back on {n} hosts', b.failing_hosts))}</span>` : ''}
           ${b.description ? `<div class="muted-note bl-desc-line">${escHtml(b.description)}</div>` : ''}
         </div>
@@ -219,7 +219,7 @@ function _wireCards(playbooks) {
 async function _openFailures(playbookId, name) {
   const m = mountModal('bl-failures', { wide: true });
   const head = `<div class="modal-title">
-      <span>${escHtml(t('Held back —'))} ${escHtml(name || 'playbook')}</span>
+      <span>${escHtml(t('Held back — {name}', { name: name || t('playbook') }))}</span>
       <button class="modal-close" data-blf-close aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -630,14 +630,15 @@ let _blInputs = [];
 
 // A step's expression syntax is a technical sample rather than words, so the
 // placeholder keeps it out of the sentence a translator reads.
-const _BL_INPUT_EXPR_SAMPLE = '${ inputs.<id> }'; // i18n-ignore
+const _BL_INPUT_ID_SAMPLE = 'restart_window'; // i18n-ignore
+const _BL_INPUT_EXPR_SAMPLE = '${{ inputs.<id> }}'; // i18n-ignore
 const _BL_INPUT_ID_HINT = t('Letters, digits and underscores, starting with a letter or underscore. A step uses it as {expr}, and a task input with the same id takes this value by itself.', { expr: _BL_INPUT_EXPR_SAMPLE });
 // The sample lines of the choices field: a value format, not a sentence.
 const _BL_CHOICE_SAMPLE_1 = 'nightly = Nightly maintenance'; // i18n-ignore
 const _BL_CHOICE_SAMPLE_2 = 'weekend = Weekend window'; // i18n-ignore
 // The auto-enrolment target is bolded, so both its halves are built apart.
 function _blEveryHostText() {
-  return t('every host tagged {tags}', { tags: `<strong>${t('EVERY approved host')}</strong>` }); // i18n-ignore
+  return `<strong>${escHtml(t('EVERY approved host'))}</strong>`;
 }
 
 function _blInputChoices(inp) {
@@ -695,7 +696,7 @@ function _editBlInput(index) {
   const editing = index != null ? _blInputs[index] : null;
   const m = mountModal('bl-input', { variant: 'm-pop' });
   m.setBody(`<div class="modal-title">
-      <span>${escHtml(t(editing ? 'Edit playbook input' : 'Add playbook input'))}</span>
+      <span>${escHtml(editing ? t('Edit playbook input') : t('Add playbook input'))}</span>
       <button class="modal-close" data-bli-close aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -703,7 +704,7 @@ function _editBlInput(index) {
     <div class="form-group">
       <label class="form-label" for="bli-id">${escHtml(t('Id'))}</label>
       <input class="form-control" id="bli-id" maxlength="60" spellcheck="false"
-             placeholder="${escAttr(t('restart_window'))}" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
+             placeholder="${_BL_INPUT_ID_SAMPLE}" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
       <div class="muted-note bli-hint">${escHtml(_BL_INPUT_ID_HINT)}</div>
     </div>
     <div class="form-group">
@@ -742,7 +743,7 @@ function _editBlInput(index) {
     </div>
     <div class="confirm-actions">
       <button class="btn btn-outline btn-sm" data-bli-close>${escHtml(t('Cancel'))}</button>
-      <button class="btn btn-mint btn-sm" data-bli-save>${escHtml(t(editing ? 'Save input' : 'Add input'))}</button>
+      <button class="btn btn-mint btn-sm" data-bli-save>${escHtml(editing ? t('Save input') : t('Add input'))}</button>
     </div>`);
 
   const q = (id) => m.modal.querySelector(id);
@@ -842,10 +843,9 @@ function _openEditor(data, editingId) {
   const stale = (editingId && data && data.stale_steps) || [];
   document.getElementById('bl-stale-note').hidden = !stale.length;
   document.getElementById('bl-stale-text').textContent = stale.length
-    ? t(stale.length === 1
-      ? 'Changed since this playbook was given it: {names}. Steps still run the earlier version.'
-      : 'Changed since this playbook was given them: {names}. Steps still run the earlier version.',
-      { names: stale.join(', ') })
+    ? tn('Changed since this playbook was given it: {names}. Steps still run the earlier version.',
+         'Changed since this playbook was given them: {names}. Steps still run the earlier version.',
+         stale.length, { names: stale.join(', ') })
     : '';
   // Duplicating a playbook does not inherit the authorization: editingId is
   // null there, so the flag starts off and has to be re-confirmed. The
@@ -1020,8 +1020,9 @@ async function _confirmAutoEnroll(data) {
       if (ht.includes(done)) return false;
       return wanted.length ? wanted.some(tg => ht.includes(tg)) : true;
     });
-    const hostsPhrase = tn('<strong>{n} host</strong>', '<strong>{n} hosts</strong>', matching.length); // i18n-ignore
-    count = `<p>${tn('{hosts} matches right now and would start running it within five minutes.', '{hosts} match right now and would start running it within five minutes.', matching.length, { hosts: hostsPhrase })}</p>`; // i18n-ignore
+    count = `<p>${tn('{n} host matches right now and would start running it within five minutes.',
+                     '{n} hosts match right now and would start running it within five minutes.',
+                     matching.length, { n: `<strong>${matching.length}</strong>` })}</p>`;
   } catch (e) { /* the warning stands without a count */ }
 
   return confirmModal(

@@ -185,19 +185,21 @@ function _stackStateBadge(rows) {
   return `<span class="ctr-state ${cls}">${escHtml(text)}</span>`;
 }
 
-/* The Containers tab's quick filters. The first entry of each pair is the
-   filter id (the data-ctr-chip value a click stores), and these are only its
-   words; ctrChipChoices wraps them at render time. */
-const CTR_CHIPS = {  // i18n-ignore — ids with their labels beside them; t() reads the label at render
-  containers: [['', 'All'], ['running', 'Running'], ['stopped', 'Stopped'], ['crashed', 'Crashed'],  // i18n-ignore
-               ['outdated', 'Update available']],  // i18n-ignore
-  images: [['', 'All'], ['used', 'In use'], ['unused', 'Unused'], ['dangling', 'Dangling']],  // i18n-ignore
-  volumes: [['', 'All'], ['used', 'In use'], ['unused', 'Unused']],  // i18n-ignore
-  networks: [['', 'All'], ['used', 'In use'], ['unused', 'Unused']],  // i18n-ignore
+/* The Containers tab's quick filters: the ids a click stores (data-ctr-chip). */
+const CTR_CHIPS = {  // i18n-ignore
+  containers: ['', 'running', 'stopped', 'crashed', 'outdated'],  // i18n-ignore
+  images: ['', 'used', 'unused', 'dangling'],  // i18n-ignore
+  volumes: ['', 'used', 'unused'],  // i18n-ignore
+  networks: ['', 'used', 'unused'],  // i18n-ignore
 };
 
+//: Each filter id with the words its chip shows.
 function ctrChipChoices(tab) {
-  return CTR_CHIPS[tab].map(([value, label]) => [value, t(label)]);
+  const words = {
+    '': t('All'), running: t('Running'), stopped: t('Stopped'), crashed: t('Crashed'),
+    outdated: t('Update available'), used: t('In use'), unused: t('Unused'), dangling: t('Dangling'),
+  };
+  return CTR_CHIPS[tab].map((value) => [value, words[value]]);
 }
 
 function _ctrContainerMatches(c) {
@@ -335,8 +337,8 @@ async function renderDockerContainers(hostId, fromCache) {
             : `<button class="btn btn-xs btn-outline" data-ctr-act="Start container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">${t('Start')}</button>`}
           <button class="btn btn-xs btn-outline" data-ctr-shell data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="${escAttr(t('Open a shell in this container'))}">${t('Shell')}</button>
           <button class="btn btn-xs btn-outline" data-ctr-logs data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">${t('Logs')}</button>
-          ${c.previous_image && !c.rolled_back ? `<button class="btn btn-xs btn-outline" data-ctr-rollback data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" data-image="${escAttr(c.previous_image)}" title="${escHtml(t('Go back to {image}', { image: c.previous_image }))}">${t('Roll back')}</button>` : ''}
-          ${c.rolled_back ? `<span class="chip apps-chip-warn" title="${escHtml(t('Pinned to {image} — the next update clears it', { image: c.rolled_back }))}">${t('rolled back')}</span>` : ''}</td>
+          ${c.previous_image && !c.rolled_back ? `<button class="btn btn-xs btn-outline" data-ctr-rollback data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" data-image="${escAttr(c.previous_image)}" title="${escAttr(t('Go back to {image}', { image: c.previous_image }))}">${t('Roll back')}</button>` : ''}
+          ${c.rolled_back ? `<span class="chip apps-chip-warn" title="${escAttr(t('Pinned to {image} — the next update clears it', { image: c.rolled_back }))}">${t('rolled back')}</span>` : ''}</td>
       </tr>`;
     }
     html += `</tbody></table></div>`;
@@ -590,7 +592,7 @@ function _renderStorageStrip() {
   if (!show) return;
   const u = ctrState.docker && ctrState.docker.usage;
   // data-ctr-task names the built-in task the agent runs — not text a person reads.
-  const measure = `<button class="btn btn-outline btn-xs" type="button" data-ctr-task="Measure container storage">${escHtml(t(u ? 'Measure again' : 'Measure storage'))}</button>`;  // i18n-ignore
+  const measure = `<button class="btn btn-outline btn-xs" type="button" data-ctr-task="Measure container storage">${escHtml(u ? t('Measure again') : t('Measure storage'))}</button>`;  // i18n-ignore: the data-ctr-task value
   if (!u) {
     strip.innerHTML = `<span class="ctr-storage-note">${escHtml(t('Volume sizes and what pruning would free need a measurement: the engine walks every volume, so it runs when you ask.'))}</span>${measure}`;
     return;
@@ -626,12 +628,14 @@ function _renderCtrChips() {
   }[ctrState.tab];
 }
 
+//: The engine's own marker for an image with no tag.
+const CTR_NONE = '&lt;none&gt;';  // i18n-ignore
+
 function _usedBy(list) {
   return list.length ? list.map(x => `<span class="chip chip-muted">${escHtml(x)}</span>`).join(' ')
     : `<span class="ctr-unused">${t('unused')}</span>`;
 }
 
-const CTR_NONE = '<span class="ctr-unused">&lt;none&gt;</span>';  // i18n-ignore
 
 /* The tab id as words a person reads. One noun per kind, chosen by the
    sentence's own count: `total` is the whole list's phrase, `shown` the
@@ -640,14 +644,14 @@ const CTR_NONE = '<span class="ctr-unused">&lt;none&gt;</span>';  // i18n-ignore
 function ctrKindPhrase(kind, total, shown) {
   if (kind === 'images') {
     return { all: tn('{n} image', '{n} images', total),
-             some: tn('{shown} of {total} images', '{shown} of {total} images', shown, { total }) };
+             some: tn('{shown} of {n} images', '{shown} of {n} images', total, { shown }) };
   }
   if (kind === 'volumes') {
     return { all: tn('{n} volume', '{n} volumes', total),
-             some: tn('{shown} of {total} volumes', '{shown} of {total} volumes', shown, { total }) };
+             some: tn('{shown} of {n} volumes', '{shown} of {n} volumes', total, { shown }) };
   }
   return { all: tn('{n} network', '{n} networks', total),
-           some: tn('{shown} of {total} networks', '{shown} of {total} networks', shown, { total }) };
+           some: tn('{shown} of {n} networks', '{shown} of {n} networks', total, { shown }) };
 }
 
 //: The same noun without a count, for a sentence naming the kind.
@@ -661,7 +665,7 @@ function ctrKindName(kind) {
 function _renderImages(items) {
   return `<table class="ctr-table ctr-res-table ctr-img-table"><thead><tr><th>${t('Image')}</th><th>${t('ID')}</th><th class="num">${t('Size')}</th>
       <th>${t('Created')}</th><th>${t('Used by')}</th><th></th></tr></thead><tbody>${items.map(i => `<tr>
-      <td>${i.tags.length ? i.tags.map(tag => `<div class="ctr-name">${escHtml(tag)}</div>`).join('') : `${CTR_NONE} ${t('dangling')}`}</td>
+      <td>${i.tags.length ? i.tags.map(tag => `<div class="ctr-name">${escHtml(tag)}</div>`).join('') : `<span class="ctr-unused">${CTR_NONE} ${t('dangling')}</span>`}</td>
       <td class="ctr-image">${escHtml(i.short_id)}</td>
       <td class="ctr-stat">${_bytes(i.size)}</td>
       <td class="ctr-image">${escHtml(i.created ? timeAgo(i.created) : '')}</td>
@@ -677,7 +681,7 @@ function _renderVolumes(items) {
       <td><div class="ctr-name">${escHtml(v.name)}</div><div class="ctr-svc">${escHtml(v.mountpoint)}</div></td>
       <td>${escHtml(v.stack || '')}</td>
       <td class="ctr-stat">${_bytes(v.size)}</td>
-      <td>${v.used_by.length ? v.used_by.map(u => `<span class="chip chip-muted" title="${escAttr(u.destination)}${u.rw ? '' : ' ' + t('(read-only)')}">${escHtml(u.container)}</span>`).join(' ') : `<span class="ctr-unused">${t('unused')}</span>`}</td>
+      <td>${v.used_by.length ? v.used_by.map(u => `<span class="chip chip-muted" title="${escAttr(u.destination)}${u.rw ? '' : ' ' + escAttr(t('(read-only)'))}">${escHtml(u.container)}</span>`).join(' ') : `<span class="ctr-unused">${t('unused')}</span>`}</td>
       <td class="ctr-image">${escHtml(v.driver)}</td>
       <td class="ctr-fix">${v.used_by.length ? '' : `<button class="btn btn-xs btn-outline ctr-danger" type="button"
           data-ctr-task="Remove volume" data-ctr-input="volume" data-ctr-value="${escAttr(v.name)}">${t('Remove…')}</button>`}</td>

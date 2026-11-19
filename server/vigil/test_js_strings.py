@@ -177,6 +177,9 @@ def unfilled_placeholders(js: str) -> list[str]:
             rest = rest[lit.end():]
         if m.group(1) == "tn":
             names.discard("n")
+        # Only a key of the params object fills a placeholder: tn()'s count is
+        # positional and fills {n} alone.
+        rest = rest[rest.find("{"):] if "{" in rest else ""
         for name in sorted(names):
             if not re.search(r"(?<![\w$.])" + name + r"\s*[:,}]", rest):
                 line = js.count("\n", 0, start) + 1
@@ -241,11 +244,37 @@ class JsStringRatchetTests(SimpleTestCase):
         self.assertEqual(unfilled_placeholders("t('Go {where}', {\n  // a comment's apostrophe\n  where: `${g(')')}` })"), [])
         self.assertEqual(unfilled_placeholders("t('Hi {name}')"), ["line 1: {name}"])
         self.assertEqual(unfilled_placeholders("rows.map(t => t.name)"), [])
+        self.assertEqual(unfilled_placeholders("tn('{shown} of {n}', '{shown} of {n}', shown, { total })"),
+                         ["line 1: {shown}"])
 
     def test_every_placeholder_is_given_a_value(self):
         for path in scanned_scripts():
             rel = str(path.relative_to(ROOT))
             self.assertEqual(unfilled_placeholders(path.read_text(encoding="utf-8")), [], rel)
+
+    def test_every_message_is_a_plain_literal(self):
+        # makemessages reads only a literal first argument (and tn()'s second):
+        # t(label), t(x ? 'a' : 'b') or t('a' + 'b') leave the text out of the
+        # catalog, so it is never translated.
+        def nonliteral(js):
+            found = []
+            for m in _T_CALL.finditer(js):
+                if js[:m.start()].rstrip().endswith("function"):
+                    continue
+                rest = js[m.end():_call_end(js, m.end())]
+                for _ in range(2 if m.group(1) == "tn" else 1):
+                    lit = _LEADING_LITERAL.match(rest)
+                    if not lit or re.match(r"\s*\+", rest[lit.end(2) + 1:]):
+                        found.append(f"line {js.count(chr(10), 0, m.start()) + 1}")
+                        break
+                    rest = rest[lit.end():]
+            return found
+        self.assertEqual(nonliteral("t(label); t(a ? 'x' : 'y'); t('a' + 'b')"), ["line 1"] * 3)
+        self.assertEqual(nonliteral("t('a', { b }); tn('one', 'two', n); function t(msg) {}"), [])
+        for path in scanned_scripts():
+            rel = str(path.relative_to(ROOT))
+            js = _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub(" ", path.read_text(encoding="utf-8")))
+            self.assertEqual(nonliteral(js), [], rel)
 
     def test_no_attribute_name_runs_into_a_quote(self):
         # `data-jk-create">` makes the attribute `data-jk-create"`, so a

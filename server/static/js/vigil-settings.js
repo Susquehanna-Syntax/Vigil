@@ -347,6 +347,7 @@ let _relaysById = {};
 // one; {config} is the one-time config token, whose agent.yml names this relay
 // as the place to check in. Keep them apart: the config token is redeemed once
 // and is never an agent credential.
+const _RELAY_URL_SAMPLE = 'https://relay.example.com'; // i18n-ignore
 const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} VIGIL_CONFIG_TOKEN={config} bash'; // i18n-ignore
 const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; $env:VIGIL_CONFIG_TOKEN = "{config}"; irm {origin}/agent/install.ps1 | iex'; // i18n-ignore
 
@@ -469,8 +470,7 @@ async function loadRelays() {
     const line = t('{used} of {allowed} relays in use.', { used: data.used, allowed: data.allowed });
     if (data.used >= data.allowed) {
       usage.innerHTML = escHtml(line) + ' '
-        + t('{before} {link} to allow more relays.', {
-            before: t('Business allows your seat count plus two.'),
+        + t('Business allows your seat count plus two. {link}.', {
             link: `<a href="#license-card">${escHtml(t('See Settings → License'))}</a>`,
           });
     } else {
@@ -615,7 +615,7 @@ function editRelay(id) {
     </div>
     <div class="setting-row"><label>${escHtml(t('Name'))}</label><input type="text" class="form-control" id="re-name" maxlength="80" autocomplete="off"></div>
     <div class="setting-row"><label>${escHtml(t('Location'))}</label><input type="text" class="form-control" id="re-location" maxlength="120" autocomplete="off"></div>
-    <div class="setting-row"><label>${escHtml(t('Address agents use'))}</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="${escAttr(t('https://relay.example.com'))}"></div>
+    <div class="setting-row"><label>${escHtml(t('Address agents use'))}</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="${_RELAY_URL_SAMPLE}"></div>
     <div class="setting-row"><label>${escHtml(t('Order'))}</label>
       <input type="number" class="form-control relay-order-field" id="re-priority" min="0" max="1000">
       <div class="totp-sub">${escHtml(t('Agents try lower numbers first when their own address stops answering.'))}</div>
