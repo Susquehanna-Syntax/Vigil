@@ -347,8 +347,8 @@ let _relaysById = {};
 // one; {config} is the one-time config token, whose agent.yml names this relay
 // as the place to check in. Keep them apart: the config token is redeemed once
 // and is never an agent credential.
-const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} VIGIL_CONFIG_TOKEN={config} bash';
-const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; $env:VIGIL_CONFIG_TOKEN = "{config}"; irm {origin}/agent/install.ps1 | iex';
+const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} VIGIL_CONFIG_TOKEN={config} bash'; // i18n-ignore
+const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; $env:VIGIL_CONFIG_TOKEN = "{config}"; irm {origin}/agent/install.ps1 | iex'; // i18n-ignore
 
 function _relayLinuxCmd(origin, token, config) {
   return _RELAY_LINUX_CMD.replace('{origin}', origin).replace('{token}', token)
@@ -545,7 +545,7 @@ function _relayCopyBtn(id) {
 function _wireRelayCopy(m, id, text) {
   const btn = /** @type {HTMLElement} */ (m.modal.querySelector('#' + id));
   if (btn) btn.onclick = () => copyText(text).then((ok) => showToast(
-    ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'));
+    ok ? t('Copied to clipboard') : t('Copy failed'), ok ? 'success' : 'error'));
 }
 
 /* The key exists in this response and nowhere else, and the relay is
@@ -585,15 +585,16 @@ async function toggleRelay(id, onoff) {
   if (!relay) return;
   const want = onoff !== 'off';
   const code = await totpPrompt(
-    want ? `Turning on ${relay.name} lets agents reach this dashboard through it.`
-         : `Turning off ${relay.name} moves its agents to another connection point.`,
-    { title: want ? 'Turn on relay' : 'Turn off relay', confirmText: want ? 'Turn on' : 'Turn off' });
+    want ? t('Turning on {name} lets agents reach this dashboard through it.', { name: relay.name })
+         : t('Turning off {name} moves its agents to another connection point.', { name: relay.name }),
+    { title: want ? t('Turn on relay') : t('Turn off relay'),
+      confirmText: want ? t('Turn on') : t('Turn off') });
   if (!code) return;
   try {
     await apiJson(`/api/v1/relays/${id}/`, {
       method: 'PATCH', body: JSON.stringify({ enabled: want, totp: code }),
     });
-    showToast(`${relay.name} ${want ? 'enabled' : 'disabled'}`, 'success');
+    showToast(t('{relayName} {state}', { relayName: relay.name, state: want ? t('enabled') : t('disabled') }), 'success');
   } catch (e) {
     // "Enable a remote relay that has connected at least once before turning
     // off direct connections." surfaces here, as its own toast.
@@ -713,7 +714,7 @@ async function relayInstall(id) {
   const relay = _relaysById[id];
   if (!relay || !relay.url || _relayIsBuiltin(relay)) return;
   const m = mountModal('relay-install', { wide: true });
-  const title = `Install through ${relay.name}`;
+  const title = t('Install through {relayName}', { relayName: relay.name });
   m.setBody(`
     <div class="modal-title"><span></span>
       <button class="modal-close" id="ri-x" aria-label="${escAttr(t('Close'))}">
@@ -804,7 +805,7 @@ async function loadSecurityKeys() {
   const addBtn = /** @type {HTMLButtonElement} */ (document.getElementById('security-keys-add-btn'));
   const insecure = !!status && !status.keys_possible;
   if (note) {
-    note.textContent = insecure ? (status.keys_reason || 'Security keys need HTTPS.') : '';
+    note.textContent = insecure ? (status.keys_reason || t('Security keys need HTTPS.')) : '';
     note.style.display = insecure ? '' : 'none';
   }
   if (addBtn) addBtn.disabled = insecure;
@@ -813,7 +814,7 @@ async function loadSecurityKeys() {
   if (!keys.length) {
     const empty = document.createElement('div');
     empty.className = 'totp-sub';
-    empty.textContent = 'No security keys enrolled yet.';
+    empty.textContent = t('No security keys enrolled yet.');
     list.appendChild(empty);
     return;
   }
@@ -826,44 +827,45 @@ async function loadSecurityKeys() {
 //: escaped here because it lands in markup (data-a2 too).
 function _securityKeyRow(key) {
   const added = key.created_at ? new Date(key.created_at).toLocaleDateString() : '?';
-  const lastUsed = key.last_used_at ? `last used ${timeAgo(key.last_used_at)}` : 'never used';
+  const lastUsed = key.last_used_at ? t('last used {ago}', { ago: timeAgo(key.last_used_at) }) : t('never used');
   const row = document.createElement('div');
   row.className = 'user-row';
   row.innerHTML = `<div>
       <div class="user-name">${escHtml(key.name)}</div>
-      <div class="user-meta">added ${escHtml(added)} &middot; ${escHtml(lastUsed)}</div>
+      <div class="user-meta">${escHtml(t('added {date}', { date: added }))} · ${escHtml(lastUsed)}</div>
     </div>
     <div class="key-row-actions">
       <button class="btn btn-outline btn-sm" data-act="renameSecurityKey" data-a1="${key.id}"
-              data-a2="${escAttr(key.name)}">Rename</button>
+              data-a2="${escAttr(key.name)}">${escHtml(t('Rename'))}</button>
       <button class="btn btn-rose btn-sm" data-act="removeSecurityKey" data-a1="${key.id}"
-              data-a2="${escAttr(key.name)}">Remove</button>
+              data-a2="${escAttr(key.name)}">${escHtml(t('Remove'))}</button>
     </div>`;
   return row;
 }
 async function renameSecurityKey(id, current) {
-  const name = await promptModal('Rename this key', { title: 'Rename key', value: current });
+  const name = await promptModal(t('Rename this key'), { title: t('Rename key'), value: current });
   if (name === null || !name.trim() || name.trim() === current) return;
   try {
     await apiJson(`${KEYS_API}${id}/`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
-    showToast('Key renamed', 'success');
+    showToast(t('Key renamed'), 'success');
     loadSecurityKeys();
   } catch (e) {
-    showToast(`Rename failed: ${e.message}`, 'error');
+    showToast(t('Rename failed: {message}', { message: e.message }), 'error');
   }
 }
 async function removeSecurityKey(id, name) {
-  if (!await confirmModal(`Remove the security key "${name}"? You will not be able to tap it at a confirmation prompt any more.`,
-                          { title: 'Remove security key', confirmText: 'Remove', danger: true })) return;
-  const totp = await totpPrompt('Removing a second factor needs the one you still have.',
-                                { title: 'Confirm removal', confirmText: 'Remove' });
+  if (!await confirmModal(
+        t('Remove the security key "{name}"? You will not be able to tap it at a confirmation prompt any more.', { name }),
+        { title: t('Remove security key'), confirmText: t('Remove'), danger: true })) return;
+  const totp = await totpPrompt(t('Removing a second factor needs the one you still have.'),
+                                { title: t('Confirm removal'), confirmText: t('Remove') });
   if (!totp) return;
   try {
     await apiJson(`${KEYS_API}${id}/`, { method: 'DELETE', body: JSON.stringify({ totp }) });
-    showToast('Security key removed', 'success');
+    showToast(t('Security key removed'), 'success');
     loadSecurityKeys();
   } catch (e) {
-    showToast(`Remove failed: ${e.message}`, 'error');
+    showToast(t('Remove failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -913,25 +915,27 @@ async function addSecurityKey() {
     status = await apiJson('/api/v1/accounts/totp/');   // current, not cached
   } catch (e) { /* the server still checks both rules */ }
   if (status.keys_possible === false) {
-    showToast(status.keys_reason || 'Security keys need HTTPS.', 'error');
+    showToast(status.keys_reason || t('Security keys need HTTPS.'), 'error');
     return;
   }
   // The server enforces this gate too; the prompt is here so the user has a
   // way to answer it at all.
   let totp = '';
   if (status.enrolled || (status.keys || 0) > 0) {
-    totp = await totpPrompt('Confirm to add a security key',
-                            { title: 'Add a security key', confirmText: 'Confirm' });
+    totp = await totpPrompt(t('Confirm to add a security key'),
+                            { title: t('Add a security key'), confirmText: t('Confirm') });
     if (!totp) return;
   }
-  const name = await promptModal('Name this key', { title: 'Add a security key', placeholder: 'YubiKey 5' });
+  const name = await promptModal(t('Name this key'), { title: t('Add a security key'), placeholder: t('YubiKey 5') });
   if (name === null || !name.trim()) return;
   try {
     await _createSecurityKey(name.trim(), totp);
-    showToast('Security key added', 'success');
+    showToast(t('Security key added'), 'success');
     loadSecurityKeys();
   } catch (e) {
     // A cancelled ceremony, or a browser that refused the origin, is ordinary.
-    showToast(`Add failed: ${(e && e.name === 'NotAllowedError') ? 'cancelled' : e.message}`, 'error');
+    showToast(t('Add failed: {message}', {
+      message: (e && e.name === 'NotAllowedError') ? t('cancelled') : e.message,
+    }), 'error');
   }
 }
