@@ -14,12 +14,14 @@
 const APF_MODES = ['monitor', 'managed', 'full_control'];
 
 const _APF_MODE_HINTS = {
-  monitor: 'Read-only metrics. Runs unprivileged and executes no tasks.',
-  managed: 'Runs allowlisted tasks. The agent runs as root / SYSTEM.',
-  full_control: 'Runs any signed task, including package installs. The agent runs as root / SYSTEM.',
+  monitor: t('Read-only metrics. Runs unprivileged and executes no tasks.'),
+  managed: t('Runs allowlisted tasks. The agent runs as root / SYSTEM.'),
+  full_control: t('Runs any signed task, including package installs. The agent runs as root / SYSTEM.'),
 };
 
-const _APF_MODE_LABELS = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full control' };
+const _APF_MODE_LABELS = {
+  monitor: t('Monitor'), managed: t('Managed'), full_control: t('Full control'),
+};
 
 const APF_DEFAULTS = {
   mode: 'monitor',
@@ -105,78 +107,77 @@ function apfRender(container, values, ctx) {
     <button type="button" class="tab t-sky${m === v.mode ? ' active' : ''}"
             data-act="apfSetMode" data-a1="$el" data-a2="${m}">${_APF_MODE_LABELS[m]}</button>`).join('');
 
-  const relayOpts = [{ id: '', name: 'This dashboard' }, ...ctx.relays]
+  const relayOpts = [{ id: '', name: t('This dashboard') }, ...ctx.relays]
     .map(r => `<option value="${escAttr(r.id)}"${r.id === v.primary_relay ? ' selected' : ''}>${escHtml(r.name)}</option>`)
     .join('');
 
   container.innerHTML = `
   <div class="apf-section">
-    <div class="deploy-input-label">Agent mode</div>
+    <div class="deploy-input-label">${escHtml(t('Agent mode'))}</div>
     <div class="tab-bar apf-mode-tabs">${modeTabs}</div>
     <div class="confirm-hint">${escHtml(_APF_MODE_HINTS[v.mode])}</div>
   </div>
 
 <div class="apf-section"${v.mode === 'managed' ? '' : ' hidden'}>
-  <div class="deploy-input-label">Allowed actions</div>
-  <p class="confirm-hint apf-hint-tight">Only used in managed mode. Nothing here lets a task run
-    arbitrary commands — <span class="mono">run_command</span> can never be allowlisted.</p>
+  <div class="deploy-input-label">${escHtml(t('Allowed actions'))}</div>
+  <p class="confirm-hint apf-hint-tight">${escHtml(t('Only used in managed mode. Nothing here lets a task run arbitrary commands —'))}<!-- i18n-ignore --> <span class="mono">run_command</span>${escHtml(t('can never be allowlisted.'))}</p>
   <div class="apf-action-tools">
-    <input type="search" class="form-control apf-action-search" placeholder="Search actions…" aria-label="Search actions">
-    <button type="button" class="btn btn-outline btn-sm" data-act="apfSelectReadOnly" data-a1="$el">Select read-only</button>
+    <input type="search" class="form-control apf-action-search" placeholder="${escAttr(t('Search actions…'))}" aria-label="${escAttr(t('Search actions'))}">
+    <button type="button" class="btn btn-outline btn-sm" data-act="apfSelectReadOnly" data-a1="$el">${escHtml(t('Select read-only'))}</button>
   </div>
   <div class="apf-actions">${_apfActionGroups(v.allowlist, ctx)}</div>
 </div>
 
 <div class="apf-section">
-  <div class="deploy-input-label">Connection</div>
+  <div class="deploy-input-label">${escHtml(t('Connection'))}</div>
   <div class="apf-grid">
-    <label class="apf-field"><span class="apf-field-label">Checks in with</span>
+    <label class="apf-field"><span class="apf-field-label">${escHtml(t('Checks in with'))}</span>
       <select class="form-control apf-primary-relay">${relayOpts}</select></label>
-    <label class="apf-field"><span class="apf-field-label">Add fallback</span>
+    <label class="apf-field"><span class="apf-field-label">${escHtml(t('Add fallback'))}</span>
       <select class="form-control apf-add-fallback">${_apfFallbackOptions(v, ctx)}</select></label>
   </div>
-  <div class="apf-field apf-under-section"><span class="apf-field-label">Fallback relays, in order</span>
+  <div class="apf-field apf-under-section"><span class="apf-field-label">${escHtml(t('Fallback relays, in order'))}</span>
     <div class="apf-fallbacks">${_apfFallbackRows(v, ctx)}</div></div>
   <label class="apf-check apf-under-input-label">
     <input type="checkbox" class="apf-dashboard-fallback"${v.include_dashboard_fallback ? ' checked' : ''}>
-    <span>Fall back to this dashboard last</span></label>
+    <span>${escHtml(t('Fall back to this dashboard last'))}</span></label>
 </div>
 
 <div class="apf-section">
-  <div class="deploy-input-label">Live sessions</div>
+  <div class="deploy-input-label">${escHtml(t('Live sessions'))}</div>
   <div class="confirm-hint apf-sessions-note apf-hint-tight">${
-    v.mode === 'monitor' ? 'Monitor mode never opens sessions.'
-      : 'Off unless enabled here; every session still needs a two-factor code.'}</div>
+    v.mode === 'monitor' ? escHtml(t('Monitor mode never opens sessions.'))
+      : escHtml(t('Off unless enabled here; every session still needs a two-factor code.'))}</div>
   <label class="apf-check"><input type="checkbox" class="apf-shell"${v.allow_remote_shell ? ' checked' : ''}${v.mode === 'monitor' ? ' disabled' : ''}>
-    <span>Allow web shell and container shells</span></label>
-  <label class="apf-field apf-narrow"><span class="apf-field-label">Shell runs as</span>
+    <span>${escHtml(t('Allow web shell and container shells'))}</span></label>
+  <label class="apf-field apf-narrow"><span class="apf-field-label">${escHtml(t('Shell runs as'))}</span>
     <input type="text" class="form-control apf-shell-user" maxlength="32" value="${escAttr(v.remote_shell_user)}"${v.mode === 'monitor' ? ' disabled' : ''}></label>
   <label class="apf-check"><input type="checkbox" class="apf-rdp"${v.allow_remote_desktop ? ' checked' : ''}${v.mode === 'monitor' ? ' disabled' : ''}>
-    <span>Allow Web RDP</span></label>
-  <label class="apf-field apf-narrow"><span class="apf-field-label">RDP port</span>
+    <span>${escHtml(t('Allow Web RDP'))}</span></label>
+  <label class="apf-field apf-narrow"><span class="apf-field-label">${escHtml(t('RDP port'))}</span>
     <input type="number" class="form-control apf-rdp-port" min="1" max="65535" value="${escAttr(String(v.remote_desktop_port))}"${v.mode === 'monitor' ? ' disabled' : ''}></label>
 </div>
 
 <div class="apf-section">
-  <div class="deploy-input-label">Tags</div>
-  <input type="text" class="form-control apf-tags" placeholder="web, prod, rack-3" value="${escAttr(v.tags.join(', '))}">
+  <div class="deploy-input-label">${escHtml(t('Tags'))}</div>
+  <input type="text" class="form-control apf-tags" placeholder="${escAttr(t('web, prod, rack-3'))}" value="${escAttr(v.tags.join(', '))}">
   <div class="sa-chips apf-tag-chips">${_apfTagChips(v.tags)}</div>
 </div>
 
 <details class="apf-section apf-advanced">
-  <summary class="deploy-input-label">Advanced</summary>
+  <summary class="deploy-input-label">${escHtml(t('Advanced'))}</summary>
   <div class="apf-grid apf-under-section">
-    <label class="apf-field"><span class="apf-field-label">Check-in interval (s)</span>
+    <label class="apf-field"><span class="apf-field-label">${escHtml(t('Check-in interval (s)'))}</span>
       <input type="number" class="form-control apf-checkin" min="10" max="86400" value="${escAttr(String(v.checkin_interval))}"></label>
-    <label class="apf-field"><span class="apf-field-label">Container update check (s)</span>
+    <label class="apf-field"><span class="apf-field-label">${escHtml(t('Container update check (s)'))}</span>
       <input type="number" class="form-control apf-docker-interval" min="60" max="2592000" value="${escAttr(String(v.docker_check_interval))}"></label>
-    <label class="apf-field"><span class="apf-field-label">Software inventory (s)</span>
+    <label class="apf-field"><span class="apf-field-label">${escHtml(t('Software inventory (s)'))}</span>
       <input type="number" class="form-control apf-software-interval" min="60" max="2592000" value="${escAttr(String(v.software_interval))}"></label>
   </div>
-  <label class="apf-field apf-under-section"><span class="apf-field-label">Watched processes</span>
-    <input type="text" class="form-control apf-process-watch" placeholder="nginx, postgres" value="${escAttr(v.process_watch)}"></label>
+  <label class="apf-field apf-under-section"><span class="apf-field-label">${escHtml(t('Watched processes'))}</span>
+    <input type="text" class="form-control apf-process-watch" placeholder="${escAttr(t('nginx, postgres'))}" value="${escAttr(v.process_watch)}"></label>
   <label class="apf-check apf-under-input-label"><input type="checkbox" class="apf-reprovision"${v.allow_reprovision ? ' checked' : ''}${v.mode === 'monitor' ? ' disabled' : ''}>
-    <span>Allow remote rebuild of this machine</span></label>
+    <span>${escHtml(t('Allow remote rebuild of this machine'))}</span></label>
 </details>`;
 
   _apfBind(container);
@@ -190,7 +191,7 @@ function _apfActionGroups(allowlist, ctx) {
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(action);
   }
-  if (!groups.size) return '<p class="confirm-hint">No actions are available to allowlist.</p>';
+  if (!groups.size) return `<p class="confirm-hint">${escHtml(t('No actions are available to allowlist.'))}</p>`;
   const chosen = new Set(allowlist);
   let html = '';
   for (const [group, items] of groups) {
@@ -209,29 +210,29 @@ function _apfActionGroups(allowlist, ctx) {
 function _apfFallbackOptions(v, ctx) {
   const taken = new Set([v.primary_relay, ...v.fallback_relays]);
   const free = ctx.relays.filter(r => !taken.has(String(r.id)));
-  if (!free.length) return '<option value="">No relays left</option>';
-  return '<option value="">Choose a relay…</option>' + free.map(r =>
+  if (!free.length) return `<option value="">${escHtml(t('No relays left'))}</option>`;
+  return `<option value="">${escHtml(t('Choose a relay…'))}</option>` + free.map(r =>
     `<option value="${escAttr(String(r.id))}">${escHtml(r.name)}</option>`).join('');
 }
 
 function _apfFallbackRows(v, ctx) {
   if (!v.fallback_relays.length) {
-    return '<span class="confirm-hint">None — the agent retries its primary.</span>';
+    return `<span class="confirm-hint">${escHtml(t('None — the agent retries its primary.'))}</span>`;
   }
   return v.fallback_relays.map((id, i) => `
     <div class="apf-fallback-row" data-id="${escAttr(id)}">
       <span class="apf-fallback-name">${escHtml(_apfRelayName(ctx, id))}</span>
       <button type="button" class="btn btn-outline btn-sm" data-act="apfMoveFallback" data-a1="$el" data-a2="up"
-              ${i === 0 ? 'disabled' : ''} aria-label="Move up">&#8593;</button>
+              ${i === 0 ? 'disabled' : ''} aria-label="${escAttr(t('Move up'))}">&#8593;</button>
       <button type="button" class="btn btn-outline btn-sm" data-act="apfMoveFallback" data-a1="$el" data-a2="down"
-              ${i === v.fallback_relays.length - 1 ? 'disabled' : ''} aria-label="Move down">&#8595;</button>
-      <button type="button" class="btn btn-outline btn-sm" data-act="apfRemoveFallback" data-a1="$el">Remove</button>
+              ${i === v.fallback_relays.length - 1 ? 'disabled' : ''} aria-label="${escAttr(t('Move down'))}">&#8595;</button>
+      <button type="button" class="btn btn-outline btn-sm" data-act="apfRemoveFallback" data-a1="$el">${escHtml(t('Remove'))}</button>
     </div>`).join('');
 }
 
 function _apfTagChips(tags) {
   if (!tags.length) return '';
-  return tags.map(t => `<span class="chip chip-muted">${escHtml(t)}</span>`).join('');
+  return tags.map(tag => `<span class="chip chip-muted">${escHtml(tag)}</span>`).join('');
 }
 
 /* ── wiring ────────────────────────────────────────────────────────────── */

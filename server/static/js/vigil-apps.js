@@ -14,8 +14,7 @@
 const APPS_PAGE_SIZE = 100;
 const APPS_DEBOUNCE_MS = 250;
 const APPS_COLUMNS = 7;
-const APPS_EMPTY_TEXT = 'No software reported yet — agents send their list within a few '
-  + 'minutes of starting, or run the "Refresh software inventory" task.';
+const APPS_EMPTY_TEXT = t('No software reported yet — agents send their list within a few minutes of starting, or run the "Refresh software inventory" task.');
 
 /** One installed app of /api/v1/software/apps/, or one host row of
  *  /api/v1/software/hosts/, or one installed item of a host's software list. */
@@ -55,7 +54,7 @@ const appsState = {
 
 /* ── Shared fragments ────────────────────────────────────────────────── */
 function _loadingRow() {
-  return `<tr><td colspan="${APPS_COLUMNS}" class="apps-detail-loading">Loading…</td></tr>`;
+  return `<tr><td colspan="${APPS_COLUMNS}" class="apps-detail-loading">${escHtml(t('Loading…'))}</td></tr>`;
 }
 
 function _emptyRow(text) {
@@ -76,7 +75,7 @@ function _sourceChips(sources) {
 // "user: alice" for a user-scoped package, the scope name otherwise.
 function _scopeCell(row) {
   return row.scope === 'user'
-    ? `user: ${escHtml(row.user || 'unknown')}` : escHtml(row.scope || '');
+    ? `user: ${escHtml(row.user || t('unknown'))}` : escHtml(row.scope || '');
 }
 
 /** @param {Record<string, any>|null|undefined} errors @returns {string} */
@@ -159,12 +158,12 @@ function renderAppsTable() {
       <td class="num">${_countChip(row.unmanaged, 'apps-chip-warn')}</td>
       <td>${_sourceChips(row.sources)}</td>
       <td class="apps-act"><button class="btn btn-xs btn-outline" type="button" data-app-policy="${escAttr(key)}"
-        title="Keep ${escAttr(row.name)} installed and up to date with an update policy">Policy…</button></td>
+        title="${escAttr(t('Keep {name} installed and up to date with an update policy', { name: row.name }))}">${escHtml(t('Policy…'))}</button></td>
     </tr>`;
     if (appsState.expanded[key]) html += _appDetailHtml(key);
   }
   if (!html) {
-    html = _emptyRow(hasAnyHostSoftware ? 'No apps match these filters.' : APPS_EMPTY_TEXT);
+    html = _emptyRow(hasAnyHostSoftware ? t('No apps match these filters.') : APPS_EMPTY_TEXT);
   }
   tbody.innerHTML = html;
   if (more) more.hidden = !(appsState.rows.length > 0 && appsState.rows.length < appsState.count);
@@ -174,16 +173,16 @@ function _appDetailHtml(key) {
   const rows = appsState.details[key];
   if (!rows) {
     return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">Loading hosts…</div></td></tr>`;
+      <div class="apps-detail-loading">${escHtml(t('Loading hosts…'))}</div></td></tr>`;
   }
   if (!rows.length) {
     return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">No hosts report this app in your scope.</div></td></tr>`;
+      <div class="apps-detail-loading">${escHtml(t('No hosts report this app in your scope.'))}</div></td></tr>`;
   }
   const items = rows.map(row => {
     const latest = row.outdated
-      ? `<span class="chip chip-rose" title="Latest version">${escHtml(row.latest_version)}</span>` : '';
-    const unmanaged = row.managed ? '' : '<span class="chip apps-chip-warn">unmanaged</span>';
+      ? `<span class="chip chip-rose" title="${escAttr(t('Latest version'))}">${escHtml(row.latest_version)}</span>` : '';
+    const unmanaged = row.managed ? '' : `<span class="chip apps-chip-warn">${escHtml(t('unmanaged'))}</span>`;
     return `<div class="apps-detail-item">
       <a class="apps-host-link" href="#" data-app-host="${escAttr(row.host_id)}">${escHtml(row.hostname)}</a>
       <span class="apps-detail-ver">${escHtml(row.version)}</span>
@@ -244,13 +243,13 @@ function renderAppsHostsTable() {
       <td class="num">${row.item_count}</td>
       <td class="num">${_countChip(row.outdated, 'chip-rose')}</td>
       <td class="num">${_countChip(row.unmanaged, 'apps-chip-warn')}</td>
-      <td>${escHtml(timeAgo(row.received_at) || 'never')}</td>
+      <td>${escHtml(timeAgo(row.received_at) || t('never'))}</td>
       <td>${_errorChips(row.errors) || '<span class="apps-zero">—</span>'}</td>
     </tr>`;
     if (appsState.hostExpanded[row.host_id]) out += _hostDetailHtml(row.host_id);
     return out;
   }).join('');
-  tbody.innerHTML = html || _emptyRow('No hosts in your scope.');
+  tbody.innerHTML = html || _emptyRow(t('No hosts in your scope.'));
   renderAppsTable();
 }
 
@@ -267,17 +266,17 @@ function _hostDetailHtml(id) {
   const items = appsState.hostDetails[id];
   if (items === null || items === undefined) {
     return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">Loading software…</div></td></tr>`;
+      <div class="apps-detail-loading">${escHtml(t('Loading software…'))}</div></td></tr>`;
   }
   if (!items.length) {
     return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">No software reported for this host yet.</div></td></tr>`;
+      <div class="apps-detail-loading">${escHtml(t('No software reported for this host yet.'))}</div></td></tr>`;
   }
   const sorted = _hostSoftwareSorted(items);
   const showAll = !!appsState.hostShowAll[id];
   const shown = showAll ? sorted : sorted.slice(0, APPS_HOST_DETAIL_LIMIT);
   const rows = shown.map(it => {
-    const unmanaged = it.managed ? '' : ' <span class="chip apps-chip-warn">unmanaged</span>';
+    const unmanaged = it.managed ? '' : ` <span class="chip apps-chip-warn">${escHtml(t('unmanaged'))}</span>`;
     return `<tr${it.outdated ? ' class="upd-outdated"' : ''}>
       <td>${escHtml(it.name)}${unmanaged}</td>
       <td class="apps-mono">${escHtml(it.version)}</td>
@@ -288,15 +287,15 @@ function _hostDetailHtml(id) {
   }).join('');
   const more = (!showAll && sorted.length > APPS_HOST_DETAIL_LIMIT)
     ? `<div class="apps-show-all">
-         <button class="btn btn-outline btn-xs" type="button" data-host-show-all="${escAttr(id)}">Show all ${sorted.length}</button>
+         <button class="btn btn-outline btn-xs" type="button" data-host-show-all="${escAttr(id)}">${escHtml(t('Show all'))} ${sorted.length}</button>
        </div>` : '';
   return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
     <table class="hunt-table apps-table apps-host-detail">
-      <thead><tr><th>Name</th><th>Version</th><th>Latest</th><th>Source</th><th>Scope</th></tr></thead>
+      <thead><tr><th>${escHtml(t('Name'))}</th><th>${escHtml(t('Version'))}</th><th>${escHtml(t('Latest'))}</th><th>${escHtml(t('Source'))}</th><th>${escHtml(t('Scope'))}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     ${more}
-    <a href="#" class="apps-host-open" data-app-host="${escAttr(id)}">Open this host's monitor →</a>
+    <a href="#" class="apps-host-open" data-app-host="${escAttr(id)}">${escHtml(t("Open this host's monitor →"))}</a>
   </td></tr>`;
 }
 
@@ -345,20 +344,20 @@ function _severityChip(row) {
 }
 
 function _decisionChip(decision) {
-  if (decision === 'approved') return '<span class="chip chip-mint">approved</span>';
-  if (decision === 'declined') return '<span class="chip chip-rose">declined</span>';
-  return '<span class="apps-zero">undecided</span>';
+  if (decision === 'approved') return `<span class="chip chip-mint">${escHtml(t('approved'))}</span>`;
+  if (decision === 'declined') return `<span class="chip chip-rose">${escHtml(t('declined'))}</span>`;
+  return `<span class="apps-zero">${escHtml(t('undecided'))}</span>`;
 }
 
 function _ageCell(days) {
-  const text = days === 1 ? '1 day' : `${days} days`;
+  const text = tn('{n} day', '{n} days', days);
   return days > 30 ? `<span class="chip apps-chip-warn">${text}</span>` : text;
 }
 
 async function fetchUpdates() {
   const seq = ++updState.seq;
   const tbody = document.getElementById('apps-updates-body');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="${UPDATE_COLUMNS}" class="apps-detail-loading">Loading…</td></tr>`;
+  if (tbody) tbody.innerHTML = `<tr><td colspan="${UPDATE_COLUMNS}" class="apps-detail-loading">${escHtml(t('Loading…'))}</td></tr>`;
   const params = new URLSearchParams();
   for (const [id, name] of [['upd-q', 'q'], ['upd-kind', 'kind'], ['upd-decision', 'decision']]) {
     const value = (/** @type {HTMLInputElement} */ (document.getElementById(id))?.value || '').trim();
@@ -384,30 +383,30 @@ function renderUpdatesTable() {
     const key = _updKey(row);
     const checked = updState.selected.has(key) ? ' checked' : '';
     let out = `<tr class="apps-row" data-upd-row="${escAttr(key)}">
-      <td class="upd-check"><input type="checkbox" data-upd-pick="${escAttr(key)}"${checked} aria-label="Select ${escAttr(row.key)}"></td>
+      <td class="upd-check"><input type="checkbox" data-upd-pick="${escAttr(key)}"${checked} aria-label="${escAttr(t('Select {key}', { key: row.key }))}"></td>
       <td><div class="apps-name">${escHtml(row.key)}</div>
         <div class="upd-title">${escHtml(row.title || '')}${row.classification ? ' · ' + escHtml(row.classification) : ''}</div></td>
       <td>${_severityChip(row)}</td>
       <td class="num">${row.hosts}</td>
       <td class="num">${_ageCell(row.age_days)}</td>
       <td>${_decisionChip(row.decision)}</td>
-      <td><button class="btn btn-xs btn-outline" type="button" data-upd-policy="${escAttr(key)}">Policy…</button></td>
+      <td><button class="btn btn-xs btn-outline" type="button" data-upd-policy="${escAttr(key)}">${escHtml(t('Policy…'))}</button></td>
     </tr>`;
     if (updState.expanded[key]) {
       const hosts = updState.details[key];
       const inner = hosts == null
-        ? '<div class="apps-detail-loading">Loading…</div>'
+        ? `<div class="apps-detail-loading">${escHtml(t('Loading…'))}</div>`
         : hosts.map(h => `<div class="apps-detail-item">
             <a class="apps-host-link" href="#" data-app-host="${escAttr(h.host_id)}">${escHtml(h.hostname)}</a>
-            <span class="apps-detail-scope">missing for ${h.age_days} day${h.age_days === 1 ? '' : 's'}</span>
+            <span class="apps-detail-scope">${escHtml(tn('missing for {n} day', 'missing for {n} days', h.age_days))}</span>
             ${h.version ? `<span class="apps-detail-ver">→ ${escHtml(h.version)}</span>` : ''}
-          </div>`).join('') || '<div class="apps-detail-loading">No hosts in your scope.</div>';
+          </div>`).join('') || `<div class="apps-detail-loading">${escHtml(t('No hosts in your scope.'))}</div>`;
       out += `<tr class="apps-detail-row"><td colspan="${UPDATE_COLUMNS}"><div class="apps-detail">${inner}</div></td></tr>`;
     }
     return out;
   }).join('');
   tbody.innerHTML = html || `<tr><td colspan="${UPDATE_COLUMNS}" class="apps-empty-state">${escHtml(
-    'No pending updates reported. Windows hosts send their list after each update scan; Linux hosts after each software inventory.')}</td></tr>`;
+    t('No pending updates reported. Windows hosts send their list after each update scan; Linux hosts after each software inventory.'))}</td></tr>`;
   _renderUpdateBulk();
 }
 
@@ -416,7 +415,7 @@ function _renderUpdateBulk() {
   const count = updState.selected.size;
   if (bar) bar.hidden = count === 0;
   const label = document.getElementById('upd-bulk-count');
-  if (label) label.textContent = `${count} selected`;
+  if (label) label.textContent = t('{n} selected', { n: count });
   const all = /** @type {HTMLInputElement|null} */ (document.getElementById('upd-all'));
   if (all) all.checked = count > 0 && count === updState.rows.length;
 }
@@ -448,11 +447,11 @@ async function decideUpdates(decision) {
         method: 'POST', body: JSON.stringify({ kind, keys, decision }),
       });
     }
-    showToast(decision === 'clear' ? 'Decision cleared' : `Marked ${decision} fleet-wide`, 'success');
+    showToast(decision === 'clear' ? t('Decision cleared') : t('Marked {decision} fleet-wide', { decision }), 'success');
     updState.selected.clear();
     fetchUpdates();
   } catch (e) {
-    showToast(e.message || 'Could not save the decision', 'error');
+    showToast(e.message || t('Could not save the decision'), 'error');
   }
 }
 
@@ -461,7 +460,7 @@ async function renderHostSoftware(hostId) {
   const wrap = document.getElementById('software-list');
   if (!wrap) return;
   const seq = ++appsState.monitorSeq;
-  wrap.innerHTML = '<div class="apps-empty-state">Loading…</div>';
+  wrap.innerHTML = `<div class="apps-empty-state">${escHtml(t('Loading…'))}</div>`;
   let body = { snapshot: null, items: [] };
   try {
     const resp = await fetch(`/api/v1/software/hosts/${encodeURIComponent(hostId)}/`, { credentials: 'same-origin' });
@@ -483,7 +482,7 @@ function renderHostSoftwareList() {
   const snapshot = appsState.monitorSnapshot;
   if (!snapshot) {
     if (countEl) countEl.textContent = '';
-    wrap.innerHTML = '<div class="apps-empty-state">No software reported for this host yet.</div>';
+    wrap.innerHTML = `<div class="apps-empty-state">${escHtml(t('No software reported for this host yet.'))}</div>`;
     return;
   }
 
@@ -491,8 +490,8 @@ function renderHostSoftwareList() {
   const outdated = items.filter(i => i.outdated).length;
   const unmanaged = items.filter(i => !i.managed).length;
   if (countEl) {
-    countEl.textContent = `${snapshot.item_count} items · ${outdated} outdated · ${unmanaged} unmanaged`
-      + ` · reported ${timeAgo(snapshot.received_at) || 'unknown'}`;
+    countEl.textContent = t('{items} items · {outdated} outdated · {unmanaged} unmanaged', { items: snapshot.item_count, outdated, unmanaged })
+      + ' · ' + t('reported {when}', { when: timeAgo(snapshot.received_at) || t('unknown') });
   }
 
   const filter = (/** @type {HTMLInputElement} */ (document.getElementById('software-q'))?.value || '').trim().toLowerCase();
@@ -508,7 +507,7 @@ function renderHostSoftwareList() {
   const more = matched.length - shown.length;
 
   const rows = shown.map(item => `<tr>
-    <td>${escHtml(item.name)}${item.managed ? '' : ' <span class="chip apps-chip-warn">unmanaged</span>'}</td>
+    <td>${escHtml(item.name)}${item.managed ? '' : ` <span class="chip apps-chip-warn">${escHtml(t('unmanaged'))}</span>`}</td>
     <td class="apps-mono">${escHtml(item.version)}</td>
     <td>${item.outdated ? `<span class="chip chip-rose">${escHtml(item.latest_version)}</span>` : '<span class="apps-zero">—</span>'}</td>
     <td><span class="chip chip-muted apps-src">${escHtml(item.source)}</span></td>
@@ -520,12 +519,12 @@ function renderHostSoftwareList() {
     <div class="table-wrap">
       <table class="hunt-table apps-table">
         <thead><tr>
-          <th>Name</th><th>Version</th><th>Latest</th><th>Source</th><th>Scope</th><th>Publisher</th>
+          <th>${escHtml(t('Name'))}</th><th>${escHtml(t('Version'))}</th><th>${escHtml(t('Latest'))}</th><th>${escHtml(t('Source'))}</th><th>${escHtml(t('Scope'))}</th><th>${escHtml(t('Publisher'))}</th>
         </tr></thead>
-        <tbody>${rows || _emptyRow('No software matches this filter.')}</tbody>
+        <tbody>${rows || _emptyRow(t('No software matches this filter.'))}</tbody>
       </table>
     </div>
-    ${more > 0 ? `<button type="button" class="btn btn-ghost btn-xs apps-show-all" id="software-show-all">Show all ${matched.length}</button>` : ''}`;
+    ${more > 0 ? `<button type="button" class="btn btn-ghost btn-xs apps-show-all" id="software-show-all">${escHtml(t('Show all'))} ${matched.length}</button>` : ''}`;
   const showAll = document.getElementById('software-show-all');
   if (showAll) showAll.addEventListener('click', () => { _softwareShowAll = true; renderHostSoftwareList(); });
 }
@@ -610,7 +609,7 @@ delegateClick('[data-app-policy]', async (el) => {
   let found;
   try { found = await _appPolicyPairs(key); } catch (e) { showToast(e.message, 'error'); return; }
   if (!found.pairs.length) {
-    showToast(`A policy cannot manage ${name}: it comes from ${found.sources.join(', ') || 'no package manager'}`, 'error');
+    showToast(t('A policy cannot manage {name}: it comes from {sources}', { name, sources: found.sources.join(', ') || t('no package manager') }), 'error');
     return;
   }
   policyFromApp(name, found.pairs);
@@ -653,10 +652,10 @@ function _updPolicy(rows) {
       classifications.add(row.classification);
     }
   }
-  const label = rows.length === 1 ? rows[0].key : `${rows.length} updates`;
+  const label = rows.length === 1 ? rows[0].key : tn('{n} update', '{n} updates', rows.length);
   if (!pairs.length && !classifications.size) {
     const first = rows[0];
-    showToast(`A policy cannot manage ${first.key}: it comes from ${first.classification || 'no package manager'}`, 'error');
+    showToast(t('A policy cannot manage {name}: it comes from {source}', { name: first.key, source: first.classification || t('no package manager') }), 'error');
     return;
   }
   policyFromApp(label, pairs, { windowsClassifications: [...classifications] });
