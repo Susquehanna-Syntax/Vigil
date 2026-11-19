@@ -25,6 +25,8 @@ let _stackCheckTimer = null;
 const _NEW_COMPOSE = 'services:\n  app:\n    image: nginx:stable\n    restart: unless-stopped\n';   // i18n-ignore — a YAML sample
 const DEPLOY_SAVE_HINT = t('Save first: deploy ships a saved revision');
 // The command sample and the markup snippet below are not sentences.
+const _GIT_USER_SAMPLE = 'x-access-token';   // i18n-ignore
+const _GIT_HOST_SAMPLE = 'github.com';   // i18n-ignore
 const KEYSCAN_CODE = '<code>ssh-keyscan github.com</code>';   // i18n-ignore
 const SSH_KEY_TEXTAREA = '<textarea class="form-control" id="git-cred-secret" rows="6" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>';   // i18n-ignore
 
@@ -279,7 +281,7 @@ function _setStackStatus(problems) {
     return;
   }
   pill.className = 'sted-status ' + (problems ? 'is-bad' : 'is-good');
-  pill.textContent = problems ? t('{n} problem(s)', { n: problems }) : t('valid');
+  pill.textContent = problems ? tn('{n} problem', '{n} problems', problems) : t('valid');
 }
 
 function _renderStackCheck(r) {
@@ -289,7 +291,7 @@ function _renderStackCheck(r) {
   let html = '';
   if (r.ok) {
     const services = r.services || [];
-    html += `<div class="sted-check-ok">${escHtml(t('✓ valid · {n} service(s)', { n: services.length }))}</div>`;
+    html += `<div class="sted-check-ok">✓ ${escHtml(t('valid'))} · ${escHtml(tn('{n} service', '{n} services', services.length))}</div>`;
     if (services.length) {
       html += `<div class="sted-services">${services.map(s => `<span class="chip chip-muted sted-service">${escHtml(s.name)}`
         + `<span class="sted-service-img">${escHtml(s.build ? 'build' : (s.image || ''))}</span></span>`).join('')}</div>`;
@@ -299,10 +301,9 @@ function _renderStackCheck(r) {
       + (r.line ? `<span class="sted-check-line">${escHtml(t('line {line}', { line: r.line }))}</span>` : '') + '</div>';
   }
   (r.missing_env || []).forEach((v) => {
-    const addLabel = escHtml(t('Add'));
     html += `<div class="sted-missing">${escHtml(t('{var} is used but not set', { var: v }))}`
       + `<button class="btn btn-ghost btn-xs" type="button" data-sted-add-env="${escAttr(v)}"`
-      + ` aria-label="${escAttr(t('Add {var} to the .env', { var: v }))}">${addLabel}&nbsp;${escHtml(v)}</button></div>`;
+      + ` aria-label="${escAttr(t('Add {var} to the .env', { var: v }))}">${escHtml(t('Add {var}', { var: v }))}</button></div>`;
   });
   wrap.innerHTML = html;
   stackEd.errorLine = r.ok ? null : (r.line || null);
@@ -368,8 +369,8 @@ async function nameStackRevision(number) {
 async function pruneStackRevisions() {
   const total = stackEd.revisions.length;
   const raw = await promptModal(
-    t('Keep the newest how many of {name}\'s {total} revisions? Named revisions, the current one '
-      + 'and the one last deployed always stay.', { name: stackEd.stack.name, total }),
+    t('Keep the newest how many of {name}\'s {total} revisions? Named revisions, the current one and the one last deployed always stay.',
+      { name: stackEd.stack.name, total }),
     { value: '10', placeholder: '10' });
   if (raw === null) return;
   const keep = parseInt(raw, 10);
@@ -444,7 +445,7 @@ function _renderGitState() {
   // "Commit abc123def456 · tracking main" / "· pinned to v1.2". The commit is
   // the span's only <code>, so a repository string never becomes markup.
   state.querySelector('code').textContent = (git.commit || '').slice(0, 12);
-  state.querySelector('[data-sted-git-ref]').textContent = git.pin ? t(' · pinned to {pin}', { pin: git.pin }) : t(' · tracking {branch}', { branch: git.branch || 'main' });
+  state.querySelector('[data-sted-git-ref]').textContent = ' · ' + (git.pin ? t('pinned to {pin}', { pin: git.pin }) : t('tracking {branch}', { branch: git.branch || 'main' }));
 }
 
 function _fillGitFields(git) {
@@ -568,7 +569,7 @@ function addGitCredential() {
       </div>` : `
       <div class="form-group">
         <label class="form-label" for="git-cred-user">${escHtml(t('Username'))}</label>
-        <input class="form-control" id="git-cred-user" maxlength="255" placeholder="${escAttr(t('x-access-token'))}"
+        <input class="form-control" id="git-cred-user" maxlength="255" placeholder="${_GIT_USER_SAMPLE}"
           autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>`;
     const holder = ssh ? SSH_KEY_TEXTAREA : '<input class="form-control" id="git-cred-secret" type="password" autocomplete="new-password">';  // i18n-ignore
@@ -596,7 +597,7 @@ function addGitCredential() {
       </div>
       <div class="form-group">
         <label class="form-label" for="git-cred-host">${escHtml(t('Git server'))}</label>
-        <input class="form-control" id="git-cred-host" maxlength="253" placeholder="${escAttr(t('github.com'))}"
+        <input class="form-control" id="git-cred-host" maxlength="253" placeholder="${_GIT_HOST_SAMPLE}"
           autocomplete="off" autocapitalize="off" spellcheck="false">
         <div class="bl-hint">${escHtml(t('The credential is only ever sent to this server.'))}</div>
       </div>
@@ -661,7 +662,7 @@ async function saveStack() {
   /** @type {StackSaveBody} */
   let body;
   if (gitStack && gitChanged) body = _gitSettingsBody(env);
-  else if (gitStack) body = { env, note: 'edited' };   // a revision-note value the server matches on, not a sentence
+  else if (gitStack) body = { env, note: 'edited' };   // the compose file comes from Git, not from here
   else if (stackEd.source === 'git') body = _newGitStackBody(/** @type {HTMLInputElement} */ (_stedEl('stack-name')).value.trim(), env);
   else if (editing) body = { compose_yaml: /** @type {HTMLTextAreaElement} */ (_stedEl('stack-compose')).value, env, note: 'edited' };
   else body = { host_id: stackEd.hostId, name: /** @type {HTMLInputElement} */ (_stedEl('stack-name')).value.trim(),

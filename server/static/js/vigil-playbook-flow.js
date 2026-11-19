@@ -637,9 +637,10 @@ function _flJumpPath(a, b, apexY) {
 const _FLOW_IF_MARK = () => t('if'); // i18n-ignore: same word as the fcn-if-mark class name
 const _FLOW_GOTO_MARK = () => t('go to'); // i18n-ignore: same words as the fcn-goto-mark class name
 const _FLOW_PORT_LABELS = { true: () => t('true'), otherwise: () => t('otherwise') }; // i18n-ignore: same words as the p-then / p-else class names
-// The count badge's word is also its class fragment (fs-ok, fs-failed), so the
-// literal lives here and only the number goes through t().
-const _FLOW_COUNT_WORDS = { ok: 'ok', failed: 'failed', not_applicable: 'n/a', skipped: 'skipped', pending: 'waiting' }; // i18n-ignore: each word is also a fs-<key> class fragment
+//: The word after a count badge's number.
+function _flowCountWord(k) {
+  return { ok: t('ok'), failed: t('failed'), not_applicable: t('n/a'), skipped: t('skipped'), pending: t('waiting') }[k];
+}
 const _FLOW_START_LABEL = () => t('Start');
 const _FLOW_END_LABEL = () => t('End');
 const _FLOW_ADD_CONDITION = () => t('add a condition');
@@ -659,7 +660,7 @@ function _flStepNodeHtml(ln, num, opts) {
   const st = stats && stats[s.sid];
   const flags = [s.ona === 'skip' ? t('n/a: go on') : '', s.onf === 'continue' ? t('fails: carry on') : ''].filter(Boolean);
   const counts = st ? ['ok', 'failed', 'not_applicable', 'skipped', 'pending'].filter(k => st[k])
-    .map(k => `<span class="flow-count fs-${k}">${escHtml(_FLOW_COUNT_WORDS[k] + (k === 'failed' && s.onf === 'continue' ? t(', handled') : ''))}</span>`).join('') : '';
+    .map(k => `<span class="flow-count fs-${k}">${st[k]} ${escHtml(_flowCountWord(k))}${k === 'failed' && s.onf === 'continue' ? escHtml(t(', handled')) : ''}</span>`).join('') : '';
   const third = counts || (s.outcome ? `<span class="flow-outcome">${escHtml(t('ends as “{outcome}”', { outcome: s.outcome }))}</span>` : '')
     || (risk && !stats ? `<span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span>` : '');
   const tip = [name, t('id {sid}', { sid: s.sid }), ...flags, s.outcome ? t('outcome: {outcome}', { outcome: s.outcome }) : '', why || ''].filter(Boolean).join('\n');
@@ -916,8 +917,8 @@ function flowInspectorHtml(tree, at, ctx) {
   })() : null;
   if (!node) {
     return `<div class="fi-empty">
-      <p><b>${escHtml(t('Select a step or an if'))}</b> ${escHtml(t('to change it.'))}</p>
-      <p>${escHtml(t('Press'))} <span class="fi-plus">+</span> ${escHtml(t('on any line to add a task or an if / else at that point.'))}</p>
+      <p>${t('{select} to change it.', { select: `<b>${escHtml(t('Select a step or an if'))}</b>` })}</p>
+      <p>${t('Press {plus} on any line to add a task or an if / else at that point.', { plus: '<span class="fi-plus">+</span>' })}</p>
       <p>${t("Each if forks the flow: the {trueBand} band runs when its condition holds, the {otherwiseBand} band when it doesn't, and both meet again at the dot. Add an {orIfExit} exit for anything in between.", { trueBand: `<span class="fi-then">${escHtml(t('true'))}</span>`, otherwiseBand: `<span class="fi-else">${escHtml(t('otherwise'))}</span>`, orIfExit: `<span class="fi-elif">${escHtml(t('or if'))}</span>` })}</p>
     </div>`;
   }
@@ -1072,11 +1073,12 @@ function flowAnalysisHtml(tree, ctx) {
   const pathList = paths.slice(0, 8).map((p, i) => `<li tabindex="0" data-path-sids="${escAttr(p.map(step => step.sid).join(' '))}"><span class="flow-path-n">${i + 1}</span>${p.map(step => // i18n-ignore
     `<span class="flow-path-step ${_flowColorClass(step.color)}">${escHtml(step.sid)}</span>`).join('<span class="flow-path-arrow" aria-hidden="true">›</span>') || `<em>${escHtml(t('nothing runs'))}</em>`}</li>`).join('');
   const risks = steps.map(step => ctx.defRisk(step.def));
+  const top = risks.includes('high') ? 'high' : risks.includes('standard') ? 'standard' : 'low';
   return `<div class="flow-analysis">
     <div class="flow-analysis-head">
-      <span><b>${steps.length}</b> ${escHtml(tn('{n} step', '{n} steps', steps.length))}</span>
-      <span><b>${paths.length}${paths.length >= 64 ? '+' : ''}</b> ${escHtml(tn('{n} possible path', '{n} possible paths', paths.length))}</span>
-      <span>${escHtml(t('a host runs'))} <b>${Math.min(...lengths)}${Math.max(...lengths) !== Math.min(...lengths) ? '–' + Math.max(...lengths) : ''}</b> ${escHtml(t('of them'))}</span>
+      <span>${tn('{n} step', '{n} steps', steps.length, { n: `<b>${steps.length}</b>` })}</span>
+      <span>${tn('{n} possible path', '{n} possible paths', paths.length, { n: `<b>${paths.length}${paths.length >= 64 ? '+' : ''}</b>` })}</span>
+      <span>${t('a host runs {range} of them', { range: `<b>${Math.min(...lengths)}${Math.max(...lengths) !== Math.min(...lengths) ? '–' + Math.max(...lengths) : ''}</b>` })}</span>
       <span>${escHtml(t('highest risk'))} <span class="risk-badge risk-${top}">${top}</span></span>
     </div>
     ${findings.length ? `<ul class="flow-findings">${findings.map(f => `<li class="${f.level}">${escHtml(f.text)}</li>`).join('')}</ul>` : `<div class="flow-findings-ok">${escHtml(t('No problems found in this flow.'))}</div>`}

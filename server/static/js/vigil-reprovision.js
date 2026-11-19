@@ -84,7 +84,7 @@ async function openRebuildModal(hostId, hostname) {
     `<option value="${escAttr(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
 
   m.setBody(
-    `<h3>${escHtml(t('Rebuild'))} ${escHtml(hostname)}</h3>` +
+    `<h3>${escHtml(t('Rebuild {hostname}', { hostname }))}</h3>` +
     `<p class="bad"><strong>${escHtml(t('This erases everything on the target disk.'))}</strong> ` +
     `${escHtml(t('There is no undo once the installer starts.'))}</p>` +
     `<label>${escHtml(t('Image'))}<select class="form-control" id="rb-image">${imageOpts}</select></label>` +
@@ -199,7 +199,7 @@ async function _runPreflight(hostId) {
     const rows = result.disks.map((d) => {
       return `<li><code>${escHtml(d.name)}</code> ${escHtml(_bytesToGiB(d.size_bytes))}` +
         (d.mountpoints && d.mountpoints.length
-          ? ` <span class="muted">${escHtml(t('mounted at'))} ${escHtml(d.mountpoints.join(', '))}</span>` : '') +
+          ? ` <span class="muted">${escHtml(t('mounted at {paths}', { paths: d.mountpoints.join(', ') }))}</span>` : '') +
         `</li>`;
     }).join('');
     box.innerHTML =
@@ -854,7 +854,7 @@ function _reproProfileRow(prof) {
   desc.className = 'site-row-desc muted';
   const img = _reproImagesById[prof.image];
   const imgLabel = img ? img.name : t('image {image}', { image: prof.image || '?' });
-  const diskLabel = prof.disk_target ? t('disk {disk}', { disk: prof.disk_target }) : '?';
+  const diskLabel = t('disk {disk}', { disk: prof.disk_target || '?' });
   let descText = t('{image} · {disk} · {mode}', { image: imgLabel, disk: diskLabel, mode: prof.network_mode || '?' });
   if (prof.network_mode === 'static' && prof.static_address) {
     descText += ` ${prof.static_address}`;
@@ -1063,7 +1063,7 @@ async function _reproSaveProfile() {
 async function _reproDeleteProfile(prof) {
   if (!prof || !prof.id) return;
   const ok = await confirmModal(
-    t('Delete install profile "{name}"?', { name: prof.name || prof.id }),
+    t('Delete install profile “{name}”?', { name: prof.name || prof.id }),
     { confirmText: t('Delete'), danger: true });
   if (!ok) return;
   try {
