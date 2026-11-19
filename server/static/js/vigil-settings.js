@@ -878,7 +878,7 @@ async function _createSecurityKey(name, totp) {
   const publicKey = {
     challenge: b64urlToBytes(opts.challenge).buffer,
     timeout: opts.timeout || 60000,
-    rp: { name: (opts.rp && opts.rp.name) || 'Vigil', id: opts.rpId },
+    rp: { name: (opts.rp && opts.rp.name) || 'Vigil', id: opts.rpId }, // i18n-ignore — the product name
     user: {
       id: b64urlToBytes(opts.user.id).buffer,
       name: opts.user.name,

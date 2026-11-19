@@ -11,7 +11,10 @@ attributes (title, placeholder, aria-label, alt, data-tip, data-hint), and the
 literal first argument of showToast / confirmModal or a literal assigned to
 textContent / innerText, and a literal given to a display key in an object
 (title, label, meta, message, hint, placeholder and the like: a modal's or a
-picker's options). Comments are ignored, and so is any line carrying the
+picker's options), and a capitalised literal chosen at run time: a fallback
+(`|| 'Confirm'`, `?? 'Untitled'`), either branch of a ternary
+(`x ? 'Online' : 'Offline'`) or a value in a lookup table
+(`{ admin: 'Admin' }`). Comments are ignored, and so is any line carrying the
 marker `i18n-ignore` (for text that is not a sentence: a shell command, a code
 sample). Wrapped text reads `${escHtml(t('Rename'))}` in markup and
 `showToast(t('Tag created'))` elsewhere, which none of the patterns match."""
@@ -30,55 +33,20 @@ SCRIPT_GLOB = "static/js/vigil-*.js"
 #: Scripts with no bare user-facing string left. Add one when it reaches zero.
 JS_TRANSLATED: list[str] = [
     "static/js/vigil-containers.js",
-    "static/js/vigil-tags.js",
-    "static/js/vigil-waves.js",
-    "static/js/vigil-monitor.js",
-    "static/js/vigil-inventory.js",
-    "static/js/vigil-siteswitch.js",
-    "static/js/vigil-runhistory.js",
-    "static/js/vigil-hunts.js",
-    "static/js/vigil-enroll.js",
-    "static/js/vigil-charts.js",
-    "static/js/vigil-devices.js",
-    "static/js/vigil-agentprofiles.js",
     "static/js/vigil-rdp.js",
     "static/js/vigil-firewall.js",
-    "static/js/vigil-alerts.js",
     "static/js/vigil-sites.js",
     "static/js/vigil-deeplink.js",
     "static/js/vigil-host-reboot.js",
     "static/js/vigil-search.js",
-    "static/js/vigil-branding.js",
-    "static/js/vigil-session.js",
-    "static/js/vigil-about.js",
-    "static/js/vigil-ui-kit.js",
-    "static/js/vigil-sitepick.js",
-    "static/js/vigil-terminal.js",
-    "static/js/vigil-contentyaml.js",
-    "static/js/vigil-usersites.js",
-    "static/js/vigil-users.js",
     "static/js/vigil-community.js",
     "static/js/vigil-statuspages.js",
-    "static/js/vigil-topology.js",
-    "static/js/vigil-reports.js",
     "static/js/vigil-api-keys.js",
-    "static/js/vigil-rollout.js",
-    "static/js/vigil-tasks.js",
     "static/js/vigil-automations.js",
-    "static/js/vigil-widgets.js",
     "static/js/vigil-apps.js",
-    "static/js/vigil-agentprofile-form.js",
-    "static/js/vigil-vulns.js",
-    "static/js/vigil-store.js",
-    "static/js/vigil-dashboards.js",
-    "static/js/vigil-instance-settings.js",
     "static/js/vigil-deploy.js",
-    "static/js/vigil-host-cards.js",
     "static/js/vigil-ai.js",
-    "static/js/vigil-pickers.js",
     "static/js/vigil-settings.js",
-    "static/js/vigil-playbooks.js",
-    "static/js/vigil-utils.js",
 ]
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
@@ -93,6 +61,11 @@ _PROPERTY = re.compile(
     r"\b(?:title|label|meta|message|hint|placeholder|empty|emptyText|subtitle|desc|description"
     r"|confirmText|confirmLabel|okLabel|cancelLabel|tooltip)\s*:\s*(['\"`])"
     r"((?:(?!\1).)*?[A-Za-z]{2,}(?:(?!\1).)*?)\1")
+#: Text a person reads looks like a sentence or a capitalised word: "Online",
+#: "No tags yet", "Copy failed". Lower-case and all-caps literals ("ok", "GET",
+#: "btn btn-sm") are keys, classes and methods.
+_TEXT = r"(?:[A-Z][a-z]|[A-Z][^'\"`$\\\n]*\s(?=[^'\"`$\\\n]*[a-z]))[^'\"`$\\\n]*"
+_CHOICE = re.compile(r"(?:\|\||\?\?|\?|:)\s*(['\"`])(" + _TEXT + r")\1")
 _CALL = re.compile(
     r"\b(?:showToast|confirmModal|textContent\s*=|innerText\s*=)\s*\(?\s*(['\"`])"
     r"((?:(?!\1).)*?[A-Za-z]{2,}(?:(?!\1).)*?)\1")
@@ -106,6 +79,10 @@ def bare_strings(js: str) -> list[str]:
     found += [f"[attribute] {m.group(1)}" for m in _ATTR.finditer(js)]
     found += [f"[call] {m.group(2)}" for m in _CALL.finditer(js)]
     found += [f"[property] {m.group(2)}" for m in _PROPERTY.finditer(js)]
+    # A fallback, ternary branch or lookup value the property and call
+    # patterns above have not already counted.
+    seen = {m.start(2) for rx in (_PROPERTY, _CALL) for m in rx.finditer(js)}
+    found += [f"[choice] {m.group(2)}" for m in _CHOICE.finditer(js) if m.start(2) not in seen]
     return found
 
 
@@ -209,6 +186,19 @@ class JsStringRatchetTests(SimpleTestCase):
         self.assertEqual(bare_strings("pick({ title: t('Pick a tag'), key: 'name' });"), [])
         self.assertEqual(bare_strings("// <b>Old</b> note\nx = 1;"), [])
         self.assertEqual(bare_strings("cmd.textContent = `ssh ${dest}`; // i18n-ignore"), [])
+
+    def test_the_checker_reads_fallbacks_ternaries_and_lookup_tables(self):
+        self.assertEqual(bare_strings("msg = e.message || 'Request failed';"), ["[choice] Request failed"])
+        self.assertEqual(bare_strings("name = h.name ?? 'Untitled';"), ["[choice] Untitled"])
+        self.assertEqual(bare_strings("s = up ? 'Online' : 'Offline';"), ["[choice] Online", "[choice] Offline"])
+        self.assertEqual(bare_strings("const ROLE = { admin: 'Admin', view: 'Read only' };"),
+                         ["[choice] Admin", "[choice] Read only"])
+        self.assertEqual(bare_strings("x = `<b>${n ? 'Some left' : ''}</b>`;"), ["[choice] Some left"])
+        # Keys, classes, methods and wrapped text are not counted.
+        self.assertEqual(bare_strings("c = ok ? 'ok' : 'bad'; m = p || 'GET'; k = { cls: 'btn btn-sm' };"), [])
+        self.assertEqual(bare_strings("s = up ? t('Online') : t('Offline'); x = e || t('Request failed');"), [])
+        # Counted once: a title: value is already a [property].
+        self.assertEqual(bare_strings("pick({ title: 'Pick a tag' });"), ["[property] Pick a tag"])
 
     def test_no_script_gains_a_bare_string(self):
         baseline = load_baseline()
