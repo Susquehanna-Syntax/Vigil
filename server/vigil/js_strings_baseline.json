@@ -1,7 +1,5 @@
 {
-  "static/js/vigil-ai.js": 32,
   "static/js/vigil-containers.js": 69,
-  "static/js/vigil-pickers.js": 30,
   "static/js/vigil-playbook-flow.js": 81,
   "static/js/vigil-playbooks.js": 95,
   "static/js/vigil-policies.js": 31,

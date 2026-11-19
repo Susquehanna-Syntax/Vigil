@@ -57,22 +57,22 @@ async function openPicker(opts) {
   m.modal.querySelector('#picker-close') || m.setBody(`
     <div class="modal-title">
       <span id="picker-title"></span>
-      <button class="modal-close" id="picker-close" aria-label="Close">
+      <button class="modal-close" id="picker-close" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="picker-toolbar">
-      <input type="text" class="form-control" id="picker-search" placeholder="Search…">
-      <button class="btn btn-mint btn-sm" id="picker-add" type="button">Add new</button>
+      <input type="text" class="form-control" id="picker-search" placeholder="${escAttr(t('Search…'))}">
+      <button class="btn btn-mint btn-sm" id="picker-add" type="button">${escHtml(t('Add new'))}</button>
     </div>
     <div class="picker-list" id="picker-list"></div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#picker-close')).onclick = m.close;
   /** @type {HTMLElement} */ (m.modal.querySelector('#picker-title')).textContent =
-    opts.title || ('Pick a ' + opts.type);
+    opts.title || t('Pick a {item}', { item: opts.type });
   const addBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#picker-add'));
   addBtn.style.display = opts.allowAdd === false ? 'none' : '';
-  addBtn.textContent = opts.type === 'playbook' ? 'New playbook'
-    : opts.type === 'task' ? 'New task' : 'Add';
+  addBtn.textContent = opts.type === 'playbook' ? t('New playbook')
+    : opts.type === 'task' ? t('New task') : t('Add');
   addBtn.onclick = () => _pickerAdd(opts.type);
   const search = /** @type {HTMLInputElement} */ (m.modal.querySelector('#picker-search'));
   search.value = '';
@@ -92,7 +92,7 @@ let _pickerItems = [];
 /** @param {string} type @returns {Promise<void>} */
 async function _loadPickerData(type) {
   const list = /** @type {HTMLElement} */ (document.getElementById('picker-list'));
-  list.innerHTML = '<div class="picker-empty">Loading…</div>';
+  list.innerHTML = `<div class="picker-empty">${escHtml(t('Loading…'))}</div>`;
   // A caller may supply its own items (a fixed in-page list, like the task
   // editor's starter templates) rather than a type the picker knows how to
   // fetch. Same modal, same search, no API round-trip.
@@ -107,8 +107,9 @@ async function _loadPickerData(type) {
     if (type === 'task') {
       const defs = await apiJson('/api/v1/tasks/definitions/');
       _pickerItems = (Array.isArray(defs) ? defs : defs.results || []).map((/** @type {TaskDefRow} */ d) => ({
-        key: d.id, name: d.name, meta: (d.risk_level || 'standard') + ' · ' +
-          ((d.parsed_spec && d.parsed_spec.actions ? d.parsed_spec.actions.length : d.action_count || 0) + ' action(s)'),
+        key: d.id, name: d.name, meta: t('{risk} · {count}', {
+          risk: d.risk_level || 'standard',
+          count: tn('{n} action', '{n} actions', (d.parsed_spec && d.parsed_spec.actions ? d.parsed_spec.actions.length : d.action_count || 0)) }),
         risk: d.risk_level, editable: true, raw: d }));
     } else if (type === 'rollout_target') {
       // Tasks and playbooks in one list — a rollout can carry either, and the
@@ -122,29 +123,29 @@ async function _loadPickerData(type) {
         apiJson('/api/v1/tasks/definitions/'),
         apiJson('/api/v1/playbooks/').catch(() => null),
       ]);
-      _pickerPartialFailure = bls === null ? 'playbooks' : null;
+      _pickerPartialFailure = bls === null ? t('playbooks') : null;
       const defList = Array.isArray(defs) ? defs : defs.results || [];
       const blRaw = bls === null ? [] : (Array.isArray(bls) ? bls : bls.playbooks || []);
       const blList = blRaw.filter((/** @type {PlaybookRow} */ b) => b.enabled !== false);
       _pickerItems = [
         ...defList.map((/** @type {TaskDefRow} */ d) => ({
           key: 'task:' + d.id, name: d.name,
-          meta: 'task · ' + (d.risk_level || 'standard'),
+          meta: t('task · {risk}', { risk: d.risk_level || 'standard' }),
           risk: d.risk_level, editable: false, raw: d })),
         ...blList.map((/** @type {PlaybookRow} */ b) => ({
           key: 'playbook:' + b.id, name: b.name,
-          meta: 'playbook · ' + b.steps.length + (b.steps.length === 1 ? ' step' : ' steps'),
+          meta: t('playbook · {steps}', { steps: tn('{n} step', '{n} steps', b.steps.length) }),
           editable: false, raw: b })),
       ];
     } else if (type === 'playbook') {
       const bl = await apiJson('/api/v1/playbooks/');
       _pickerItems = bl.map((/** @type {PlaybookRow} */ b) => ({ key: b.name, name: b.name,
-        meta: b.steps.length + ' step(s)' + (b.enabled ? '' : ' · auto-enroll off'),
+        meta: tn('{n} step', '{n} steps', b.steps.length) + (b.enabled ? '' : ' · ' + t('auto-enroll off')),
         editable: true, raw: b }));
     } else {
       const hosts = await apiJson('/api/v1/status-pages/hosts/');
       _pickerItems = hosts.map((/** @type {HostRow} */ h) => ({ key: h.id, name: h.hostname,
-        meta: h.up ? 'online' : 'offline', editable: false, raw: h }));
+        meta: h.up ? t('online') : t('offline'), editable: false, raw: h }));
     }
   } catch (e) { list.innerHTML = `<div class="picker-empty">${escHtml(e.message)}</div>`; }
 }
@@ -159,9 +160,9 @@ function _renderPickerList(q) {
     // Distinguish "we could not ask" from "there is nothing": they point an
     // operator in opposite directions.
     const nothing = _pickerPartialFailure
-      ? `Could not load ${escHtml(_pickerPartialFailure)} — that request failed. Close and reopen to retry.`
-      : 'Nothing here yet — use “Add new”.';
-    list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : nothing}</div>`;
+      ? t('Could not load {what} — that request failed. Close and reopen to retry.', { what: _pickerPartialFailure })
+      : t('Nothing here yet — use “Add new”.');
+    list.innerHTML = `<div class="picker-empty">${escHtml(_pickerItems.length ? t('No matches.') : nothing)}</div>`;
     return;
   }
   list.innerHTML = items.map((/** @type {PickerItem} */ i, /** @type {number} */ idx) => {
@@ -175,8 +176,8 @@ function _renderPickerList(q) {
         <span class="picker-row-meta">${escHtml(i.meta || '')}${why ? ` · <span class="picker-why">${escHtml(why)}</span>` : ''}</span>
       </div>
       <div class="picker-row-actions">
-        ${i.editable ? `<button class="btn btn-sky btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
-        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escAttr(why)}"` : ''}>Select</button>
+        ${i.editable ? `<button class="btn btn-sky btn-xs" data-pick-edit="${idx}">${escHtml(t('Edit'))}</button>` : ''}
+        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escAttr(why)}"` : ''}>${escHtml(t('Select'))}</button>
       </div>
     </div>`;
   }).join('');
@@ -201,7 +202,7 @@ function _pickerAdd(type) {
   if (type === 'task') {
     openTaskModal({ onSaved: (def) => {
       _loadPickerData('task').then(() => _renderPickerList(''));
-      showToast('Task created', 'success');
+      showToast(t('Task created'), 'success');
     } });
   } else if (type === 'playbook') {
     closePicker();
@@ -224,14 +225,14 @@ async function openInputsModal(opts) {
   const sections = actions.map((/** @type {SpecAction} */ a, /** @type {number} */ i) => {
     const entry = _actionRegistry[a.type];
     const head = `<div class="inputs-action"><span class="bl-editor-step-num">${i + 1}</span> ${escHtml(entry && entry.label ? entry.label : a.type)}</div>`;
-    if (!entry) return head + '<div class="muted-note">No editable inputs.</div>';
+    if (!entry) return head + `<div class="muted-note">${escHtml(t('No editable inputs.'))}</div>`;
     const names = [...(entry.required || []), ...(entry.optional || [])];
-    if (!names.length) return head + '<div class="muted-note">This action takes no inputs.</div>';
+    if (!names.length) return head + `<div class="muted-note">${escHtml(t('This action takes no inputs.'))}</div>`;
     const rows = names.map((/** @type {string} */ name) => {
       const required = (entry.required || []).includes(name);
       const current = (override[String(i)] || {})[name];
       const fallback = (a.params || {})[name];
-      return `<label>${escHtml(name)}${required ? ' *' : ''}</label>
+      return `<label>${escHtml(name)}${required ? ' ' + escHtml(t('(required)')) : ''}</label>
         <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escAttr(name)}"
           value="${current != null ? escHtml(String(current)) : ''}"
           placeholder="${fallback != null ? escHtml(String(fallback)) : ''}">`;
@@ -240,17 +241,17 @@ async function openInputsModal(opts) {
   }).join('');
   m.setBody(`
     <div class="modal-title">
-      <span>Inputs — ${escHtml(def.name)}</span>
-      <button class="modal-close" id="inputs-close" aria-label="Close">
+      <span>${t('Inputs — {name}', { name: def.name })}</span>
+      <button class="modal-close" id="inputs-close" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="muted-note inputs-intro-note">Changes apply only where this task is used here — the task itself is untouched. Blank fields use the task's own values.</div>
-    ${sections || '<div class="muted-note">This task has no actions.</div>'}
+    <div class="muted-note inputs-intro-note">${escHtml(t('Changes apply only where this task is used here — the task itself is untouched. Blank fields use the task\'s own values.'))}</div>
+    ${sections || `<div class="muted-note">${escHtml(t('This task has no actions.'))}</div>`}
     <div class="modal-actions">
-      <button class="btn btn-ghost" id="inputs-reset" type="button">Reset to task defaults</button>
-      <button class="btn btn-ghost" id="inputs-cancel" type="button">Cancel</button>
-      <button class="btn btn-mint" id="inputs-save" type="button">Save inputs</button>
+      <button class="btn btn-ghost" id="inputs-reset" type="button">${escHtml(t('Reset to task defaults'))}</button>
+      <button class="btn btn-ghost" id="inputs-cancel" type="button">${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint" id="inputs-save" type="button">${escHtml(t('Save inputs'))}</button>
     </div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#inputs-close')).onclick = m.close;
   /** @type {HTMLElement} */ (m.modal.querySelector('#inputs-cancel')).onclick = m.close;
@@ -298,7 +299,7 @@ function inputsFormMount(container, inputs, values) {
     if (inp.type === 'text' && inp.required) {
       const req = document.createElement('span');
       req.className = 'inputs-form-req';
-      req.textContent = ' (required)';
+      req.textContent = t('(required)');
       label.appendChild(req);
     }
 
@@ -362,9 +363,9 @@ function inputsFormRead(container) {
     if (!error) {
       const name = (row.querySelector('.inputs-form-label')?.firstChild?.textContent || id).trim();
       if (type === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
-        error = `${name}: enter a number`;
+        error = t('{name}: enter a number', { name });
       } else if (ctrl.required && !ctrl.value.trim()) {
-        error = `${name} is required`;
+        error = t('{name} is required', { name });
       }
     }
     if (type === 'boolean') values[id] = !!ctrl.checked;
@@ -391,28 +392,28 @@ function openTaskModal(opts) {
   m.modal.classList.add('te-modal');
   m.setBody(`
     <div class="modal-title">
-      <span id="te-title">${opts.id ? 'Edit task' : 'New task'}</span>
-      <button class="modal-close" id="te-close" aria-label="Close">
+      <span id="te-title">${opts.id ? escHtml(t('Edit task')) : escHtml(t('New task'))}</span>
+      <button class="modal-close" id="te-close" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="te-grid">
       <div class="te-pane">
-        <label class="form-label">Task YAML</label>
+        <label class="form-label">${escHtml(t('Task YAML'))}</label>
         <div class="te-editor" id="te-editor">
           <pre class="te-highlight" id="te-highlight" aria-hidden="true"></pre>
           <textarea class="te-yaml" id="te-yaml" spellcheck="false" autocapitalize="off" autocorrect="off"
-            placeholder="name: My task&#10;risk: standard&#10;actions:&#10;  - type: run_command&#10;    params:&#10;      command: uptime"></textarea>
+            placeholder="${escAttr(t('name: My task{"nl"}risk: standard{"nl"}actions:{"nl"}  - type: run_command{"nl"}    params:{"nl"}      command: uptime', { nl: '\n' }))}"></textarea>
         </div>
       </div>
       <div class="te-pane">
-        <label class="form-label">Preview</label>
-        <div class="te-preview" id="te-preview"><div class="muted-note">Start typing to see steps.</div></div>
+        <label class="form-label">${escHtml(t('Preview'))}</label>
+        <div class="te-preview" id="te-preview"><div class="muted-note">${escHtml(t('Start typing to see steps.'))}</div></div>
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" id="te-cancel" type="button">Cancel</button>
-      <button class="btn btn-mint" id="te-save">Save task</button>
+      <button class="btn btn-ghost" id="te-cancel" type="button">${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint" id="te-save">${escHtml(t('Save task'))}</button>
     </div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#te-close')).onclick = m.close;
   /** @type {HTMLElement} */ (m.modal.querySelector('#te-cancel')).onclick = m.close;
@@ -443,7 +444,7 @@ function openTaskModal(opts) {
 async function _teValidate(yaml) {
   const prev = /** @type {HTMLElement|null} */ (document.getElementById('te-preview'));
   if (!prev) return;
-  if (!yaml.trim()) { prev.innerHTML = '<div class="muted-note">Start typing to see steps.</div>'; return; }
+  if (!yaml.trim()) { prev.innerHTML = `<div class="muted-note">${escHtml(t('Start typing to see steps.'))}</div>`; return; }
   try {
     const r = /** @type {ValidateResult} */ (await apiJson('/api/v1/tasks/definitions/validate/', { method: 'POST', body: JSON.stringify({ yaml_source: yaml }) }));
     const spec = r.parsed_spec || {};
@@ -460,7 +461,7 @@ async function _teValidate(yaml) {
     // tiny per-step stripe.
     prev.innerHTML = `<div class="te-preview-inner task-${escHtml(risk)}">
       <div class="te-preview-name">${escHtml(spec.name || 'Untitled')} <span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span></div>
-      ${steps || '<div class="muted-note">No steps.</div>'}</div>`;
+      ${steps || `<div class="muted-note">${escHtml(t('No steps.'))}</div>`}</div>`;
   } catch (e) {
     prev.innerHTML = `<div class="ai-err">${escHtml(e.message)}</div>`;
   }
@@ -468,12 +469,12 @@ async function _teValidate(yaml) {
 
 /** @param {string} yaml @param {() => void} close @returns {Promise<any>} */
 async function _teSave(yaml, close) {
-  if (!yaml.trim()) return showToast('Write some task YAML', 'error');
+  if (!yaml.trim()) return showToast(t('Write some task YAML'), 'error');
   try {
     let def;
     if (_taskModalId) def = await apiJson(`/api/v1/tasks/definitions/${_taskModalId}/`, { method: 'PUT', body: JSON.stringify({ yaml_source: yaml }) });
     else def = await apiJson('/api/v1/tasks/definitions/', { method: 'POST', body: JSON.stringify({ yaml_source: yaml }) });
-    showToast('Task saved', 'success');
+    showToast(t('Task saved'), 'success');
     close();
     if (_taskModalSaved) _taskModalSaved(def);
   } catch (e) { showToast(e.message, 'error'); }
