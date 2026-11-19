@@ -168,7 +168,7 @@ function _stackStateBadge(rows) {
   const crashed = rows.filter(c => (c.state || '').toLowerCase() === 'dead'
     || ((c.state || '').toLowerCase() === 'exited' && (_ctrExitCode(c) || 0) !== 0));
   const codes = [...new Set(crashed.map(_ctrExitCode).filter(x => x !== null))];
-  const exitNote = codes.length ? ` (exit ${codes.join(', ')})` : '';
+  const exitNote = codes.length ? ` (exit ${codes.join(', ')})` : '';  // i18n-ignore: an exit code, not a sentence
   let text, cls;
   if (running === rows.length) {
     // The word a person reads; the class beside it is a state id, not text.
