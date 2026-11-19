@@ -29,6 +29,7 @@ SCRIPT_GLOB = "static/js/vigil-*.js"
 
 #: Scripts with no bare user-facing string left. Add one when it reaches zero.
 JS_TRANSLATED: list[str] = [
+    "static/js/vigil-containers.js",
     "static/js/vigil-tags.js",
     "static/js/vigil-waves.js",
     "static/js/vigil-monitor.js",
