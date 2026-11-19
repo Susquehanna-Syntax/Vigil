@@ -35,7 +35,7 @@ let _allPlaybooks = [];   // cached, for client-side search
 async function loadPlaybooks() {
   const list = document.getElementById('playbooks-list');
   if (!list) return;
-  list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
+  list.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
   try {
     // Steps may name your own tasks or shared ones (the built-ins a template
     // playbook uses), so both lists feed the names, risks and outputs.
@@ -52,7 +52,7 @@ async function loadPlaybooks() {
     _renderDefPicker();
     _renderPlaybookList(_filterPlaybooks());
   } catch (e) {
-    list.innerHTML = `<div class="empty-block"><h4>Couldn't load playbooks</h4><p>${escHtml(e.message)}</p></div>`;
+    list.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load playbooks"))}</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
@@ -125,46 +125,47 @@ function _defActionCount(id) {
   return Array.isArray(acts) ? acts.length : null;
 }
 
+const BL_INLINE_CODE = '<code class="inline">type: playbook</code>'; // i18n-ignore
 /** @param {any[]} playbooks @returns {void} */
 function _renderPlaybookList(playbooks) {
   const list = document.getElementById('playbooks-list');
   if (!playbooks.length) {
     list.innerHTML = `<div class="empty-block">
-      <h4>No playbooks yet</h4>
-      <p>A playbook is a named sequence of tasks that runs automatically when a matching host is approved — and can be called from any task with <code class="inline">type: playbook</code>. Create one to standardise how new machines get set up.</p></div>`;
+      <h4>${escHtml(t('No playbooks yet'))}</h4>
+      <p>${t('A playbook is a named sequence of tasks that runs automatically when a matching host is approved — and can be called from any task with {code}. Create one to standardise how new machines get set up.', { code: BL_INLINE_CODE })}</p></div>`;
     return;
   }
   list.innerHTML = playbooks.map(b => {
     const steps = flowReadOnlyHtml(flowTreeFromRow(b));
     const tags = (b.target_tags || []).length
-      ? (b.target_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
-      : '<span class="muted-note">every approved host</span>';
+      ? (b.target_tags || []).map(tag => `<span class="chip">${escHtml(tag)}</span>`).join(' ')
+      : `<span class="muted-note">${escHtml(t('every approved host'))}</span>`;
     return `<div class="bl-card">
       <div class="bl-card-head">
         <div>
           <span class="bl-name">${escHtml(b.name)}</span>
-          <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? 'auto-enroll on' : 'auto-enroll off'}</span>
-          ${b.completion_tag ? `<span class="chip">done: ${escHtml(b.completion_tag)}</span>` : ''}
-          ${b.failing_hosts ? `<span class="chip chip-rose">held back on ${b.failing_hosts} host${b.failing_hosts === 1 ? '' : 's'}</span>` : ''}
+          <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? escHtml(t('auto-enroll on')) : escHtml(t('auto-enroll off'))}</span>
+          ${b.completion_tag ? `<span class="chip">${escHtml(t('done:'))} ${escHtml(b.completion_tag)}</span>` : ''}
+          ${b.failing_hosts ? `<span class="chip chip-rose">${escHtml(tn('held back on {n} host', 'held back on {n} hosts', b.failing_hosts))}</span>` : ''}
           ${b.description ? `<div class="muted-note bl-desc-line">${escHtml(b.description)}</div>` : ''}
         </div>
         <div class="card-actions">
-          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>
-          ${b.failing_hosts ? `<button class="btn btn-rose btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">Review failures</button>` : ''}
-          <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">Duplicate</button>
-          <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">Edit</button>
-          <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">Archive</button>
-          <button class="btn btn-rose btn-xs" data-bl-del="${b.id}">Delete</button>
+          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? escHtml(t('Turn auto-enroll off')) : escHtml(t('Turn auto-enroll on'))}</button>
+          ${b.failing_hosts ? `<button class="btn btn-rose btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">${escHtml(t('Review failures'))}</button>` : ''}
+          <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">${escHtml(t('Duplicate'))}</button>
+          <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">${escHtml(t('Edit'))}</button>
+          <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">${escHtml(t('Archive'))}</button>
+          <button class="btn btn-rose btn-xs" data-bl-del="${b.id}">${escHtml(t('Delete'))}</button>
         </div>
       </div>
       <div class="bl-seq">${steps}</div>
       <div class="bl-meta">
-        <span><b>${b.steps.length}</b> step${b.steps.length === 1 ? '' : 's'}</span>
-        <span>Runs on: ${tags}</span>
+        <span>${tn('{n} step', '{n} steps', b.steps.length, { n: `<b>${b.steps.length}</b>` })}</span>
+        <span>${escHtml(t('Runs on:'))} ${tags}</span>
       </div>
       <div class="bl-call">
-        <div class="bl-call-label">Call from a task:</div>
-        <pre>${yamlToHtml('- type: playbook\n  params: { name: "' + b.name + '" }')}</pre>
+        <div class="bl-call-label">${escHtml(t('Call from a task:'))}</div>
+        <pre>${yamlToHtml(blCallSnippet(b.name))}</pre>
       </div>
     </div>`;
   }).join('');
@@ -174,7 +175,7 @@ function _renderPlaybookList(playbooks) {
 function _wireCards(playbooks) {
   const list = document.getElementById('playbooks-list');
   list.querySelectorAll('[data-bl-del]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
-    if (!(await confirmModal('Delete this playbook? Tasks that call it by name will start failing.', { danger: true, confirmText: 'Delete' }))) return;
+    if (!(await confirmModal(t('Delete this playbook? Tasks that call it by name will start failing.'), { danger: true, confirmText: t('Delete') }))) return;
     await fetch(`/api/v1/playbooks/${btn.dataset.blDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
     loadPlaybooks();
   }));
@@ -192,9 +193,8 @@ function _wireCards(playbooks) {
   }));
   list.querySelectorAll('[data-bl-archive]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
     if (!(await confirmModal(
-      'Archive this playbook? It stops auto-enrolling and leaves the list. ' +
-      'Anything already referencing it keeps working, and its run history stays.',
-      { confirmText: 'Archive', danger: false }))) return;
+      t('Archive this playbook? It stops auto-enrolling and leaves the list. Anything already referencing it keeps working, and its run history stays.'),
+      { confirmText: t('Archive'), danger: false }))) return;
     await apiJson(`/api/v1/playbooks/${btn.dataset.blArchive}/archive/`, {
       method: 'POST', body: JSON.stringify({}) });
     loadPlaybooks();
@@ -219,19 +219,19 @@ function _wireCards(playbooks) {
 async function _openFailures(playbookId, name) {
   const m = mountModal('bl-failures', { wide: true });
   const head = `<div class="modal-title">
-      <span>Held back — ${escHtml(name || 'playbook')}</span>
-      <button class="modal-close" data-blf-close aria-label="Close">
+      <span>${escHtml(t('Held back —'))} ${escHtml(name || 'playbook')}</span>
+      <button class="modal-close" data-blf-close aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>`;
-  m.setBody(head + '<p class="muted-note">Loading…</p>');
+  m.setBody(head + `<p class="muted-note">${escHtml(t('Loading…'))}</p>`);
   m.open();
 
   let rows = [];
   try {
     rows = await apiJson(`/api/v1/playbooks/${playbookId}/failures/`);
   } catch (e) {
-    m.setBody(head + `<p class="muted-note">Could not read the failures: ${escHtml(String(e.message || e))}</p>`);
+    m.setBody(head + `<p class="muted-note">${escHtml(t('Could not read the failures: {message}', { message: String(e.message || e) }))}</p>`);
     m.modal.querySelectorAll('[data-blf-close]').forEach(b => b.addEventListener('click', m.close));
     return;
   }
@@ -242,21 +242,19 @@ async function _openFailures(playbookId, name) {
           <span class="blf-host">${escHtml(r.hostname)}</span>
           <span class="chip chip-muted">${escHtml(r.state || 'failed')}</span>
           ${r.at ? `<span class="muted-note">${escHtml(new Date(r.at).toLocaleString())}</span>` : ''}
-          <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">Retry here</button>
+          <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">${escHtml(t('Retry here'))}</button>
         </div>
         ${r.output ? `<pre class="blf-output term term-wrap">${termHtml(r.output)}</pre>`
-                   : '<p class="muted-note">The agent reported no output.</p>'}
+                   : `<p class="muted-note">${escHtml(t('The agent reported no output.'))}</p>`}
       </div>`).join('')
-    : '<p class="muted-note">Nothing is held back any more.</p>';
+    : `<p class="muted-note">${escHtml(t('Nothing is held back any more.'))}</p>`;
 
   m.setBody(head
-    + '<p class="muted-note">Auto-enrolment stops on a host when its last run of this '
-    + 'playbook failed there, so one broken playbook cannot redispatch to the same machine '
-    + 'every five minutes. Retrying dispatches it again — that new run is what clears this.</p>'
+    + `<p class="muted-note">${escHtml(t('Auto-enrolment stops on a host when its last run of this playbook failed there, so one broken playbook cannot redispatch to the same machine every five minutes. Retrying dispatches it again — that new run is what clears this.'))}</p>`
     + `<div class="blf-list">${body}</div>`
     + `<div class="modal-actions">
-         ${rows.length ? `<button class="btn btn-mint" data-blf-retry-all>Retry all ${rows.length}</button>` : ''}
-         <button class="btn btn-outline" data-blf-close>Close</button>
+         ${rows.length ? `<button class="btn btn-mint" data-blf-retry-all>${escHtml(t('Retry all {count}', { count: rows.length }))}</button>` : ''}
+         <button class="btn btn-outline" data-blf-close>${escHtml(t('Close'))}</button>
        </div>`);
 
   const retry = async (payload) => {
@@ -276,7 +274,7 @@ async function _openFailures(playbookId, name) {
 function _renderDefPicker() {
   const sel = document.getElementById('bl-def-picker');
   if (!sel) return;
-  sel.innerHTML = '<option value="">+ Add a task to the sequence…</option>' +
+  sel.innerHTML = `<option value="">${escHtml(t('+ Add a task to the sequence…'))}</option>` +
     _playbookDefs.map(d => `<option value="${d.id}">${escHtml(d.name)} · ${escHtml(d.risk_level || d.risk || 'standard')}</option>`).join('');
 }
 
@@ -358,7 +356,7 @@ function _blInsert(at, node) {
 }
 
 function _blAddTask(at) {
-  openPicker({ type: 'task', title: 'Add a task to the playbook',
+  openPicker({ type: 'task', title: t('Add a task to the playbook'),
     ineligible: (item) => _blIneligible(item.raw),
     onSelect: (item) => {
       // The task may have been created inside the picker, after the page's defs were loaded.
@@ -382,9 +380,9 @@ function _blInsertMenu(btn) {
   // and once a lane ends in one, that "+" is gone (its edge carries no
   // insert), which is how "nothing after a go to" holds on the canvas too.
   const atLaneEnd = +i === flowLane(_editingTree, lane).length;
-  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">Task</button>
-    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`
-    + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">Go to</button>` : '');
+  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">${escHtml(t('Task'))}</button>
+    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">${escHtml(t('If / else'))}</button>`
+    + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">${escHtml(t('Go to'))}</button>` : '');
   const vr = vp.getBoundingClientRect();
   const br = btn.getBoundingClientRect();
   menu.style.left = `${br.left - vr.left + br.width / 2}px`;
@@ -492,7 +490,7 @@ function _renderInspector() {
   on('[data-flow-inputs]', 'click', el => {
     const { node } = _blAt(el.dataset.flowInputs);
     const def = _playbookDefs.find(d => String(d.id) === node.def);
-    if (!def) return showToast('Task not loaded yet', 'error');
+    if (!def) return showToast(t('Task not loaded yet'), 'error');
     openInputsModal({ def, override: node.ov, onSave: (ov) => { node.ov = ov; _renderEditorSteps(); } });
   });
   on('[data-flow-view]', 'click', el => {
@@ -538,10 +536,10 @@ function _blSetupBuilder(box, at) {
   const whatOptions = (sid, what) => {
     const step = stepBySid(sid);
     const outputs = step ? _blDefOutputs(step.def) : [];
-    const opts = ['<option value="status">its result (ok, failed, …)</option>']
-      .concat(outputs.map(o => `<option value="${escAttr(o)}">output: ${escHtml(o)}</option>`));
+    const opts = [`<option value="status">${escHtml(t('its result (ok, failed, …)'))}</option>`]
+      .concat(outputs.map(o => `<option value="${escAttr(o)}">${escHtml(t('output: {name}', { name: o }))}</option>`));
     if (what !== 'status' && !outputs.includes(what)) {
-      opts.push(`<option value="${escAttr(what)}">output: ${escHtml(what)}</option>`);
+      opts.push(`<option value="${escAttr(what)}">${escHtml(t('output: {name}', { name: what }))}</option>`);
     }
     return opts.join('');
   };
@@ -555,7 +553,7 @@ function _blSetupBuilder(box, at) {
       <div class="fb-line">
         <select data-fb-op data-row="${i}">${opOptions(r.what)}</select>
         <span data-fb-value-wrap data-row="${i}"></span>
-        <button type="button" class="btn btn-rose btn-xs" data-fb-rm data-row="${i}" aria-label="Remove this condition">×</button>
+        <button type="button" class="btn btn-rose btn-xs" data-fb-rm data-row="${i}" aria-label="${escAttr(t('Remove this condition'))}">×</button>
       </div>
     </div>`).join('');
     rowsBox.querySelectorAll('[data-fb-step]').forEach(el => {
@@ -646,21 +644,28 @@ function _blInputTypeMeta(type) {
   return { text: 'Text', number: 'Number', boolean: 'Yes / no', choice: 'Choice' }[type] || type;
 }
 
+const BL_CALL_SNIPPET_HEAD = '- type: playbook\n  params: { name: "'; // i18n-ignore
+const BL_CALL_SNIPPET_TAIL = '" }'; // i18n-ignore
+/** The YAML a task uses to call the playbook `name`. */
+function blCallSnippet(name) {
+  return BL_CALL_SNIPPET_HEAD + name + BL_CALL_SNIPPET_TAIL;
+}
+
 function _renderBlInputs() {
   const box = document.getElementById('bl-inputs');
   if (!box) return;
   if (!_blInputs.length) {
-    box.innerHTML = '<div class="bl-inputs-empty">This playbook asks for no inputs.</div>';
+    box.innerHTML = `<div class="bl-inputs-empty">${escHtml(t('This playbook asks for no inputs.'))}</div>`;
     return;
   }
   box.innerHTML = _blInputs.map((inp, i) => {
     const bits = [escHtml(inp.id), escHtml(_blInputTypeMeta(inp.type))];
     if (inp.type !== 'boolean') bits.push(escHtml(`${inp.default === '' || inp.default == null ? '(no default)' : inp.default}`));
-    if (inp.required) bits.push('<span class="bl-inputs-flag">required</span>');
+    if (inp.required) bits.push(`<span class="bl-inputs-flag">${escHtml(t('required'))}</span>`);
     return `<div class="bl-inputs-row">
       <span class="bl-inputs-bits">${bits.join(' · ')}</span>
-      <button type="button" class="btn btn-sky btn-xs" data-bl-input-edit="${i}">Edit</button>
-      <button type="button" class="btn btn-rose btn-xs" data-bl-input-rm="${i}">Remove</button>
+      <button type="button" class="btn btn-sky btn-xs" data-bl-input-edit="${i}">${escHtml(t('Edit'))}</button>
+      <button type="button" class="btn btn-rose btn-xs" data-bl-input-rm="${i}">${escHtml(t('Remove'))}</button>
     </div>`;
   }).join('');
   box.querySelectorAll('[data-bl-input-edit]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener(
