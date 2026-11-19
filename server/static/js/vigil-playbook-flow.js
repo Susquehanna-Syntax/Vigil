@@ -629,7 +629,24 @@ function _flJumpPath(a, b, apexY) {
   return `M${a.x},${a.y} C${a.x},${apexY} ${b.x},${apexY} ${b.x},${b.y}`;
 }
 
-const _FLOW_COUNT_WORDS = { ok: 'ok', failed: 'failed', not_applicable: 'n/a', skipped: 'skipped', pending: 'waiting' };
+// The flow node's small fixed labels. A person reads all of them, and "if",
+// "go to", "true" and "otherwise" also name CSS classes (p-then, fcn-goto-mark),
+// so each one is said once here and put into markup from a variable. The
+// i18n-ignore on each line covers only the class-name fragment it shares with
+// the word; every label below still goes through t().
+const _FLOW_IF_MARK = () => t('if'); // i18n-ignore: same word as the fcn-if-mark class name
+const _FLOW_GOTO_MARK = () => t('go to'); // i18n-ignore: same words as the fcn-goto-mark class name
+const _FLOW_PORT_LABELS = { true: () => t('true'), otherwise: () => t('otherwise') }; // i18n-ignore: same words as the p-then / p-else class names
+// The count badge's word is also its class fragment (fs-ok, fs-failed), so the
+// literal lives here and only the number goes through t().
+const _FLOW_COUNT_WORDS = { ok: 'ok', failed: 'failed', not_applicable: 'n/a', skipped: 'skipped', pending: 'waiting' }; // i18n-ignore: each word is also a fs-<key> class fragment
+const _FLOW_START_LABEL = () => t('Start');
+const _FLOW_END_LABEL = () => t('End');
+const _FLOW_ADD_CONDITION = () => t('add a condition');
+const _FLOW_OR_IF_MARK = () => t('or if');
+// Expression samples the condition boxes show while empty: syntax, not a sentence.
+const _FLOW_ELIF_CONDITION_PLACEHOLDER = 'steps.check.result.count > 5'; // i18n-ignore
+const _FLOW_IF_CONDITION_PLACEHOLDER = 'steps.check.result.count > 0'; // i18n-ignore
 
 const INPUT_REF_TOKEN = '${{ inputs.<id> }}'; // i18n-ignore: not a sentence, the text names an input reference
 
@@ -640,12 +657,12 @@ function _flStepNodeHtml(ln, num, opts) {
   const risk = ctx ? ctx.defRisk(s.def) : s.risk;
   const why = ctx ? ctx.ineligible(s.def) : null;
   const st = stats && stats[s.sid];
-  const flags = [s.ona === 'skip' ? 'n/a: go on' : '', s.onf === 'continue' ? 'fails: carry on' : ''].filter(Boolean);
+  const flags = [s.ona === 'skip' ? t('n/a: go on') : '', s.onf === 'continue' ? t('fails: carry on') : ''].filter(Boolean);
   const counts = st ? ['ok', 'failed', 'not_applicable', 'skipped', 'pending'].filter(k => st[k])
-    .map(k => `<span class="flow-count fs-${k}">${st[k]} ${escHtml(_FLOW_COUNT_WORDS[k])}${k === 'failed' && s.onf === 'continue' ? ', handled' : ''}</span>`).join('') : '';
-  const third = counts || (s.outcome ? `<span class="flow-outcome">ends as “${escHtml(s.outcome)}”</span>` : '')
+    .map(k => `<span class="flow-count fs-${k}">${escHtml(_FLOW_COUNT_WORDS[k] + (k === 'failed' && s.onf === 'continue' ? t(', handled') : ''))}</span>`).join('') : '';
+  const third = counts || (s.outcome ? `<span class="flow-outcome">${escHtml(t('ends as “{outcome}”', { outcome: s.outcome }))}</span>` : '')
     || (risk && !stats ? `<span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span>` : '');
-  const tip = [name, `id ${s.sid}`, ...flags, s.outcome ? `outcome: ${s.outcome}` : '', why || ''].filter(Boolean).join('\n');
+  const tip = [name, t('id {sid}', { sid: s.sid }), ...flags, s.outcome ? t('outcome: {outcome}', { outcome: s.outcome }) : '', why || ''].filter(Boolean).join('\n');
   const cls = ['fcn', 'fcn-step', _flowColorClass(s.color), why ? 'fcn-bad' : '',
     st && !st.total ? 'fcn-unreached' : '', selected === ln.at ? 'is-sel' : ''].filter(Boolean).join(' ');
   const tag = ctx ? 'button type="button"' : 'div';
@@ -671,14 +688,14 @@ function _flIfNodeHtml(ln, opts) {
   const ports = arms.length > 2
     ? arms.map((arm, k) => {
         const side = arm.key === 'then' ? 'then' : arm.key === 'else' ? 'else' : 'elif';
-        const label = arm.key === 'then' ? 'true' : arm.key === 'else' ? 'otherwise' : `or if ${arm.key.slice(4)}`;
-        return `<span class="fcn-port p-${side}" data-css="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${label}${took ? ` <b>${took[arm.key] || 0}</b>` : ''}</span>`;
+        const label = arm.key === 'then' ? _FLOW_PORT_LABELS.true() : arm.key === 'else' ? _FLOW_PORT_LABELS.otherwise() : `${_FLOW_OR_IF_MARK()} ${arm.key.slice(4)}`;
+        return `<span class="fcn-port p-${side}" data-css="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${escHtml(label)}${took ? ` <b>${took[arm.key] || 0}</b>` : ''}</span>`;
       }).join('')
-    : `${port('then', 'true')}${port('else', 'otherwise')}`;
+    : `${port('then', _FLOW_PORT_LABELS.true())}${port('else', _FLOW_PORT_LABELS.otherwise())}`;
   return `<${tag} class="${cls}" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
-      ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(cond ? `if ${cond}` : 'No condition yet')}">
-    <span class="fcn-if-mark">if</span>
-    <span class="fcn-cond">${cond ? escHtml(flowCondSummary(cond)) : '<em>add a condition</em>'}</span>
+      ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(cond ? t('if {condition}', { condition: cond }) : t('No condition yet'))}">
+    <span class="fcn-if-mark">${escHtml(_FLOW_IF_MARK())}</span>
+    <span class="fcn-cond">${cond ? escHtml(flowCondSummary(cond)) : `<em>${escHtml(_FLOW_ADD_CONDITION())}</em>`}</span>
     ${ports}
   </${tag.split(' ')[0]}>`;
 }
@@ -693,11 +710,11 @@ function _flGotoNodeHtml(ln, opts) {
   const tag = ctx ? 'button type="button"' : 'div';
   const max = node.max || 3;
   const sub = jumped && jumped.jumped != null
-    ? `${jumped.jumped} jumped`
-    : ln.back ? `back, up to ${escHtml(max)} times` : 'jump ahead';
+    ? escHtml(t('{n} jumped', { n: jumped.jumped }))
+    : ln.back ? escHtml(t('back, up to {max} times', { max })) : escHtml(t('jump ahead'));
   return `<${tag} class="${cls}" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
-      ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(target ? `go to ${target}` : 'Choose a step for this go to')}">
-    <span class="fcn-row"><span class="fcn-goto-mark">go to</span><code>${escHtml(target || '?')}</code></span>
+      ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(target ? t('go to {step}', { step: target }) : t('Choose a step for this go to'))}">
+    <span class="fcn-row"><span class="fcn-goto-mark">${escHtml(_FLOW_GOTO_MARK())}</span><code>${escHtml(target || '?')}</code></span>
     <span class="fcn-row fcn-sub">${sub}</span>
   </${tag.split(' ')[0]}>`;
 }
@@ -730,7 +747,7 @@ function flowCanvasHtml(tree, opts = {}) {
     if (ln.type === 'if') return _flIfNodeHtml(ln, opts);
     if (ln.type === 'goto') return _flGotoNodeHtml(ln, opts);
     if (ln.type === 'join') return `<span class="fcn-join" data-css="left:${ln.x}px;top:${ln.y}px"></span>`;
-    return `<span class="fcn-pill" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px">${ln.type === 'start' ? 'Start' : 'End'}</span>`;
+    return `<span class="fcn-pill" data-css="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px">${ln.type === 'start' ? _FLOW_START_LABEL() : _FLOW_END_LABEL()}</span>`;
   }).join('');
   const faded = (e) => {
     if (!stats) return false;
@@ -744,7 +761,7 @@ function flowCanvasHtml(tree, opts = {}) {
   const jumpLabels = lay.jumps.map((j) => {
     const max = _flowGotoNodeAt(tree, j.at).max;
     return `<span class="fcj-label" data-css="left:${(j.a.x + j.b.x) / 2}px;top:${j.apexY}px">`
-      + `${j.back ? `back ×${escHtml(max)}` : 'go to'}</span>`;
+      + `${j.back ? escHtml(t('back ×{max}', { max })) : escHtml(_FLOW_GOTO_MARK())}</span>`;
   }).join('');
   // Tall enough to show the flow at the smallest scale a fit will use.
   const [lo, hi] = edit ? [320, 620] : [140, 420];
@@ -901,7 +918,7 @@ function flowInspectorHtml(tree, at, ctx) {
     return `<div class="fi-empty">
       <p><b>${escHtml(t('Select a step or an if'))}</b> ${escHtml(t('to change it.'))}</p>
       <p>${escHtml(t('Press'))} <span class="fi-plus">+</span> ${escHtml(t('on any line to add a task or an if / else at that point.'))}</p>
-      <p>${t('Each if forks the flow: the {trueBand} band runs when its condition holds, the {otherwiseBand} band when it doesn\'t, and both meet again at the dot. Add an {orIfExit} exit for anything in between.', { trueBand: `<span class="fi-then">${escHtml(t('true'))}</span>`, otherwiseBand: `<span class="fi-else">${escHtml(t('otherwise'))}</span>`, orIfExit: `<span class="fi-elif">${escHtml(t('or if'))}</span>` })}</p>
+      <p>${t("Each if forks the flow: the {trueBand} band runs when its condition holds, the {otherwiseBand} band when it doesn't, and both meet again at the dot. Add an {orIfExit} exit for anything in between.", { trueBand: `<span class="fi-then">${escHtml(t('true'))}</span>`, otherwiseBand: `<span class="fi-else">${escHtml(t('otherwise'))}</span>`, orIfExit: `<span class="fi-elif">${escHtml(t('or if'))}</span>` })}</p>
     </div>`;
   }
   const [lane, idx] = at.split('|');
@@ -947,7 +964,7 @@ function flowInspectorHtml(tree, at, ctx) {
     const elifs = arms.slice(1, -1).map((arm, k) => `<div class="fi">
       <div class="fi-head"><span class="fi-elif">${escHtml(t('or if'))} ${k + 1}</span> ${escHtml(t('Another exit'))}</div>
       <label class="fi-field">${escHtml(t('Expression'))}
-        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(`${at}#elif${k + 1}`)}" placeholder="steps.check.result.count > 5" spellcheck="false>${escHtml(arm.cond || '')}</textarea></label>
+        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(`${at}#elif${k + 1}`)}" placeholder="${_FLOW_ELIF_CONDITION_PLACEHOLDER}" spellcheck="false">${escHtml(arm.cond || '')}</textarea></label>
       <div class="fi-words" data-flow-words="${escAttr(`${at}#elif${k + 1}`)}">${arm.cond ? escHtml(flowCondSummary(arm.cond)) : ''}</div>
       ${builder(`${at}#elif${k + 1}`, arm.cond, 'Conditions')}
       <div class="fi-actions">
@@ -957,7 +974,7 @@ function flowInspectorHtml(tree, at, ctx) {
     return `<div class="fi">
       <div class="fi-head"><span class="fcn-if-mark">${escHtml(t('if'))}</span> ${escHtml(t('Decision'))}</div>
       <label class="fi-field">${escHtml(t('Expression'))}
-        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(at)}" placeholder="steps.check.result.count > 0" spellcheck="false">${escHtml(node.cond || '')}</textarea></label>
+        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(at)}" placeholder="${_FLOW_IF_CONDITION_PLACEHOLDER}" spellcheck="false">${escHtml(node.cond || '')}</textarea></label>
       <div class="fi-words" data-flow-words="${escAttr(at)}">${node.cond ? escHtml(flowCondSummary(node.cond)) : ''}</div>
       ${builder(at, node.cond, 'Conditions')}
       ${inside ? `<div class="muted-note">${escHtml(tn('Removing this if also removes the {inside} step inside it.', 'Removing this if also removes the {inside} steps inside it.', inside, { inside }))}</div>` : ''}

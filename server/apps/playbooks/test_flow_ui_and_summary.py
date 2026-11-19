@@ -113,7 +113,9 @@ class FlowUiSourceTests(SimpleTestCase):
         flow = self.src("vigil-playbook-flow.js")
         # Step names, ids, conditions and outcomes are author- or agent-supplied.
         for needle in ("escHtml(name)", "escHtml(s.sid)", "escHtml(flowCondSummary(cond))",
-                       "escHtml(s.outcome)", "escHtml(node.cond || '')", "escAttr(cond ? `if ${cond}`"):
+                       "escHtml(t('ends as “{outcome}”', { outcome: s.outcome }))",
+                       "escHtml(node.cond || '')",
+                       "escAttr(cond ? t('if {condition}', { condition: cond })"):
             self.assertIn(needle, flow)
         charts = self.src("vigil-charts.js")
         self.assertIn("escHtml(s.label)", charts)
