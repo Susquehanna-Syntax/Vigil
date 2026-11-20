@@ -69,7 +69,7 @@ const INV_COLUMNS = [
   { id: 'tags',            label: t('Tags'),         dv: false,
     fn: r => _cellText((r.tags || []).join(', ')),                      val: r => (r.tags || []).join(', ') },
   { id: 'last_seen',       label: t('Last Seen'),    dv: true,
-    fn: r => _cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : 'Never', 'mono'),
+    fn: r => _cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : t('Never'), 'mono'),
     val: r => r.last_checkin || '' },
 ];
 
@@ -243,7 +243,7 @@ function renderInventory() {
   if (!rows.length) {
     const msg = document.createElement('div');
     msg.className = 'inv-empty';
-    msg.textContent = anyFilter ? 'No matching inventory rows.' : 'No agents have reported inventory yet.';
+    msg.textContent = anyFilter ? t('No matching inventory rows.') : t('No agents have reported inventory yet.');
     content.replaceChildren(msg);
     return;
   }
@@ -464,7 +464,7 @@ function openInventoryDetail(row) {
   const fakeCard = { dataset: {
     id: row.host_id,
     hostname: row.hostname || '',
-    os: row.os || 'Unknown OS',
+    os: row.os || t('Unknown OS'),
     ip: row.ip_address || '—',
     status: row.status || '',
     mode: row.mode || '',
@@ -501,7 +501,7 @@ async function adLoadConfig() {
     if (cfg.last_sync) {
       status.textContent = t('Last sync: {time} — {status}', { time: new Date(cfg.last_sync).toLocaleString(), status: cfg.last_sync_status || '' });
     } else {
-      status.textContent = cfg.has_password ? 'Configured but never synced.' : 'Not yet configured.';
+      status.textContent = cfg.has_password ? t('Configured but never synced.') : t('Not yet configured.');
     }
   } catch (e) { /* settings page may load before login */ }
 }

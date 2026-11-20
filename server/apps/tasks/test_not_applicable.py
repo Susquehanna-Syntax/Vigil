@@ -208,7 +208,7 @@ class NotApplicableUiMapsTests(TestCase):
 
         hunts_js = (static_js / "vigil-hunts.js").read_text()
         self.assertIn("not_applicable: 'lav'", hunts_js)
-        self.assertIn("not_applicable: 'Not applicable'", hunts_js)
+        self.assertIn("not_applicable: t('Not applicable')", hunts_js)
 
         template = (
             Path(__file__).resolve().parents[2]

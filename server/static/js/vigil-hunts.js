@@ -21,12 +21,12 @@ const HUNT_STATE_TONE = /** @type {Record<string, string>} */ ({
 });
 
 const HUNT_STATE_LABEL = /** @type {Record<string, string>} */ ({
-  matched: 'Matched',
-  not_matched: 'Not matched',
-  pending: 'Pending',
-  error: 'Error',
-  did_not_report: 'Did not report',
-  not_applicable: 'Not applicable',
+  matched: t('Matched'),
+  not_matched: t('Not matched'),
+  pending: t('Pending'),
+  error: t('Error'),
+  did_not_report: t('Did not report'),
+  not_applicable: t('Not applicable'),
 });
 
 /** @param {number|null|undefined} offset @returns {string} */
@@ -79,7 +79,7 @@ async function openHuntResults(runId) {
   const subEl = document.getElementById('hunt-page-sub');
   if (titleEl) titleEl.textContent = t('Hunt Results');
   if (subEl) {
-    const name = run ? (run.definition_name || run.name_snapshot || 'Run') : '';
+    const name = run ? (run.definition_name || run.name_snapshot || t('Run')) : '';
     const state = run ? run.state : '';
     subEl.textContent = [name, state].filter(Boolean).join(' · ');
   }
@@ -91,10 +91,10 @@ async function openHuntResults(runId) {
 // a second request.
 function _runHasHuntSteps(run) {
   const tasks = (run && run.tasks) || [];
-  return tasks.some((t) => {
+  return tasks.some((task) => {
     // relevant: probes are hunts too; their matches are the run's evidence.
-    if ((t.params || {}).relevant) return true;
-    const steps = ((t.params || {}).steps) || [];
+    if ((task.params || {}).relevant) return true;
+    const steps = ((task.params || {}).steps) || [];
     return steps.some((s) => s && typeof s === 'object'
       && String(s.action || '').startsWith('hunt_'));
   });

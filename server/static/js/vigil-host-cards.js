@@ -36,7 +36,7 @@ function openHostDetail(card) {
   const dot = /** @type {HTMLElement} */ (document.getElementById('detail-status-dot'));
   dot.className = 'status-dot ' + d.status;
 
-  const statusNames = {online: 'Online', offline: 'Offline', pending: 'Pending Enrollment'};
+  const statusNames = {online: t('Online'), offline: t('Offline'), pending: t('Pending Enrollment')};
   /** @type {HTMLElement} */ (document.getElementById('detail-status-text')).textContent = statusNames[d.status] || d.status;
 
   const badge = /** @type {HTMLElement} */ (document.getElementById('detail-mode-badge'));
@@ -44,7 +44,7 @@ function openHostDetail(card) {
   badge.className = 'mode-badge mode-' + d.mode;
 
   /** @type {HTMLElement} */ (document.getElementById('detail-last-checkin')).textContent =
-    d.lastCheckin ? 'Recent' : 'Never';
+    d.lastCheckin ? t('Recent') : t('Never');
 
   // Agent version — colour mint when it matches the server's expected
   // version, peach when it's behind (the same signal the "Agent
@@ -527,7 +527,7 @@ async function deleteHost(hostId, hostname, btn) {
       headers: { 'X-CSRFToken': getCsrf() },
       credentials: 'same-origin',
     });
-    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Delete failed');
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || t('Delete failed'));
     showToast(t('{hostname} removed', { hostname }), 'success');
     closeHostDetail();
     // Remove the card from the DOM immediately.

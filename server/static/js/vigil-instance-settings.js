@@ -24,7 +24,7 @@ async function loadInstanceSettings(force, quiet) {
     // Opening Settings loads this for the Account pane; someone who may not
     // read install settings gets no error for a request they did not make.
     if (quiet) { _isGroups = []; _isRenderAll(); _isGroups = null; return; }
-    showToast(e.message || 'Could not load settings', 'error');
+    showToast(e.message || t('Could not load settings'), 'error');
     return;
   }
   _isRenderAll();
