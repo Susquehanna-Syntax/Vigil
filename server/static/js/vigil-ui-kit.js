@@ -58,7 +58,7 @@ async function kitConfirm() {
     confirmText: t('Delete'),
     danger: true,
   });
-  showToast(answer ? 'Nothing was deleted — it was only an example.' : 'Cancelled.',
+  showToast(answer ? t('Nothing was deleted — it was only an example.') : t('Cancelled.'),
             answer ? 'success' : 'info');
 }
 

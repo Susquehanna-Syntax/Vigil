@@ -243,7 +243,7 @@ function _batchLane(r) {
       : '');
   return `<div class="rlt-lane">
     <div class="rlt-lane-head" data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
-      <strong>${escHtml(r.wave_group_tag || 'Ungrouped')}</strong>
+      <strong>${escHtml(r.wave_group_tag || t('Ungrouped'))}</strong>
       <span class="rlt-state" data-css="color:${ROLLOUT_STATE_COLOR[r.state] || 'var(--text-3)'};">${escHtml(r.state)}</span>
       ${r.current_wave_name ? `<span class="rlt-wave-count">${escHtml(r.current_wave_name)}</span>` : ''}
       ${actions}

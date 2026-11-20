@@ -154,8 +154,8 @@ function defCardHtml(def, opts) {
   return `
     <div class="def-card" data-def-open="${escAttr(def.id)}">
       <div class="def-card-body">
-        <div class="def-card-title">${escHtml(def.name || 'Untitled')}</div>
-        <div class="def-card-desc">${escHtml(def.description || 'No description provided.')}</div>
+        <div class="def-card-title">${escHtml(def.name || t('Untitled'))}</div>
+        <div class="def-card-desc">${escHtml(def.description || t('No description provided.'))}</div>
         <div class="def-card-meta">
           ${riskBadgeHtml(def.risk_level || 'standard')}
           <span class="dot-sep">·</span>

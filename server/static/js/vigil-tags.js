@@ -26,9 +26,9 @@ let _allTags = [];
 function _filterTags() {
   const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('tag-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allTags;
-  return _allTags.filter(t =>
-    (t.name || '').toLowerCase().includes(q) ||
-    (t.description || '').toLowerCase().includes(q));
+  return _allTags.filter(tag =>
+    (tag.name || '').toLowerCase().includes(q) ||
+    (tag.description || '').toLowerCase().includes(q));
 }
 
 function _tagKindBadge(kind) {
@@ -44,12 +44,12 @@ function _tagKindBadge(kind) {
 function _tagCard(tagRow) {
   const used = tagRow.host_count === 0
     ? `<span class="muted-span">${escHtml(t('on no machines'))}</span>`
-    : `on ${tagRow.host_count} machine${tagRow.host_count === 1 ? '' : 's'}`;
+    : `on ${escHtml(tn('{n} machine', '{n} machines', tagRow.host_count))}`; // i18n-ignore — the word before a bare count: tn() picks singular or plural, and the number sits inside it
   const actions = tagRow.editable && tagRow.can_change !== false
     ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(tagRow.id)}">${escHtml(t('Rename'))}</button>
        <button class="btn btn-ghost btn-sm delete-btn" data-tag-del="${escAttr(tagRow.id)}">${escHtml(t('Delete'))}</button>`
     : '<span class="confirm-hint hint-flush">' +
-      (!tagRow.editable ? 'maintained by Vigil' : tagRow.site_id ? 'you can use it, not change it' : 'global: changed by an administrator of the whole install') + '</span>';
+      (!tagRow.editable ? escHtml(t('maintained by Vigil')) : tagRow.site_id ? escHtml(t('you can use it, not change it')) : escHtml(t('global: changed by an administrator of the whole install'))) + '</span>';
   return `<div class="bl-card">
     <div class="bl-card-head">
       <div>
@@ -71,9 +71,9 @@ function _renderTags() {
   if (!items.length) {
     const searching = _allTags.length > 0;
     box.innerHTML = `<div class="empty-block">
-      <h4>${searching ? 'No tags match that search' : 'No tags yet'}</h4>
-      <p>${searching ? 'Clear the search to see them all.'
-        : 'Tags are how waves, playbooks and automations pick machines. Create one here, then put it on a machine from its host card.'}</p>
+      <h4>${searching ? escHtml(t('No tags match that search')) : escHtml(t('No tags yet'))}</h4>
+      <p>${searching ? escHtml(t('Clear the search to see them all.'))
+        : escHtml(t('Tags are how waves, playbooks and automations pick machines. Create one here, then put it on a machine from its host card.'))}</p>
     </div>`;
     return;
   }
@@ -107,7 +107,7 @@ async function createTag() {
     showToast(t('Tag created'), 'success');
     await loadTags();
   } catch (e) {
-    showToast(e.message || 'Could not create the tag', 'error');
+    showToast(e.message || t('Could not create the tag'), 'error');
   }
 }
 
@@ -125,7 +125,7 @@ async function renameTag(tagId) {
     showToast(t('Tag renamed everywhere'), 'success');
     await loadTags();
   } catch (e) {
-    showToast(e.message || 'Could not rename the tag', 'error');
+    showToast(e.message || t('Could not rename the tag'), 'error');
   }
 }
 
@@ -140,7 +140,7 @@ async function deleteTag(tagId) {
   } catch (e) {
     // A 409 here is the API refusing to empty a wave behind your back; its
     // message names what is still using the tag.
-    showToast(e.message || 'Could not delete the tag', 'error');
+    showToast(e.message || t('Could not delete the tag'), 'error');
   }
 }
 
@@ -157,17 +157,17 @@ function openTagPicker(opts) {
   const chosen = new Set((opts.selected || []).map(n => String(n).toLowerCase()));
   openPicker({
     type: 'tag',
-    title: opts.title || 'Pick a tag',
+    title: opts.title || t('Pick a tag'),
     allowAdd: false,
     items: _allTags
-      .filter(t => opts.includeReserved ? true : t.editable)
-      .map(t => ({
-        key: t.name,
-        name: t.name + (chosen.has(t.key) ? '  ✓' : ''),
-        meta: (t.host_count === 1 ? '1 machine' : `${t.host_count} machines`)
-              + (t.kind !== 'manual' ? ' · from inventory' : ''),
+      .filter(tag => opts.includeReserved ? true : tag.editable)
+      .map(tag => ({
+        key: tag.name,
+        name: tag.name + (chosen.has(tag.key) ? '  ✓' : ''),
+        meta: tn('{n} machine', '{n} machines', tag.host_count)
+              + (tag.kind !== 'manual' ? ' · ' + t('from inventory') : ''),
         editable: false,
-        raw: t,
+        raw: tag,
       })),
     onSelect: (item) => opts.onSelect(item.raw || { name: item.key }),
   });
@@ -204,7 +204,7 @@ function attachTagPicker(inputId, opts = {}) {
     await ensureTagsLoaded();
     const current = (input.value || '').split(',').map(t => t.trim()).filter(Boolean);
     openTagPicker({
-      title: opts.title || 'Add a tag',
+      title: opts.title || t('Add a tag'),
       selected: current,
       // Reprovision and host tagging can legitimately reference an
       // inventory-derived tag; a wave selector normally should not.
@@ -266,28 +266,28 @@ function attachTagCombobox(inputId, opts) {
 
   function render() {
     const q = input.value.trim().toLowerCase();
-    const have = new Set((opts.current() || []).map(t => String(t).toLowerCase()));
+    const have = new Set((opts.current() || []).map(tag => String(tag).toLowerCase()));
     const matches = _allTags
-      .filter(t => t.editable && !have.has(t.name.toLowerCase())
-        && (!q || t.name.toLowerCase().includes(q)))
+      .filter(tag => tag.editable && !have.has(tag.name.toLowerCase())
+        && (!q || tag.name.toLowerCase().includes(q)))
       // Boolean ranks must be numbers before they are subtracted (TS2362/TS2363).
       .sort((/** @type {TagRow} */ a, /** @type {TagRow} */ b) => (Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)))
         || (b.host_count - a.host_count) || a.name.localeCompare(b.name))
       .slice(0, 8)
-      .map(t => ({ name: t.name,
-                   meta: t.host_count === 1 ? '1 machine' : `${t.host_count} machines` }));
+      .map(tag => ({ name: tag.name,
+                     meta: tn('{n} machine', '{n} machines', tag.host_count) }));
     options = matches;
-    if (q && !have.has(q) && !_allTags.some(t => t.name.toLowerCase() === q)) {
+    if (q && !have.has(q) && !_allTags.some(tag => tag.name.toLowerCase() === q)) {
       options.push(_RESERVED_TAG.test(q)
         ? { name: q, meta: t('set by Vigil from inventory — cannot be added by hand'), disabled: true }
         : { name: q, meta: t('new tag'), create: true });
     }
     if (!options.length) {
-      list.innerHTML = `<div class="tag-combo-empty">${q ? 'Already on this machine.' : 'No other tags yet — type one to create it.'}</div>`;
+      list.innerHTML = `<div class="tag-combo-empty">${q ? escHtml(t('Already on this machine.')) : escHtml(t('No other tags yet — type one to create it.'))}</div>`;
     } else {
       list.innerHTML = options.map((/** @type {ComboOption} */ o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
           role="option" id="${escAttr(list.id)}-${i}" data-combo-idx="${i}" aria-selected="${i === active}"${o.disabled ? ' aria-disabled="true"' : ''}>
-          <span class="tag-combo-name">${o.create ? 'Create tag ' : ''}<b>${escHtml(o.name)}</b></span>
+          <span class="tag-combo-name">${o.create ? escHtml(t('Create tag {name}', { name: o.name }).slice(0, -String(o.name).length)) : ''}<b>${escHtml(o.name)}</b></span>
           <span class="tag-combo-meta">${escHtml(o.meta)}</span></div>`).join('');
     }
     input.setAttribute('aria-activedescendant', active >= 0 ? `${list.id}-${active}` : '');

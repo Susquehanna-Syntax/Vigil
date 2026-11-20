@@ -42,7 +42,7 @@ async function sitePickFill(select, field, current, { editing = false, currentNa
     opts.push(`<option value="${escAttr(s.id)}"${want === s.id ? ' selected' : ''}>${escHtml(s.name)}</option>`);
   }
   if (editing && want && !info.sites.some((s) => s.id === want)) {
-    opts.push(`<option value="${escAttr(want)}" selected>${escHtml(currentName || 'Another site')}</option>`);
+    opts.push(`<option value="${escAttr(want)}" selected>${escHtml(currentName || t('Another site'))}</option>`);
   }
   select.innerHTML = opts.join('');
   // A user who may only create in one site gets that site, not a choice.

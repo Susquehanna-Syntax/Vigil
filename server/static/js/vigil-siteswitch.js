@@ -96,7 +96,7 @@ function openSiteSwitch() {
     try {
       _siteSwitch = await apiJson('/api/v1/scope/selection/', { method: 'PUT', body: JSON.stringify(body) });
     } catch (e) {
-      showToast(e.message || 'Could not change the sites shown', 'error');
+      showToast(e.message || t('Could not change the sites shown'), 'error');
       return;
     }
     m.close();

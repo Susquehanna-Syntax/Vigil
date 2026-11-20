@@ -157,7 +157,7 @@ async function _openRunDetail(runId) {
     ? `<button class="btn btn-sky btn-sm" id="rd-hunt" type="button">${escHtml(t('Open hunt results'))}</button>`
     : '';
   m.setBody(`
-    <div class="modal-title"><span>${escHtml(run.name_snapshot || 'Run')}</span>
+    <div class="modal-title"><span>${escHtml(run.name_snapshot || t('Run'))}</span>
       <button class="modal-close" id="rd-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <p class="muted run-detail-intro">${escHtml(run.state)} · ${escHtml(String(run.host_count))} host(s) · ${escHtml(String(run.step_count))} step(s)</p>
