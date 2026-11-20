@@ -658,9 +658,8 @@ function _applyThemeIcon(theme) {
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
   const toggle = document.getElementById('theme-toggle');
-  // _sidebarLabels() reads data-tip and cuts it at ':'. A t()'d whole tip would
-  // be cut mid-sentence by that strip, so only the theme name is a string here.
-  if (toggle) toggle.dataset.tip = 'Theme: ' + THEME_LABELS[theme]; // i18n-ignore — the prefix is glued to the name and read by _sidebarLabels
+  // _sidebarLabels() shows the tip up to its colon, so the label reads "Theme".
+  if (toggle) toggle.dataset.tip = t('Theme: {name}', { name: THEME_LABELS[theme] || THEME_LABELS.dark });
 }
 function _applyThemeButtons(pref) {
   ['system', ...THEMES].forEach((m) => {
