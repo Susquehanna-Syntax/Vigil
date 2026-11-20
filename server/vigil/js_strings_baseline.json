@@ -16,10 +16,5 @@
   "static/js/vigil-inventory.js": 6,
   "static/js/vigil-playbooks.js": 109,
   "static/js/vigil-settings.js": 137,
-  "static/js/vigil-users.js": 3,
-  "static/js/vigil-usersites.js": 1,
-  "static/js/vigil-utils.js": 31,
-  "static/js/vigil-vulns.js": 1,
-  "static/js/vigil-waves.js": 11,
-  "static/js/vigil-widgets.js": 8
+  "static/js/vigil-utils.js": 31
 }

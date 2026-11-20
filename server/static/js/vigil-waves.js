@@ -67,10 +67,10 @@ function _renderWaves() {
   if (!items.length) {
     const searching = _allWaves.length > 0;
     box.innerHTML = `<div class="empty-block">
-      <h4>${searching ? 'No waves match that search' : 'No waves yet'}</h4>
+      <h4>${searching ? escHtml(t('No waves match that search')) : escHtml(t('No waves yet'))}</h4>
       <p>${searching
-        ? 'Clear the search to see them all.'
-        : 'A wave is a group of machines, matched by tag, that patch together. Create a small first wave of spare machines, then a wider one — a bad update shows up on the spares before it reaches everything.'}</p>
+        ? escHtml(t('Clear the search to see them all.'))
+        : escHtml(t('A wave is a group of machines, matched by tag, that patch together. Create a small first wave of spare machines, then a wider one — a bad update shows up on the spares before it reaches everything.'))}</p>
     </div>`;
     return;
   }
@@ -101,7 +101,7 @@ async function loadWaves() {
 function openWaveEditor(waveId) {
   _editingWaveId = waveId || null;
   const w = waveId ? _allWaves.find(x => x.id === waveId) : null;
-  document.getElementById('wave-editor-title').textContent = w ? 'Edit Wave' : 'New Wave';
+  document.getElementById('wave-editor-title').textContent = w ? t('Edit Wave') : t('New Wave');
   /** @type {HTMLInputElement} */ (document.getElementById('wave-name')).value = w ? w.name : '';
   // Default a new wave to the end of the order rather than colliding with 1.
   /** @type {HTMLInputElement} */ (document.getElementById('wave-order')).value = w
@@ -142,11 +142,11 @@ async function _updateWaveMatchPreview() {
   try {
     const hosts = await apiJson('/api/v1/hosts/');
     const list = Array.isArray(hosts) ? hosts : (hosts.hosts || []);
-    const want = new Set(tags.map(t => t.toLowerCase()));
-    const n = list.filter(h => (h.tags || []).some(t => want.has((t || '').toLowerCase()))).length;
+    const want = new Set(tags.map(tag => tag.toLowerCase()));
+    const n = list.filter(h => (h.tags || []).some(tag => want.has((tag || '').toLowerCase()))).length;
     el.textContent = n === 0
-      ? 'No hosts currently carry these tags.'
-      : `${n} host${n === 1 ? ' currently carries' : 's currently carry'} these tags.`;
+      ? t('No hosts currently carry these tags.')
+      : tn('{n} host currently carries these tags.', '{n} hosts currently carry these tags.', n);
   } catch {
     el.textContent = '';   // a preview is not worth surfacing an error over
   }
@@ -181,11 +181,11 @@ async function saveWave() {
       method: _editingWaveId ? 'PATCH' : 'POST',
       body: JSON.stringify(payload),
     });
-    showToast(_editingWaveId ? 'Wave updated' : 'Wave created', 'success');
+    showToast(_editingWaveId ? t('Wave updated') : t('Wave created'), 'success');
     closeWaveEditor();
     await loadWaves();
   } catch (e) {
-    showToast(e.message || 'Could not save the wave', 'error');
+    showToast(e.message || t('Could not save the wave'), 'error');
   } finally {
     btn.disabled = false;
   }
@@ -201,7 +201,7 @@ async function deleteWave(waveId) {
     showToast(t('Wave deleted'), 'success');
     await loadWaves();
   } catch (e) {
-    showToast(e.message || 'Could not delete the wave', 'error');
+    showToast(e.message || t('Could not delete the wave'), 'error');
   }
 }
 

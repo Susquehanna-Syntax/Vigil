@@ -7,7 +7,7 @@
 // Depends on: vigil-utils.js (apiJson, showToast, confirmModal, escHtml)
 
 /** @type {Record<string, string>} */
-const ROLE_LABELS = { admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
+const ROLE_LABELS = { admin: t('Admin'), operator: t('Operator'), viewer: t('Viewer') };
 
 /** @returns {Promise<void>} */
 async function loadUsers() {

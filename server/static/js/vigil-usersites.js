@@ -187,7 +187,7 @@ async function openUserSites(user) {
       return true;
     } catch (e) {
       // 402 carries the upgrade body; show its detail rather than a raw code.
-      note(e.message || 'Could not save', true);
+      note(e.message || t('Could not save'), true);
       return false;
     }
   }
