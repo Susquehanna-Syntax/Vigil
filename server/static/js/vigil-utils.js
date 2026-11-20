@@ -107,7 +107,7 @@ async function apiPost(url) {
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || 'Request failed');
+    throw new Error(err.error || t('Request failed'));
   }
   return resp.json();
 }
@@ -127,7 +127,7 @@ async function apiJson(url, opts) {
     }
     // The body rides along for callers that place per-field errors
     // ({errors: {field: message}}) next to their fields.
-    const err = /** @type {Error & {status?: number, body?: any}} */ (new Error(body.detail || body.error || 'Request failed'));
+    const err = /** @type {Error & {status?: number, body?: any}} */ (new Error(body.detail || body.error || t('Request failed')));
     err.status = resp.status;
     err.body = body;
     throw err;
@@ -383,7 +383,7 @@ function confirmModal(message, opts) {
         <button class="btn btn-outline btn-sm" id="confirm-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-sm" id="confirm-ok"></button>
       </div>`);
-    m.modal.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
+    m.modal.querySelector('#confirm-title').textContent = opts.title || t('Are you sure?');
     // textContent by default: almost every caller passes a plain sentence and
     // must not be able to inject markup through it. opts.html is for the few
     // confirmations that need emphasis, and those escape their own values.
@@ -391,7 +391,7 @@ function confirmModal(message, opts) {
     if (opts.html) msgEl.innerHTML = message;
     else msgEl.textContent = message;
     const okBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-ok'));
-    okBtn.textContent = opts.confirmText || opts.confirmLabel || 'Confirm';
+    okBtn.textContent = opts.confirmText || opts.confirmLabel || t('Confirm');
     okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
     okBtn.onclick = () => done(true);
@@ -425,7 +425,7 @@ function promptModal(message, opts) {
     const input = /** @type {HTMLInputElement} */ (m.modal.querySelector('#prompt-input'));
     input.value = opts.value || '';
     if (opts.placeholder) input.placeholder = opts.placeholder;
-    m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || 'Save';
+    m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || t('Save');
 
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
     /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-ok')).onclick = () => done(input.value.trim() || null);
@@ -475,7 +475,7 @@ function _securityKeyOffer() {
       _keyFactor = {
         offer: !!(data.keys > 0 && data.keys_possible && window.PublicKeyCredential),
         reason: data.keys > 0 && !data.keys_possible
-          ? (data.keys_reason || 'Security keys need HTTPS.') : '',
+          ? (data.keys_reason || t('Security keys need HTTPS.')) : '',
       };
       return _keyFactor;
     })
@@ -510,7 +510,7 @@ async function _runSecurityKeyCeremony() {
   const body = await apiJson('/api/v1/accounts/security-keys/assert/', {
     method: 'POST', body: JSON.stringify({ credential }),
   });
-  if (!body || !body.token) throw new Error('The server did not accept the key.');
+  if (!body || !body.token) throw new Error(t('The server did not accept the key.'));
   return body.token;
 }
 
@@ -541,11 +541,11 @@ function totpPrompt(reason, opts) {
         <button class="btn btn-outline btn-sm" id="totp-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-mint btn-sm" id="totp-ok"></button>
       </div>`);
-    m.modal.querySelector('#totp-title').textContent = opts.title || 'Confirm with your authenticator';
+    m.modal.querySelector('#totp-title').textContent = opts.title || t('Confirm with your authenticator');
     m.modal.querySelector('#totp-reason').textContent = reason || '';
     const input = /** @type {HTMLInputElement} */ (m.modal.querySelector('#totp-input'));
     const okBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-ok'));
-    okBtn.textContent = opts.confirmText || 'Confirm';
+    okBtn.textContent = opts.confirmText || t('Confirm');
     okBtn.disabled = true;
 
     // Digits only, and never more than six: the pattern in the markup is a
@@ -584,8 +584,8 @@ function totpPrompt(reason, opts) {
           if (closed) return;
           keyBtn.disabled = false;
           keyErr.textContent = (err && err.name === 'NotAllowedError')
-            ? 'Key request cancelled.'
-            : ((err && err.message) || 'The key was not accepted.');
+            ? t('Key request cancelled.')
+            : ((err && err.message) || t('The key was not accepted.'));
           keyErr.style.display = '';
         });
     };
@@ -639,7 +639,7 @@ function yamlToHtml(src) {
  * The identical resolution runs inline in base.html before first paint; a
  * mismatch between the two shows up as a flash of the wrong theme. */
 const THEMES = ['dark', 'light', 'river', 'ink'];
-const THEME_LABELS = { dark: 'Dark', light: 'Paper', river: 'River', ink: 'Ink' };
+const THEME_LABELS = { dark: t('Dark'), light: t('Paper'), river: t('River'), ink: t('Ink') };
 const _MQ_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
 function _systemTheme() {
@@ -658,7 +658,9 @@ function _applyThemeIcon(theme) {
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
   const toggle = document.getElementById('theme-toggle');
-  if (toggle) toggle.dataset.tip = 'Theme: ' + (THEME_LABELS[theme] || 'Dark');
+  // _sidebarLabels() reads data-tip and cuts it at ':'. A t()'d whole tip would
+  // be cut mid-sentence by that strip, so only the theme name is a string here.
+  if (toggle) toggle.dataset.tip = 'Theme: ' + THEME_LABELS[theme]; // i18n-ignore — the prefix is glued to the name and read by _sidebarLabels
 }
 function _applyThemeButtons(pref) {
   ['system', ...THEMES].forEach((m) => {
@@ -726,12 +728,12 @@ function _sidebarLabels() {
 function _applySidebarToggle(expanded) {
   const btn = document.getElementById('sidebar-toggle');
   if (!btn) return;
-  const words = expanded ? 'Hide page names' : 'Show page names';
+  const words = expanded ? t('Hide page names') : t('Show page names');
   btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   btn.setAttribute('aria-label', words);
   btn.dataset.tip = words;
   const label = btn.querySelector('.sidebar-label');
-  if (label) label.textContent = expanded ? 'Collapse' : 'Expand';
+  if (label) label.textContent = expanded ? t('Collapse') : t('Expand');
 }
 function toggleSidebar() {
   const expanded = document.documentElement.getAttribute('data-sidebar') !== 'expanded';

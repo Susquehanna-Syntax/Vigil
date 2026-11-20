@@ -186,7 +186,7 @@ function _wireCards(playbooks) {
       await apiJson(`/api/v1/playbooks/${btn.dataset.blToggle}/`, {
         method: 'PATCH', body: JSON.stringify({ auto_enroll: turningOn }) });
     } catch (e) {
-      showToast(e.message || 'Could not change auto-enroll', 'error');
+      showToast(e.message || t('Could not change auto-enroll'), 'error');
       return;
     }
     loadPlaybooks();
@@ -654,7 +654,7 @@ function _blInputChoices(inp) {
 }
 
 function _blInputTypeMeta(type) {
-  return { text: 'Text', number: 'Number', boolean: 'Yes / no', choice: 'Choice' }[type] || type;
+  return { text: t('Text'), number: t('Number'), boolean: t('Yes / no'), choice: t('Choice') }[type] || type;
 }
 
 const BL_CALL_SNIPPET_HEAD = '- type: playbook\n  params: { name: "'; // i18n-ignore
