@@ -73,7 +73,7 @@ async function openContentYaml(kind, id) {
     // The honest failure here is an automation pinned to one host, which
     // cannot be represented as a shareable document at all. The server says
     // why and what to change.
-    showToast(e.message || 'Could not read this as YAML', 'error');
+    showToast(e.message || t('Could not read this as YAML'), 'error');
   }
 }
 
@@ -91,7 +91,7 @@ async function saveContentYaml() {
     if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
-    _cyError(e.message || 'Save failed');
+    _cyError(e.message || t('Save failed'));
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }

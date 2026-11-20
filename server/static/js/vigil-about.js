@@ -18,7 +18,7 @@ async function refreshAbout() {
     _setText('about-timezone', d.timezone || 'UTC');
     _setText('about-licensed-to', d.licensed_to
       ? `${d.licensed_to}${d.license_id ? ` (license ${d.license_id})` : ''}`
-      : 'Free edition');
+      : t('Free edition'));
     _renderScanners(d.scanners || []);
     _renderHealth();
   } catch (e) {

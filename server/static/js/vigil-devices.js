@@ -56,7 +56,7 @@ function renderDevices() {
 /** @param {string|number} id @returns {void} */
 function openDeviceModal(id) {
   const d = id ? _devices.find(x => x.id === id) : null;
-  /** @type {HTMLElement} */ (document.getElementById('device-modal-title')).textContent = d ? 'Edit Device' : 'Add Device';
+  /** @type {HTMLElement} */ (document.getElementById('device-modal-title')).textContent = d ? t('Edit Device') : t('Add Device');
   /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value = d ? d.id : '';
   /** @type {HTMLInputElement} */ (document.getElementById('device-name')).value = d ? (d.name || '') : '';
   sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('device-site')),
@@ -141,7 +141,7 @@ async function saveDevice() {
     closeDeviceModal();
     loadDevices();
   } catch (e) {
-    showToast(e.message || 'Could not save device — check the IP and MAC format', 'error');
+    showToast(e.message || t('Could not save device — check the IP and MAC format'), 'error');
   }
 }
 
@@ -156,7 +156,7 @@ async function deleteDeviceFromModal() {
     closeDeviceModal();
     loadDevices();
   } catch (e) {
-    showToast(e.message || 'Delete failed', 'error');
+    showToast(e.message || t('Delete failed'), 'error');
   }
 }
 

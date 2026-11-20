@@ -16,6 +16,7 @@ const RUN_STATES = [
   { key: 'skipped', label: t('skipped'), color: 'var(--st-skipped)' },
 ];
 const OUTCOME_COLORS = ['var(--oc-1)', 'var(--oc-2)', 'var(--oc-3)', 'var(--oc-4)'];
+const NO_OUTCOME_LABEL = 'No outcome yet'; // i18n-ignore — a bucket key the code compares against; its label is t('no outcome yet') below
 
 function stateSegments(states) {
   return RUN_STATES.filter(s => (states || {})[s.key])
@@ -24,8 +25,8 @@ function stateSegments(states) {
 
 function outcomeSegments(outcomes) {
   const entries = Object.entries(outcomes || {});
-  const none = entries.filter(([k]) => k === 'No outcome yet');
-  const named = entries.filter(([k]) => k !== 'No outcome yet').sort((a, b) => b[1] - a[1]);
+  const none = entries.filter(([k]) => k === NO_OUTCOME_LABEL);
+  const named = entries.filter(([k]) => k !== NO_OUTCOME_LABEL).sort((a, b) => b[1] - a[1]);
   const shown = named.slice(0, 4).map(([k, v], i) => ({ key: k, label: k, value: v, color: OUTCOME_COLORS[i] }));
   const rest = named.slice(4).reduce((n, [, v]) => n + v, 0);
   if (rest) shown.push({ key: '__other', label: t('Other'), value: rest, color: 'var(--st-skipped)' });
@@ -100,7 +101,7 @@ function wireRunSummary(scope, summary, run) {
   const hostMatches = (card, btn) => {
     const host = summary.per_host[card.dataset.host] || {};
     const value = btn.dataset.filterKind === 'state' ? host.state
-      : (host.outcome || 'No outcome yet');
+      : (host.outcome || NO_OUTCOME_LABEL);
     return value === btn.dataset.filter
       || (btn.dataset.filter === '__other' && host.outcome);
   };
@@ -224,10 +225,10 @@ function _hostRunTaskHtml(task) {
 // host, in step order.
 function openHostRunDetail(run, hostId) {
   const tasks = (run.tasks || [])
-    .filter(t => String(t.host) === String(hostId))
+    .filter(task => String(task.host) === String(hostId))
     .sort((a, b) => (a.step_order || 0) - (b.step_order || 0)
       || String(a.created_at || '').localeCompare(String(b.created_at || '')));
-  const hostname = (tasks.find(t => t.host_hostname) || {}).host_hostname || String(hostId);
+  const hostname = (tasks.find(task => task.host_hostname) || {}).host_hostname || String(hostId);
 
   const m = mountModal('host-run-detail', { wide: true });
   m.setBody(`

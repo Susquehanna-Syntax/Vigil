@@ -88,7 +88,7 @@ function _fillBrandingForm(b) {
   if (save) save.disabled = !_brandingLicensed;
   if (note) {
     note.textContent = _brandingLicensed
-      ? '' : 'Branding is a Business feature — Free installs use the Vigil identity.';
+      ? '' : t('Branding is a Business feature — Free installs use the Vigil identity.');
   }
 }
 

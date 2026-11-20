@@ -310,7 +310,7 @@ document.addEventListener('click', (/** @type {MouseEvent} */ e) => {
 /** @param {any} hostId @returns {void} */
 function suggestAgentUpdate(hostId) {
   const yaml = [
-    `name: "Update Vigil Agent"`,
+    `name: "Update Vigil Agent"`, // i18n-ignore — a Playbook YAML definition's name field, not UI text
     `description: "Download the latest Vigil agent binary from the server and restart the service"`, // i18n-ignore — a Playbook YAML definition's description field, not UI text
     `actions:`,
     `  - id: update`,

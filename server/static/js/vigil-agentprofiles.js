@@ -11,7 +11,7 @@
 // admin may delete their own profiles freely but not the builtins — those are
 // the wizard's starting points, and it has nothing to copy from without them.
 
-const APF_LABELS = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full control' };
+const APF_LABELS = { monitor: t('Monitor'), managed: t('Managed'), full_control: t('Full control') };
 
 /** One agent-profile row from /api/v1/agent-profiles/. */
 /** @typedef {{id?: string|number, name?: string, mode?: string, builtin?: boolean, site_id?: string|number|null, description?: string, primary_relay?: string|number|null, allow_remote_shell?: boolean, allow_remote_desktop?: boolean, install_profiles?: Array<string|{name?: string}>, [k: string]: any}} AgentProfile */

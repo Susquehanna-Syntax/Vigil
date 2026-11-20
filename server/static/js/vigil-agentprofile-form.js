@@ -190,7 +190,7 @@ function _apfActionGroups(allowlist, ctx) {
   const groups = new Map();
   for (const action of ctx.actions) {
     if (!action || !action.allowlistable) continue;
-    const group = action.group || 'Other';
+    const group = action.group || t('Other');
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(action);
   }
@@ -331,8 +331,8 @@ function apfSetMode(btn, mode) {
   }
   const note = container.querySelector('.apf-sessions-note');
   if (note) note.textContent = mode === 'monitor'
-    ? 'Monitor mode never opens sessions.'
-    : 'Off unless enabled here; every session still needs a two-factor code.';
+    ? t('Monitor mode never opens sessions.')
+    : t('Off unless enabled here; every session still needs a two-factor code.');
   _apfDispatchChange(container);
 }
 

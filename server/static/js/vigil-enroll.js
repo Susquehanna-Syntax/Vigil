@@ -130,8 +130,8 @@ function _enrollRenderCmd() {
   const hint = document.getElementById('enroll-cmd-hint');
   if (hint) {
     hint.textContent = _enrollOs === 'windows'
-      ? 'Run this in an elevated (Administrator) PowerShell on the machine you want to add. The agent installs as a Windows service and will appear in the queue below.'
-      : 'Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.';
+      ? t('Run this in an elevated (Administrator) PowerShell on the machine you want to add. The agent installs as a Windows service and will appear in the queue below.')
+      : t('Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.');
   }
 }
 
@@ -287,7 +287,7 @@ async function enrollCreateCommand() {
     if (next) next.disabled = false;
   } catch (e) {
     apfShowErrors(form, _enrollErrorFields(e));
-    showToast(e.message || 'Could not create the install command', 'error');
+    showToast(e.message || t('Could not create the install command'), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -326,7 +326,7 @@ async function enrollSaveProfile() {
     showToast(t('Saved profile {name}', { name: created.name }), 'success');
   } catch (e) {
     apfShowErrors(form, _enrollErrorFields(e));
-    showToast(e.message || 'Could not save the profile', 'error');
+    showToast(e.message || t('Could not save the profile'), 'error');
   }
 }
 
@@ -341,7 +341,7 @@ function closeEnrollWizard() {
 function copyEnrollCmd() {
   const cmd = document.getElementById('enroll-cmd').textContent;
   copyText(cmd).then((ok) => showToast(
-    ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'));
+    ok ? t('Copied to clipboard') : t('Copy failed'), ok ? 'success' : 'error'));
 }
 
 /** @returns {void} */
@@ -376,8 +376,8 @@ async function _pollForHost() {
       _enrollDetectedHost = data.host;
       _enrollSetStep(3);
       const hostname = data.host.hostname || '—';
-      const os = data.host.os || 'Unknown OS';
-      const ip = data.host.ip_address || 'Unknown IP';
+      const os = data.host.os || t('Unknown OS');
+      const ip = data.host.ip_address || t('Unknown IP');
       document.getElementById('enroll-detected-hostname').textContent = hostname;
       document.getElementById('enroll-detected-meta').textContent = t('{os} · {ip}', { os, ip });
       const rep = document.getElementById('enroll-replaces');
@@ -410,7 +410,7 @@ async function enrollApproveHost() {
       method: 'POST',
       body: JSON.stringify({ totp }),
     });
-    const hostname = _enrollDetectedHost.hostname || 'Host';
+    const hostname = _enrollDetectedHost.hostname || t('Host');
     document.getElementById('enroll-done-msg').textContent = t('{hostname} is now online and monitoring.', { hostname });
     _enrollSetStep(4);
   } catch (e) {

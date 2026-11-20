@@ -69,7 +69,7 @@ class RingSortsTests(SimpleTestCase):
 class HostRunDetailTests(SimpleTestCase):
     def test_host_detail_exists(self):
         src = _host_run_sources()
-        self.assertIn("String(t.host) === String(hostId)", src)
+        self.assertIn("String(task.host) === String(hostId)", src)
         self.assertIn("escHtml(JSON.stringify(", src)
 
     def test_both_dialogs_link_hosts(self):

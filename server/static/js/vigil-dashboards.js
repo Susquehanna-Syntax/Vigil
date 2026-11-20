@@ -236,7 +236,7 @@ function _dashBindChrome(host) {
     const gone = DASH.current.id;
     try {
       await apiJson(`/api/v1/dashboards/${gone}/`, { method: 'DELETE' });
-    } catch (e) { showToast(e.message || 'Could not delete it', 'error'); return; }
+    } catch (e) { showToast(e.message || t('Could not delete it'), 'error'); return; }
     DASH.boards = DASH.boards.filter(b => b.id !== gone);
     DASH.current = DASH.boards.find(b => b.is_default && b.is_mine) || DASH.boards[0];
     DASH.editing = false;
