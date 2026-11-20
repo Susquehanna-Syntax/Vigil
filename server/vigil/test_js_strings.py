@@ -48,6 +48,7 @@ JS_TRANSLATED: list[str] = [
     "static/js/vigil-login-verify.js",
     "static/js/vigil-deploy.js",
     "static/js/vigil-ai.js",
+    "static/js/vigil-policies.js",
     "static/js/vigil-stacks.js",
 ]
 

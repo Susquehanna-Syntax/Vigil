@@ -47,5 +47,5 @@ class PolicyTotpTests(SimpleTestCase):
         html = (root / "templates/pages/_policies.html").read_text(encoding="utf-8")
         js = (root / "static/js/vigil-policies.js").read_text(encoding="utf-8")
         self.assertNotIn("one-time-code", html)
-        for title in ("title: 'Approve changes'", "title: 'Run policy now'"):
+        for title in ("title: t('Approve changes')", "title: t('Run policy now')"):
             self.assertIn(title, js)
