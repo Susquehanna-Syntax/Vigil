@@ -26,7 +26,7 @@ function _jkStat(body, data) {
   // count: say the words, don't draw a big zero.
   if (data.tone === 'muted' && !data.value && !data.sub) {
     body.innerHTML = `<div class="jk-empty"><span class="muted-note">`
-      + `${escHtml(data.label || 'Nothing to show')}</span></div>`;
+      + `${escHtml(data.label || t('Nothing to show'))}</span></div>`;
     return;
   }
   const inner =
@@ -43,7 +43,7 @@ function _jkList(body, data) {
   const items = data.items || [];
   if (!items.length) {
     body.innerHTML = `<div class="jk-empty"><span class="muted-note">`
-      + `${escHtml(data.empty || 'Nothing here yet')}</span></div>`;
+      + `${escHtml(data.empty || t('Nothing here yet'))}</span></div>`;
     return;
   }
   // Row shape follows Vigil's _dashCard: a fully tinted card — no coloured

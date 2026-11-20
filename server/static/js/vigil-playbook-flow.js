@@ -203,7 +203,7 @@ function flowFindings(tree) {
   const gotoSids = new Set(gotos.map(g => g.node.gid));
   for (const g of gotos) {
     const target = (g.node.target || '').trim();
-    if (!target) { findings.push({ level: 'warn', text: 'A go to has no target yet.' }); continue; }
+    if (!target) { findings.push({ level: 'warn', text: t('A go to has no target yet.') }); continue; }
     if (gotoSids.has(target) || !stepSids.has(target)) {
       findings.push({ level: 'warn', text: `A go to names ${target}, which is not a step in this playbook.` });
       continue;
@@ -212,21 +212,21 @@ function flowFindings(tree) {
       findings.push({ level: 'warn', text: `A go to can only jump to ${target} from its own lane or a lane around it, not into another branch.` });
     }
     if (g.i !== flowLane(tree, g.lane).length - 1) {
-      findings.push({ level: 'warn', text: 'Nothing after a go to can run: move it to the end of its lane.' });
+      findings.push({ level: 'warn', text: t('Nothing after a go to can run: move it to the end of its lane.') });
     }
   }
-  if (gotos.length > 8) findings.push({ level: 'warn', text: 'A playbook has at most 8 go to nodes.' });
+  if (gotos.length > 8) findings.push({ level: 'warn', text: t('A playbook has at most 8 go to nodes.') });
 
   for (const { node } of branches) {
     const arms = flowArms(node);
-    if (arms.length > 10) findings.push({ level: 'warn', text: 'A decision has at most 8 or-if exits.' });
+    if (arms.length > 10) findings.push({ level: 'warn', text: t('A decision has at most 8 or-if exits.') });
     const seen = [];
     for (const arm of arms) {
       const label = arm.key === 'then' ? 'if' : arm.key === 'else' ? null : 'or if';
       if (!label) continue;  // otherwise runs when nothing above it held — nothing to check
       const cond = (arm.cond || '').trim();
       if (!cond) {
-        findings.push({ level: 'warn', text: label === 'if' ? 'A branch has no condition yet.' : 'An or-if has no condition yet.' });
+        findings.push({ level: 'warn', text: label === 'if' ? t('A branch has no condition yet.') : t('An or-if has no condition yet.') });
         seen.push('');
         continue;
       }

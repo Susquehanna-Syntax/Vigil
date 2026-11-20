@@ -179,7 +179,7 @@ async function openRebuildModal(hostId, hostname) {
       });
       _showJobProgress(m, job, hostname);
     } catch (e) {
-      showToast(e.message || 'Rebuild was refused', 'error');
+      showToast(e.message || t('Rebuild was refused'), 'error');
       goBtn.disabled = false;
     }
   };
@@ -252,7 +252,7 @@ function _showJobProgress(m, job, hostname) {
           showToast(t('Rebuild aborted — nothing was erased'), 'success');
           render(updated);
         } catch (e) {
-          showToast(e.message || 'Too late to abort', 'error');
+          showToast(e.message || t('Too late to abort'), 'error');
         }
       };
     }
@@ -293,7 +293,7 @@ async function loadOSImages() {
           `<span class="site-row-desc muted">${escHtml(img.os_family)} ` +
             `${escHtml(img.version)} · ${escHtml(img.architecture)}</span>` +
           (img.status === 'failed'
-            ? `<span class="bad">${escHtml(img.import_error || 'Import failed')}</span>` : '') +
+            ? `<span class="bad">${escHtml(img.import_error || t('Import failed'))}</span>` : '') +
         `</div>` +
         `<div class="site-row-meta">` +
           `<span class="${_stateClass(img.status === 'ready' ? 'completed' : img.status)}">` +
@@ -311,7 +311,7 @@ async function loadOSImages() {
           await apiJson(`/api/v1/reprovision/images/${btn.dataset.id}/`,
                         { method: 'DELETE' });
           loadOSImages();
-        } catch (e) { showToast(e.message || 'Could not delete', 'error'); }
+        } catch (e) { showToast(e.message || t('Could not delete'), 'error'); }
       };
     });
   } catch (e) {
@@ -522,7 +522,7 @@ async function _reproDeleteImage(id, name) {
     showToast(t('Image deleted'), 'success');
     _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not delete image', 'error');
+    showToast(e.message || t('Could not delete image'), 'error');
   }
 }
 
@@ -637,7 +637,7 @@ async function _reproPullFromCatalog(catalogId, btn) {
     // Repaints the card as held — _reproLoadImages re-renders the catalog.
     await _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not queue the pull', 'error');
+    showToast(e.message || t('Could not queue the pull'), 'error');
     if (btn) {
       btn.disabled = false;
       btn.textContent = label;
@@ -710,7 +710,7 @@ async function _reproSubmitCustom() {
     ackEl.checked = false;
     _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not queue the pull', 'error');
+    showToast(e.message || t('Could not queue the pull'), 'error');
   } finally {
     _reproRefreshCustomGate();
   }
@@ -763,7 +763,7 @@ async function _reproSubmitUpload() {
       body: formData,
     });
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(body.error || 'Upload failed');
+    if (!resp.ok) throw new Error(body.error || t('Upload failed'));
     showToast(t('Image uploaded and imported'), 'success');
     nameEl.value = '';
     versionEl.value = '';
@@ -771,7 +771,7 @@ async function _reproSubmitUpload() {
     fileEl.value = '';
     _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not upload the image', 'error');
+    showToast(e.message || t('Could not upload the image'), 'error');
   } finally {
     btn.textContent = originalLabel;
     _reproRefreshUploadGate();
@@ -1054,7 +1054,7 @@ async function _reproSaveProfile() {
     _reproSetProfileOpen(false);
     _reproLoadProfiles();
   } catch (e) {
-    showToast(e.message || 'Could not save the profile', 'error');
+    showToast(e.message || t('Could not save the profile'), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1071,7 +1071,7 @@ async function _reproDeleteProfile(prof) {
     showToast(t('Profile deleted'), 'success');
     _reproLoadProfiles();
   } catch (e) {
-    showToast(e.message || 'Could not delete the profile', 'error');
+    showToast(e.message || t('Could not delete the profile'), 'error');
   }
 }
 

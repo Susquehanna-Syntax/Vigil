@@ -463,7 +463,7 @@ async function _teValidate(yaml) {
     // Whole task shares ONE pastel: an accent bar down the preview, not a
     // tiny per-step stripe.
     prev.innerHTML = `<div class="te-preview-inner task-${escHtml(risk)}">
-      <div class="te-preview-name">${escHtml(spec.name || 'Untitled')} <span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span></div>
+      <div class="te-preview-name">${escHtml(spec.name || t('Untitled'))} <span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span></div>
       ${steps || `<div class="muted-note">${escHtml(t('No steps.'))}</div>`}</div>`;
   } catch (e) {
     prev.innerHTML = `<div class="ai-err">${escHtml(e.message)}</div>`;

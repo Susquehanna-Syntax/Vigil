@@ -162,13 +162,13 @@ function _showReportList() {
 /* ── Builder: draft rows (no DOM work) ───────────────────────────────── */
 
 const RPT_CHART_NAMES = {
-  line: 'Line', area: 'Area', 'stacked-bar': 'Stacked bars', column: 'Columns',
-  pie: 'Pie', doughnut: 'Doughnut', table: 'Table',
+  line: t('Line'), area: t('Area'), 'stacked-bar': t('Stacked bars'), column: t('Columns'),
+  pie: t('Pie'), doughnut: t('Doughnut'), table: t('Table'),
 };
 
 //: A days metric's bars stand up; a rows metric's run across the page.
 function rptChartLabel(chart, family) {
-  if (chart === 'bar') return family === 'rows' ? 'Bars across' : 'Bars';
+  if (chart === 'bar') return family === 'rows' ? t('Bars across') : t('Bars');
   return RPT_CHART_NAMES[chart] || chart;
 }
 
@@ -466,7 +466,7 @@ async function saveReport() {
       method: editing ? 'PATCH' : 'POST',
       body: JSON.stringify(body),
     });
-    showToast(editing ? 'Report updated' : 'Report created', 'success');
+    showToast(editing ? t('Report updated') : t('Report created'), 'success');
     closeRptEditor();
     await loadReports(_rptOpenId !== null);
   } catch (e) {
