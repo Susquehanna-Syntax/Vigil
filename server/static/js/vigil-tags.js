@@ -44,7 +44,7 @@ function _tagKindBadge(kind) {
 function _tagCard(tagRow) {
   const used = tagRow.host_count === 0
     ? `<span class="muted-span">${escHtml(t('on no machines'))}</span>`
-    : `on ${escHtml(tn('{n} machine', '{n} machines', tagRow.host_count))}`; // i18n-ignore — the word before a bare count: tn() picks singular or plural, and the number sits inside it
+    : escHtml(tn('on {n} machine', 'on {n} machines', tagRow.host_count));
   const actions = tagRow.editable && tagRow.can_change !== false
     ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(tagRow.id)}">${escHtml(t('Rename'))}</button>
        <button class="btn btn-ghost btn-sm delete-btn" data-tag-del="${escAttr(tagRow.id)}">${escHtml(t('Delete'))}</button>`
@@ -287,7 +287,7 @@ function attachTagCombobox(inputId, opts) {
     } else {
       list.innerHTML = options.map((/** @type {ComboOption} */ o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
           role="option" id="${escAttr(list.id)}-${i}" data-combo-idx="${i}" aria-selected="${i === active}"${o.disabled ? ' aria-disabled="true"' : ''}>
-          <span class="tag-combo-name">${o.create ? escHtml(t('Create tag {name}', { name: o.name }).slice(0, -String(o.name).length)) : ''}<b>${escHtml(o.name)}</b></span>
+          <span class="tag-combo-name">${o.create ? t('Create tag {name}', { name: `<b>${escHtml(o.name)}</b>` }) : `<b>${escHtml(o.name)}</b>`}</span>
           <span class="tag-combo-meta">${escHtml(o.meta)}</span></div>`).join('');
     }
     input.setAttribute('aria-activedescendant', active >= 0 ? `${list.id}-${active}` : '');

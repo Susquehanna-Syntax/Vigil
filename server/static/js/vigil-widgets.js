@@ -1166,7 +1166,8 @@ async function _renderReportChart(body, settings, widget) {
 function _renderPending(body, _settings, widget) {
   body.innerHTML =
     `<div class="dash-empty muted-note">`
-    + `${escHtml((widget && widget.kind) || t('This widget'))} renders in the next phase.`
+    + escHtml((widget && widget.kind) ? t('{kind} renders in the next phase.', { kind: widget.kind })
+      : t('This widget renders in the next phase.'))
     + `</div>`;
 }
 
