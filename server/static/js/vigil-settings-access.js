@@ -16,7 +16,7 @@ async function applySettingsAccess() {
   try {
     access = await apiJson('/api/v1/accounts/settings-access/');
   } catch (e) {
-    return;
+    return;  // state-ok: not a list — every pane keeps its default access and the server still enforces the map
   }
   Object.entries(access).forEach(([page, how]) => {
     const item = nav.querySelector(`.settings-nav-item[data-pane="${page}"]`);

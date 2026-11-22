@@ -83,12 +83,13 @@ function _renderTags() {
 async function loadTags() {
   const box = document.getElementById('tags-list');
   if (!box) return;
-  box.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
+  box.innerHTML = loadingHtml();
   try {
     _allTags = await apiJson('/api/v1/tags/');
     _renderTags();
   } catch (e) {
-    box.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load tags"))}</h4><p>${escHtml(e.message)}</p></div>`;
+    showLoadFailure(box, t('tags'), e, loadTags);
+    return;
   }
 }
 
@@ -176,7 +177,7 @@ function openTagPicker(opts) {
 /** Ensure `_allTags` is loaded before a picker opens. */
 async function ensureTagsLoaded() {
   if (_allTags.length) return;
-  try { _allTags = await apiJson('/api/v1/tags/'); } catch { _allTags = []; }
+  try { _allTags = await apiJson('/api/v1/tags/'); } catch { /* state-ok: a picker is a convenience; typing a tag name still works */ }
 }
 
 /**

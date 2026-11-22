@@ -97,7 +97,7 @@ async function loadBranding() {
   try {
     b = await apiJson('/api/v1/branding/');
   } catch (e) {
-    return;   // never let branding break a page
+    return;   // state-ok: not a list — the page keeps the stock Vigil identity
   }
   applyBranding(b);
 

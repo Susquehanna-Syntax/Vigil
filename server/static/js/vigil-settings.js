@@ -44,7 +44,7 @@ async function refreshTotpStatus() {
       disableBtn.style.display = 'none';
       enrollView.style.display = 'none';
     }
-  } catch (e) { /* settings may not be open */ }
+  } catch (e) { /* state-ok: a status line on the settings card, not a list; it keeps what it showed */ }
 }
 
 async function totpStart() {
@@ -123,7 +123,7 @@ async function loadAgentInfo() {
       hash.textContent = t('(sha256: {digest}…)', { digest: b.sha256.slice(0, 12) });
       el.appendChild(hash);
     });
-  } catch (_) {}
+  } catch (e) { showLoadFailure(el, t('the agent binaries'), e, loadAgentInfo); return; }
 }
 
 function copyInstallCmd() {
@@ -177,7 +177,7 @@ async function loadCivilSettings() {
     /** @type {HTMLInputElement} */ (document.getElementById('civil-enabled')).checked = !!d.enabled;
     document.getElementById('civil-env-note').hidden = !d.env_override;
     _renderCivilState(d);
-  } catch (e) { /* leave blank */ }
+  } catch (e) { /* state-ok: a settings form with its own inputs, not a list; it stays blank and save still works */ }
 }
 
 function _renderCivilState(d) {
@@ -913,7 +913,7 @@ async function addSecurityKey() {
   let status = {};
   try {
     status = await apiJson('/api/v1/accounts/totp/');   // current, not cached
-  } catch (e) { /* the server still checks both rules */ }
+  } catch (e) { /* state-ok: a pre-flight check, not a list; the server still enforces both rules */ }
   if (status.keys_possible === false) {
     showToast(status.keys_reason || t('Security keys need HTTPS.'), 'error');
     return;

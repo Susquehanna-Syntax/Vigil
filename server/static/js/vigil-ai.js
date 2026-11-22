@@ -94,15 +94,43 @@ async function _openAi(context, runFn, staticResult) {
   if (!document.getElementById('ai-picker')) {
     document.getElementById('ai-picker-wrap').innerHTML = _AI_PICKER_HTML;
   }
-  const picker = document.getElementById('ai-picker');
+  const picker = /** @type {HTMLElement} */ (document.getElementById('ai-picker'));
   document.getElementById('ai-picker-wrap').style.display = '';
-  picker.innerHTML = `<span class="ai-empty">${escHtml(t('Loading providers…'))}</span>`;
+  showLoading(picker, t('Loading providers…'));
   requestAnimationFrame(m.open);
 
   try {
     _aiProviders = (await apiJson('/api/v1/ai/providers/')).filter(p => p.enabled && p.configured);
-  } catch { _aiProviders = []; }
+  } catch (e) {
+    // The provider chips are the modal's list: the failure draws over them and
+    // retry refetches into the same place instead of drawing an empty picker.
+    showLoadFailure(picker.parentElement, t('AI providers'), e, () => _reloadAiPicker(picker, runFn));
+    return;
+  }
+  _renderProviderPicker(picker, runFn);
+}
 
+/** Redraw the chip row and fetch again into it.
+ *  @param {HTMLElement} picker @param {(id: any) => Promise<any>} runFn @returns {Promise<void>} */
+async function _reloadAiPicker(picker, runFn) {
+  const wrap = /** @type {HTMLElement} */ (document.getElementById('ai-picker-wrap'));
+  // The empty state can replace the whole picker markup; rebuild it so the
+  // retry has somewhere to draw.
+  if (!picker.isConnected && wrap) wrap.innerHTML = _AI_PICKER_HTML;
+  const row = /** @type {HTMLElement} */ (document.getElementById('ai-picker'));
+  if (!row) return;
+  showLoading(row, t('Loading providers…'));
+  try {
+    _aiProviders = (await apiJson('/api/v1/ai/providers/')).filter(p => p.enabled && p.configured);
+  } catch (e) {
+    showLoadFailure(row.parentElement || row, t('AI providers'), e, () => _reloadAiPicker(row, runFn));
+    return;
+  }
+  _renderProviderPicker(/** @type {HTMLElement} */ (document.getElementById('ai-picker')) || row, runFn);
+}
+
+/** @param {HTMLElement} picker @param {(id: any) => Promise<any>} runFn @returns {void} */
+function _renderProviderPicker(picker, runFn) {
   // The built-in template (when present) is always an option and needs no AI.
   const staticChip = _staticResolver ? `
     <label class="ai-pick on" data-pid="static">
@@ -323,7 +351,7 @@ function suggestMitigationsForFixGroup(group) {
 
 /* ── Providers manager (Settings) ────────────────────────────────────── */
 async function loadAiProviders() {
-  const list = document.getElementById('ai-providers-list');
+  const list = /** @type {HTMLElement|null} */ (document.getElementById('ai-providers-list'));
   if (!list) return;
   try {
     const rows = await apiJson('/api/v1/ai/providers/');
@@ -354,7 +382,7 @@ async function loadAiProviders() {
     }));
     /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-test]')).forEach(b => b.addEventListener('click', () => _testProvider(b)));
     /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-edit]')).forEach(b => b.addEventListener('click', () => _editProvider(rows.find(r => r.id == b.dataset.apEdit))));
-  } catch (e) { /* card stays as-is */ }
+  } catch (e) { showLoadFailure(list, t('AI providers'), e, loadAiProviders); return; }
 }
 
 // Asks the provider for one real task and says what came back: the time it

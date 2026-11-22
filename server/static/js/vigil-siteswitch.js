@@ -23,7 +23,7 @@ async function siteSwitchInit() {
   try {
     _siteSwitch = await apiJson('/api/v1/scope/selection/');
   } catch (e) {
-    return; // hidden: Community, or an account the switcher does not apply to
+    return; // state-ok: not a list — the switcher stays hidden for Community, or an account it does not apply to
   }
   if (!_siteSwitch.enabled) return;
   _siteSwitchLabel();

@@ -222,14 +222,21 @@ async function testInstanceIntegration(target) {
 async function loadBackupRuns() {
   const box = document.getElementById('backup-runs');
   if (!box) return;
+  const list = document.getElementById('backup-runs-list');
   let runs;
   try {
     runs = await apiJson('/api/v1/instance-settings/backups/');
   } catch (e) {
-    return; // not an instance admin: the card stays hidden
+    // A 403 is a site admin looking at an install-wide card: the card hides,
+    // there is nothing to draw a failure into. Anything else failed in front
+    // of someone who can see the card, so say so with a retry rather than
+    // leaving the placeholder text up forever.
+    if (/** @type {{status?: number}} */ (e).status === 403) return;   // a site admin: the card stays hidden
+    box.hidden = false;
+    if (list) showLoadFailure(list, t('the backup history'), e, loadBackupRuns);
+    return;
   }
   box.hidden = false;
-  const list = document.getElementById('backup-runs-list');
   if (!runs.length) { list.textContent = t('No backup has run yet.'); return; }
   list.innerHTML = runs.map((r) => {
     const when = new Date(r.started_at).toLocaleString();

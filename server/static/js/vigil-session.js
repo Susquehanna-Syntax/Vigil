@@ -30,7 +30,7 @@ async function _sessionFetch(method) {
       headers: { 'X-CSRFToken': getCsrf() },
     });
   } catch (_e) {
-    return;  // a flaky network must never be the reason someone signs out
+    return;  // state-ok: not a list — a flaky network must never be the reason someone signs out
   }
   const body = await resp.json().catch(() => ({}));
   if (resp.status === 401) {

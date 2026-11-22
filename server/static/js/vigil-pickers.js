@@ -92,7 +92,7 @@ let _pickerItems = [];
 /** @param {string} type @returns {Promise<void>} */
 async function _loadPickerData(type) {
   const list = /** @type {HTMLElement} */ (document.getElementById('picker-list'));
-  list.innerHTML = `<div class="picker-empty">${escHtml(t('Loading…'))}</div>`;
+  list.innerHTML = loadingHtml();
   // A caller may supply its own items (a fixed in-page list, like the task
   // editor's starter templates) rather than a type the picker knows how to
   // fetch. Same modal, same search, no API round-trip.
