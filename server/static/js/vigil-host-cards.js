@@ -121,7 +121,7 @@ async function renderJackilRelated(section, body, kind, id, stillCurrent) {
     const resp = await fetch(`/api/v1/jackil/related/?type=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`,
       { credentials: 'same-origin' });
     if (resp.ok) data = await resp.json();
-  } catch { /* unreachable Vigil — same as no answer at all */ }
+  } catch { /* state-ok: no answer at all is the same as an unreachable Jackil — the section hides itself */ }
 
   if (!stillCurrent()) return;
   if (!data || data.configured === false) { section.style.display = 'none'; return; }
@@ -225,7 +225,7 @@ async function _refreshDetailAgentVersion(hostId) {
     // Guard against a drawer switch while this was in flight.
     if (panel.dataset.hostId !== hostId) return;
     _renderDetailAgentVersion(data.agent_version || '');
-  } catch { /* keep the value painted from card data */ }
+  } catch { /* state-ok: the version line keeps the value painted from card data */ }
 }
 
 async function _renderDetailAgentVersion(reported) {
@@ -267,9 +267,7 @@ async function _loadDetailScore(hostId) {
     if (scanEl) scanEl.textContent = s.last_scan_at
       ? new Date(s.last_scan_at).toLocaleString()
       : 'never';
-  } catch {
-    section.style.display = 'none';
-  }
+  } catch { /* state-ok: a score is an optional extra on the drawer; with no answer it stays hidden */ }
 }
 
 // Shared with vigil-vulns.js — same color tiers as the SVG face.
@@ -316,7 +314,7 @@ async function _refreshDetailTags(hostId) {
   try {
     const host = await apiJson(`/api/v1/hosts/${hostId}/`);
     _renderDetailTags(hostId, host.tags || []);
-  } catch (e) { /* keep card-derived tags as fallback */ }
+  } catch (e) { /* state-ok: the card's own tags are already drawn in the drawer */ }
 }
 
 async function _saveDetailTags(tags) {
@@ -546,7 +544,7 @@ const PIN_KEY = 'vigil-pinned-hosts';
 
 function getPins() {
   try { return JSON.parse(localStorage.getItem(PIN_KEY)) || []; }
-  catch { return []; }
+  catch { return []; /* state-ok: a blocked storage area simply leaves nothing pinned */ }
 }
 
 function savePins(pins) {
@@ -692,7 +690,7 @@ async function refreshHostCards(/** @type {HTMLElement=} */ root) {
   let all = {};
   try {
     all = await _fetchCardMetrics(ids);
-  } catch { return; }
+  } catch (e) { /* state-ok: a card keeps the dashes it renders with; there is no list to draw over */ }
 
   for (const card of cards) {
     const hostId = card.dataset.id;

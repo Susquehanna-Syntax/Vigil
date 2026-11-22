@@ -103,7 +103,7 @@ function _mountTermDialog(started, kind, container) {
 
   ws.onmessage = (ev) => {
     let msg;
-    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    try { msg = JSON.parse(ev.data); } catch (e) { return; /* state-ok: a frame we cannot read is not output; the next one still arrives */ }
     if (msg.t === 'status') _termStatus(msg, stateEl, term, setState);
     else if (msg.t === 'out') term.write(_bytesFromB64(msg.d || ''));
     else if (msg.t === 'mode' && msg.pty === false) {
@@ -165,8 +165,8 @@ function _mountTermDialog(started, kind, container) {
     clearTimeout(termSession.debounce);
     observer.disconnect();
     termSession.observer = null;
-    try { ws.close(); } catch (e) {}
-    try { term.dispose(); } catch (e) {}
+    try { ws.close(); } catch (e) { /* state-ok: a cleanup on a socket already gone; the next line disposes the terminal */ }
+    try { term.dispose(); } catch (e) { /* state-ok: a cleanup after a cleanup — nothing left to do about it */ }
     termSession.term = null;
     termSession.ws = null;
   };
@@ -210,10 +210,7 @@ function _sendInput(ws, s) {
 async function _endSession(sessionId) {
   try {
     await apiJson(`/api/v1/sessions/${sessionId}/close/`, { method: 'POST' });
-  } catch (e) {
-    // The socket we just closed is the authoritative end; a 404 here means it
-    // had already finished, which is what the operator asked for.
-  }
+  } catch (e) { /* state-ok: the socket we just closed is the authoritative end; a 404 means it had already finished */ }
 }
 
 //: Encode to UTF-8 bytes before encoding them, because the base64 step throws

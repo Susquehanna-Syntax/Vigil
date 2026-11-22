@@ -2,12 +2,10 @@
   "static/js/vigil-ai.js": 3,
   "static/js/vigil-branding.js": 1,
   "static/js/vigil-dashboards.js": 1,
-  "static/js/vigil-host-cards.js": 4,
   "static/js/vigil-instance-settings.js": 1,
   "static/js/vigil-modal.js": 4,
   "static/js/vigil-pickers.js": 1,
   "static/js/vigil-playbooks.js": 3,
-  "static/js/vigil-rdp.js": 2,
   "static/js/vigil-reports.js": 1,
   "static/js/vigil-rollout.js": 2,
   "static/js/vigil-runhistory.js": 2,
@@ -17,10 +15,7 @@
   "static/js/vigil-siteswitch.js": 1,
   "static/js/vigil-tags.js": 2,
   "static/js/vigil-tasks.js": 2,
-  "static/js/vigil-terminal.js": 4,
-  "static/js/vigil-topology.js": 5,
   "static/js/vigil-utils.js": 6,
-  "static/js/vigil-vulns.js": 4,
   "static/js/vigil-waves.js": 1,
   "static/js/vigil-widgets.js": 2
 }

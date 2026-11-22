@@ -177,7 +177,7 @@ function _connectRdp(started, login) {
     keyboard.onkeydown = null;
     keyboard.onkeyup = null;
     keyboard.reset();
-    try { client.disconnect(); } catch (e) {}
+    try { client.disconnect(); } catch (e) { /* state-ok: a cleanup on a client already disconnected */ }
     _rdpSession = null;
   };
 
@@ -198,10 +198,7 @@ function _connectRdp(started, login) {
 async function _endRdpSession(sessionId) {
   try {
     await apiJson(`/api/v1/sessions/${sessionId}/close/`, { method: 'POST' });
-  } catch (e) {
-    // The socket we just closed is the authoritative end; a 404 here means it
-    // had already finished, which is what the operator asked for.
-  }
+  } catch (e) { /* state-ok: the socket we just closed is the authoritative end; a 404 means it had already finished */ }
 }
 
 /* ── The tunnel ─────────────────────────────────────────────────────────────

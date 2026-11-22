@@ -401,9 +401,7 @@ function _topoAnimate(el, property, from, to, ms) {
   const frames = [{ [property]: from }, { [property]: to }];
   try {
     el.animate(frames, { duration: ms, easing: 'ease-out', fill: 'both' });
-  } catch {
-    /* A browser without element.animate keeps the CSS value it already has. */
-  }
+  } catch { /* state-ok: a browser without element.animate keeps the CSS value it already has */ }
 }
 
 function _topoText(parent, attrs, text) {
@@ -683,7 +681,7 @@ function _topoWirePanZoom(svg) {
       if (Math.hypot(dx, dy) < TOPO_DRAG_SLOP) return;
       drag.moving = true;
       svg.classList.add('topo-panning');
-      try { svg.setPointerCapture(ev.pointerId); } catch { /* the pointer can be gone already */ }
+      try { svg.setPointerCapture(ev.pointerId); } catch { /* state-ok: the pointer can be gone already */ }
     }
     topoState.view.x = drag.vx + dx;
     topoState.view.y = drag.vy + dy;
@@ -696,7 +694,7 @@ function _topoWirePanZoom(svg) {
     if (drag.moving) swallowClick = true;
     drag = null;
     svg.classList.remove('topo-panning');
-    try { if (svg.hasPointerCapture(ev.pointerId)) svg.releasePointerCapture(ev.pointerId); } catch { /* gone */ }
+    try { if (svg.hasPointerCapture(ev.pointerId)) svg.releasePointerCapture(ev.pointerId); } catch { /* state-ok: the pointer can be gone already */ }
   };
   svg.addEventListener('pointerup', stop);
   svg.addEventListener('pointercancel', stop);
@@ -776,9 +774,7 @@ function fitTopology() {
     // fill:none — the transform attribute set below is what holds the map when it lands.
     const run = root.animate(frames, { duration: TOPO_PAN_MS, easing: 'ease-in-out', fill: 'none' });
     if (run && run.finished) run.finished.then(_topoApplyView).catch(() => {});
-  } catch {
-    /* Without element.animate the map is already where Fit put it. */
-  }
+  } catch { /* state-ok: without element.animate the map is already where Fit put it */ }
   _topoApplyView();
 }
 
@@ -913,17 +909,14 @@ function _topoStoredTags() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TOPO_TAG_KEY) || '[]');
     return Array.isArray(parsed) ? parsed.filter(t => typeof t === 'string') : [];
-  } catch {
-    return [];
-  }
+  } catch { /* state-ok: a blocked localStorage keeps the tag picks for this visit only */ }
+  return [];
 }
 
 function _topoSaveTags() {
   try {
     localStorage.setItem(TOPO_TAG_KEY, JSON.stringify([...topoState.tags]));
-  } catch {
-    /* A window with storage blocked keeps the tags for this visit only. */
-  }
+  } catch { /* state-ok: a window with storage blocked keeps the tags for this visit only */ }
 }
 
 /** The API names each end of a link by its id alone; the map needs to know
@@ -942,7 +935,7 @@ async function loadTopology() {
   try {
     data = await apiJson('/api/v1/hosts/topology/');
   } catch (e) {
-    if (canvas) canvas.innerHTML = `<div class="topo-error">${escHtml(e.message)}</div>`;
+    if (canvas) showLoadFailure(canvas, t('the map'), e, loadTopology);
     return;
   }
   topoState.data = _topoNormalise(data);

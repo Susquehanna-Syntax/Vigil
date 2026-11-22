@@ -135,9 +135,21 @@ async function _renderFleetHeadline() {
         worstEl.textContent = t('No scanned hosts yet.');
       }
     }
-  } catch {
-    // Endpoint may 401 / 500 — placeholders stay so the page still renders.
+  } catch { /* state-ok: the headline is a summary card, not a list; the placeholder scores stay and the page still renders */ }
+}
+
+/** The failed-load block's own box at the top of the results, so the loading
+ *  row and the rendered sections around it survive a retry.
+ *  @param {HTMLElement|null} content @returns {HTMLElement|null} */
+function _vulnsFailedBox(content) {
+  if (!content) return null;
+  let box = document.getElementById('vulns-failed');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'vulns-failed';
+    content.prepend(box);
   }
+  return box;
 }
 
 async function refreshVulns() {
@@ -145,6 +157,7 @@ async function refreshVulns() {
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
 
   const loadingEl = document.getElementById('vulns-loading');
+  const content = document.getElementById('vulns-content');
   const notConfEl = document.getElementById('vulns-not-configured');
   if (loadingEl) loadingEl.style.display = 'block';
   if (notConfEl) notConfEl.style.display = 'none';
@@ -153,14 +166,16 @@ async function refreshVulns() {
     const resp = await fetch('/api/v1/vulns/', { credentials: 'same-origin' });
     if (!resp.ok) throw new Error('Request failed');
     const data = await resp.json();
+    const failed = document.getElementById('vulns-failed');
+    if (failed) failed.remove();
     renderVulns(data);
     refreshFixGroups();           // remediation by fix (M9)
     refreshVulnScans();           // also refresh scan history
     _renderFleetHeadline();       // fleet face + score + worst offender
     vulnsLoaded = true;
-  } catch {
+  } catch (e) {
     if (loadingEl) loadingEl.style.display = 'none';
-    if (notConfEl) notConfEl.style.display = 'block';
+    showLoadFailure(_vulnsFailedBox(content), t('the scan results'), e, refreshVulns);
   } finally {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
@@ -243,15 +258,18 @@ async function refreshVulnScans() {
   const section = document.getElementById('vuln-scans-section');
   const list = document.getElementById('vuln-scans-list');
   if (!section || !list) return;
+  let scans;
   try {
-    const scans = await apiJson('/api/v1/vulns/scans/');
-    list.replaceChildren();
-    if (!scans.length) { section.style.display = 'none'; return; }
+    scans = await apiJson('/api/v1/vulns/scans/');
+  } catch (e) {
     section.style.display = '';
-    for (const s of scans) list.appendChild(_buildVulnScanRow(s));
-  } catch {
-    section.style.display = 'none';
+    showLoadFailure(list, t('the recent scans'), e, refreshVulnScans);
+    return;
   }
+  list.replaceChildren();
+  if (!scans.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  for (const s of scans) list.appendChild(_buildVulnScanRow(s));
 }
 
 async function startVulnScan(hostId, btn) {
@@ -443,9 +461,7 @@ function _toggleFindingsRow(tr, summary) {
   td.style.background = 'var(--s2)';
   td.style.padding = '14px 18px';
   const loading = document.createElement('div');
-  loading.style.color = 'var(--text-3)';
-  loading.style.fontSize = '12px';
-  loading.textContent = t('Loading findings…');
+  loading.innerHTML = loadingHtml(t('Loading findings…'));
   td.appendChild(loading);
   drawer.appendChild(td);
   tr.parentNode.insertBefore(drawer, tr.nextSibling);
@@ -616,12 +632,13 @@ function updateHostCardVulnBadges(summaries) {
   });
 }
 
-// Silently populate host card vuln badges on load (no error if no scanner has reported)
+// Badges appear once a scanner has reported; with no answer the cards simply
+// carry none, so this prefetch stays quiet rather than failing an open list.
 (async () => {
   try {
     const resp = await fetch('/api/v1/vulns/', { credentials: 'same-origin' });
     if (resp.ok) updateHostCardVulnBadges(await resp.json());
-  } catch {}
+  } catch { /* state-ok: a badge is a prefetch; the vulns page loads its own list */ }
 })();
 
 
@@ -637,14 +654,18 @@ function _fixSkeleton() {
 async function refreshFixGroups() {
   const seq = ++fixState.seq;
   const q = (/** @type {HTMLInputElement} */ (document.getElementById('vuln-fix-q'))?.value || '').trim();
+  const wrap = document.getElementById('vuln-fixes');
   if (!fixState.rows.length) {
-    const wrap = document.getElementById('vuln-fixes');
     if (wrap) wrap.innerHTML = _fixSkeleton();
   }
-  let body = { results: [] };
+  let body;
   try {
     body = await apiJson(`/api/v1/vulns/fix-groups/${q ? `?q=${encodeURIComponent(q)}` : ''}`);
-  } catch { body = { results: [] }; }
+  } catch (e) {
+    if (seq !== fixState.seq) return;
+    if (wrap) showLoadFailure(wrap, t('the fixes'), e, refreshFixGroups);
+    return;
+  }
   if (seq !== fixState.seq) return;
   fixState.rows = body.results || [];
   renderFixGroups(q);

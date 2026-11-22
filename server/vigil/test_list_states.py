@@ -43,6 +43,8 @@ def swallowed(js: str) -> list[str]:
 def hand_loading(js: str) -> list[str]:
     """Loading text not drawn by loadingHtml()/showLoading()."""
     js = re.sub(r"(?:loadingHtml|showLoading)\([^()]*(?:\([^()]*\)[^()]*)*\)", "", js)
+    # A skeleton placeholder names itself to screen readers; that is its loading state.
+    js = re.sub(r"aria-label=\"\$\{escAttr\(t\('Loading[^']*'\)\)\}\"", "", js)
     return [f"line {js.count(chr(10), 0, m.start()) + 1}" for m in _LOADING.finditer(js)]
 
 
@@ -66,6 +68,7 @@ class ListStateRatchetTests(SimpleTestCase):
         self.assertEqual(hand_loading("el.innerHTML = '<p>Loading...</p>';"), ["line 1"])
         self.assertEqual(hand_loading("el.innerHTML = loadingHtml(t('Loading hosts…'));"), [])
         self.assertEqual(hand_loading("showLoading(el);"), [])
+        self.assertEqual(hand_loading("x = `<div role=\"status\" aria-label=\"${escAttr(t('Loading fixes'))}\">`;"), [])
 
     def test_no_script_gains_a_bypass(self):
         baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
