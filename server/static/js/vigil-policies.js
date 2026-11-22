@@ -34,7 +34,9 @@ const POL_CLASSIFICATIONS = [
 const POL_DEFAULT_CLASSES = ['Critical Updates', 'Security Updates', 'Definition Updates'];
 const POL_SOURCES = ['', 'dpkg', 'rpm', 'apk', 'pacman', 'flatpak', 'snap',
   'winget', 'chocolatey', 'scoop', 'registry'];
-const POL_STATES = [['present', 'Present'], ['latest', 'Latest'], ['pinned', 'Pinned'], ['absent', 'Absent']];
+const POL_STATES = [['present', t('Present')], ['latest', t('Latest')], ['pinned', t('Pinned')], ['absent', t('Absent')]];
+// i18n-ignore — a product name.
+const POL_PLAN = 'SQSY Business';
 const POL_COLUMNS = 6;
 
 /** @type {{rows: PolRow[], changes: {id: string, policy_id: string, policy: string, hostname: string, changes: any[], state: string, created_at: string}[], selected: Set<string>, editing: string|null, rules: PolRule[], apps: {id: string, source: string, name?: string}[]|null, explainSet: boolean}} */
@@ -47,14 +49,14 @@ function _polWindow(p) {
   // A guard against a count that needs no padding; RegExp.test coerces the
   // number to this same text before matching.
   const pad = (/** @type {string|number} */ v) => (/^\d+$/.test(String(v)) ? String(v).padStart(2, '0') : v);
-  const days = p.cron_dow === '*' ? 'daily' : `days ${p.cron_dow}`;
+  const days = p.cron_dow === '*' ? t('daily') : t('days {days}', { days: p.cron_dow });
   return `${pad(p.cron_hour)}:${pad(p.cron_minute)} ${days}, ${p.window_hours}h`;
 }
 
 /** @returns {Promise<void>} */
 async function fetchPolicies() {
   const tbody = /** @type {HTMLElement|null} */ (document.getElementById('pol-table-body'));
-  if (tbody) tbody.innerHTML = `<tr><td colspan="${POL_COLUMNS}" class="apps-detail-loading">Loading…</td></tr>`;
+  if (tbody) tbody.innerHTML = `<tr><td colspan="${POL_COLUMNS}" class="apps-detail-loading">${escHtml(t('Loading…'))}</td></tr>`;
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
   } catch { polState.rows = []; }
@@ -72,15 +74,15 @@ function renderPolicies() {
   for (const c of polState.changes) pendingBy[c.policy_id] = (pendingBy[c.policy_id] || 0) + 1;
   const html = polState.rows.map(p => {
     const tags = p.target_tags.length
-      ? p.target_tags.map(t => `<span class="chip chip-muted apps-src">${escHtml(t)}</span>`).join('')
-      : '<span class="apps-zero">every managed host</span>';
+      ? p.target_tags.map(tag => `<span class="chip chip-muted apps-src">${escHtml(tag)}</span>`).join('')
+      : `<span class="apps-zero">${escHtml(t('every managed host'))}</span>`;
     const patching = p.patch_enabled
-      ? `<span class="chip">on</span>${p.reboot !== 'never' ? ` <span class="apps-zero">restart: ${escHtml(p.reboot.replace('_', ' '))}</span>` : ''}`
-      : '<span class="apps-zero">off</span>';
-    const pending = pendingBy[p.id] ? `<span class="chip apps-chip-warn">${pendingBy[p.id]} waiting</span>` : '';
-    const mode = p.approval_mode === 'approve' ? '<span class="apps-zero">approve each</span>' : '<span class="apps-zero">automatic</span>';
+      ? `<span class="chip">${escHtml(t('on'))}</span>${p.reboot !== 'never' ? ` <span class="apps-zero">${escHtml(t('restart: {reboot}', { reboot: p.reboot.replace('_', ' ') }))}</span>` : ''}`
+      : `<span class="apps-zero">${escHtml(t('off'))}</span>`;
+    const pending = pendingBy[p.id] ? `<span class="chip apps-chip-warn">${escHtml(t('{n} waiting', { n: pendingBy[p.id] }))}</span>` : '';
+    const mode = p.approval_mode === 'approve' ? `<span class="apps-zero">${escHtml(t('approve each'))}</span>` : `<span class="apps-zero">${escHtml(t('automatic'))}</span>`;
     return `<tr class="apps-row" data-pol-row="${escAttr(p.id)}">
-      <td><span class="apps-name">${escHtml(p.name)}</span>${p.enabled ? '' : ' <span class="chip chip-muted">disabled</span>'}</td>
+      <td><span class="apps-name">${escHtml(p.name)}</span>${p.enabled ? '' : ` <span class="chip chip-muted">${escHtml(t('disabled'))}</span>`}</td>
       <td>${tags}</td>
       <td class="apps-mono">${escHtml(_polWindow(p))}</td>
       <td class="num">${p.app_rules.length}</td>
@@ -88,7 +90,7 @@ function renderPolicies() {
       <td>${pending || mode}</td>
     </tr>`;
   }).join('');
-  tbody.innerHTML = html || `<tr><td colspan="${POL_COLUMNS}" class="apps-empty-state">No policies yet. A policy keeps a set of apps present, current, pinned or absent — and can install OS updates — on the hosts it names, in a maintenance window.</td></tr>`;
+  tbody.innerHTML = html || `<tr><td colspan="${POL_COLUMNS}" class="apps-empty-state">${escHtml(t('No policies yet. A policy keeps a set of apps present, current, pinned or absent — and can install OS updates — on the hosts it names, in a maintenance window.'))}</td></tr>`;
 }
 
 /* ── Compliance (numbers Free; the report is Business) ───────────────── */
@@ -99,16 +101,16 @@ async function fetchCompliance() {
   let c;
   try { c = await apiJson('/api/v1/policies/compliance/'); } catch { wrap.innerHTML = ''; return; }
   const late = (c.missing_by_age.critical['31-90'] || 0) + (c.missing_by_age.critical['90+'] || 0);
-  wrap.innerHTML = `<span class="chip ${c.patched_pct >= 95 ? 'chip-mint' : 'apps-chip-warn'}">${c.patched_pct}% of hosts patched within SLA</span>
-    <span class="chip chip-muted">${c.hosts_patched} of ${c.hosts_total} hosts with nothing overdue</span>
-    ${late ? `<span class="chip chip-rose">${late} critical update${late === 1 ? '' : 's'} missing over 30 days</span>` : ''}`;
+  wrap.innerHTML = `<span class="chip ${c.patched_pct >= 95 ? 'chip-mint' : 'apps-chip-warn'}">${escHtml(t('{pct}% of hosts patched within SLA', { pct: c.patched_pct }))}</span>
+    <span class="chip chip-muted">${escHtml(t('{patched} of {total} hosts with nothing overdue', { patched: c.hosts_patched, total: c.hosts_total }))}</span>
+    ${late ? `<span class="chip chip-rose">${escHtml(tn('{n} critical update missing over 30 days', '{n} critical updates missing over 30 days', late))}</span>` : ''}`;
 }
 
 /** @returns {Promise<void>} */
 async function openComplianceReport() {
   const resp = await fetch('/api/v1/compliance/report/', { credentials: 'same-origin' });
   if (resp.status === 402) {
-    showToast('The per-site compliance report, its export and branding need SQSY Business.', 'error');
+    showToast(t("The per-site compliance report, its export and branding need {plan}.", { plan: POL_PLAN }), 'error');
     return;
   }
   window.open('/api/v1/compliance/report.html', '_blank', 'noopener');
@@ -140,7 +142,7 @@ function renderPolicyChanges() {
   const actions = /** @type {HTMLElement|null} */ (document.getElementById('pol-changes-actions'));
   if (actions) actions.hidden = polState.selected.size === 0;
   if (!polState.changes.length) {
-    wrap.innerHTML = '<div class="apps-empty-state">Nothing waiting. Policies set to approve each change list what they would do here.</div>';
+    wrap.innerHTML = `<div class="apps-empty-state">${escHtml(t('Nothing waiting. Policies set to approve each change list what they would do here.'))}</div>`;
     return;
   }
   wrap.innerHTML = polState.changes.map(c => `<label class="pol-change">
@@ -157,14 +159,14 @@ async function decidePolicyChanges(kind) {
   if (!ids.length) return;
   const body = { ids };
   if (kind === 'approve') {
-    body.totp = await totpPrompt(`Sending ${ids.length} approved change${ids.length === 1 ? '' : 's'} to their hosts.`,
-      { title: 'Approve changes', confirmText: 'Approve and send' });
+    body.totp = await totpPrompt(tn('Sending {n} approved change to their hosts.', 'Sending {n} approved changes to their hosts.', ids.length),
+      { title: t('Approve changes'), confirmText: t('Approve and send') });
     if (!body.totp) return;
   }
   try {
     const result = await apiJson(`/api/v1/policies/changes/${kind}/`, { method: 'POST', body: JSON.stringify(body) });
-    showToast(kind === 'approve' ? `Sent to ${result.dispatched} host${result.dispatched === 1 ? '' : 's'}`
-      : `Rejected ${result.rejected}`, 'success');
+    showToast(kind === 'approve' ? tn('Sent to {n} host', 'Sent to {n} hosts', result.dispatched)
+      : t('Rejected {count}', { count: result.rejected }), 'success');
     polState.selected.clear();
     fetchPolicyChanges();
   } catch (e) { showToast(e.message, 'error'); }
@@ -203,14 +205,14 @@ function renderPolicyRules() {
   const wrap = _polEl('pol-rules');
   if (!wrap) return;
   wrap.innerHTML = polState.rules.map((r, i) => `<div class="pol-rule" data-pol-rule="${i}">
-      <input class="form-control" list="pol-app-list" data-field="app" value="${escAttr(r.app)}" placeholder="App id, e.g. Mozilla.Firefox" aria-label="App">
-      <select class="form-control" data-field="source" aria-label="Source">${POL_SOURCES.map(s =>
-        `<option value="${s}"${s === r.source ? ' selected' : ''}>${s || 'host\'s own'}</option>`).join('')}</select>
-      <select class="form-control" data-field="state" aria-label="State">${POL_STATES.map(([v, l]) =>
+      <input class="form-control" list="pol-app-list" data-field="app" value="${escAttr(r.app)}" placeholder="${escAttr(t('App id, e.g. Mozilla.Firefox'))}" aria-label="${escAttr(t('App'))}">
+      <select class="form-control" data-field="source" aria-label="${escAttr(t('Source'))}">${POL_SOURCES.map(s =>
+        `<option value="${s}"${s === r.source ? ' selected' : ''}>${s || escHtml(t("host's own"))}</option>`).join('')}</select>
+      <select class="form-control" data-field="state" aria-label="${escAttr(t('State'))}">${POL_STATES.map(([v, l]) =>
         `<option value="${v}"${v === r.state ? ' selected' : ''}>${l}</option>`).join('')}</select>
-      <input class="form-control" data-field="version" value="${escAttr(r.version || '')}" placeholder="Version" aria-label="Version"${r.state === 'pinned' ? '' : ' hidden'}>
-      <button class="btn btn-ghost btn-xs" type="button" data-pol-remove="${i}" aria-label="Remove">Remove</button>
-    </div>`).join('') || '<div class="apps-empty-state">No app rules. Add one, or use only the Patching tab.</div>';
+      <input class="form-control" data-field="version" value="${escAttr(r.version || '')}" placeholder="${escAttr(t('Version'))}" aria-label="${escAttr(t('Version'))}"${r.state === 'pinned' ? '' : ' hidden'}>
+      <button class="btn btn-ghost btn-xs" type="button" data-pol-remove="${i}" aria-label="${escAttr(t('Remove'))}">${escHtml(t('Remove'))}</button>
+    </div>`).join('') || `<div class="apps-empty-state">${escHtml(t('No app rules. Add one, or use only the Patching tab.'))}</div>`;
 }
 
 /** @returns {void} */
@@ -225,7 +227,7 @@ async function openPolicyEditor(policyId) {
   const p = /** @type {PolRow|null} */ ((typeof policyId === 'string' && polState.rows.find(r => r.id === policyId)) || null);
   polState.editing = p ? p.id : null;
   polState.rules = p ? p.app_rules.map(r => ({ ...r })) : [];
-  _polEl('pol-title').textContent = p ? p.name : 'New policy';
+  _polEl('pol-title').textContent = p ? p.name : t('New policy');
   /** @type {HTMLInputElement} */ (_polEl('pol-name')).value = p ? p.name : '';
   sitePickFill(/** @type {HTMLSelectElement} */ (_polEl('pol-site')), _polEl('pol-site-field'),
     p ? p.site_id : null, { editing: !!p });
@@ -266,11 +268,11 @@ async function openPolicyEditor(policyId) {
  *  Patching tab so the policy fetches that kind of update. */
 /** @param {string} appName @param {{app: string, source: string}[]} pairs @param {string[]} classifications @returns {string} */
 function _polNewMeta(appName, pairs, classifications) {
-  if (!pairs.length && classifications.length) return `patches ${classifications.join(', ')} on Windows`;
+  if (!pairs.length && classifications.length) return t('patches {classifications} on Windows', { classifications: classifications.join(', ') });
   if (pairs.length && classifications.length) {
-    return `keeps the packages up to date and patches ${classifications.join(', ')} on Windows`;
+    return t('keeps the packages up to date and patches {classifications} on Windows', { classifications: classifications.join(', ') });
   }
-  return `keeps ${appName} installed and up to date`;
+  return t('keeps {appName} installed and up to date', { appName });
 }
 
 /** @param {string} appName @param {{app: string, source: string}[]} pairs @param {{windowsClassifications?: string[]}=} opts @returns {Promise<void>} */
@@ -278,21 +280,21 @@ async function policyFromApp(appName, pairs, opts = {}) {
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
   } catch (e) {
-    showToast(`Update policies need an admin account: ${e.message}`, 'error');
+    showToast(t('Update policies need an admin account: {message}', { message: e.message }), 'error');
     return;
   }
   const want = (opts.windowsClassifications || []).filter((/** @type {string} */ c) => POL_CLASSIFICATIONS.includes(c));
   const items = [
-    { key: '', name: 'New policy', meta: _polNewMeta(appName, pairs, want) },
+    { key: '', name: t('New policy'), meta: _polNewMeta(appName, pairs, want) },
     ...polState.rows.map(p => ({ key: p.id, name: p.name,
-      meta: `${p.app_rules.length} app rule${p.app_rules.length === 1 ? '' : 's'}${p.enabled ? '' : ' · disabled'}` })),
+      meta: tn('{n} app rule', '{n} app rules', p.app_rules.length) + (p.enabled ? '' : ' · ' + t('disabled')) })),
   ];
   openPicker({
-    type: 'policy', title: `Add ${appName} to a policy`, allowAdd: false, items,
+    type: 'policy', title: t('Add {appName} to a policy', { appName }), allowAdd: false, items,
     onSelect: async (item) => {
       navigateTo('policies');
       await openPolicyEditor(item.key || null);
-      if (!item.key) /** @type {HTMLInputElement} */ (_polEl('pol-name')).value = `${appName} updates`;
+      if (!item.key) /** @type {HTMLInputElement} */ (_polEl('pol-name')).value = t('{appName} updates', { appName });
       let added = 0;
       for (const pr of pairs) {
         if (polState.rules.some(r => r.app === pr.app && r.source === pr.source)) continue;
@@ -309,9 +311,11 @@ async function policyFromApp(appName, pairs, opts = {}) {
           patched += 1;
         }
       }
-      const what = [added ? `${added} app rule${added === 1 ? '' : 's'}` : '',
-        patched ? `${patched} update type${patched === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
-      showToast(what ? `Added ${appName}: ${what}. Choose the hosts, then Save.` : `${appName} is already in this policy`,
+      const rules = added ? tn('{n} app rule', '{n} app rules', added) : '';
+      const types = patched ? tn('{n} update type', '{n} update types', patched) : '';
+      const what = rules && types ? t('{rules} and {types}', { rules, types }) : rules || types;
+      showToast(what ? t('Added {appName}: {what}. Choose the hosts, then Save.', { appName, what })
+        : t('{appName} is already in this policy', { appName }),
         what ? 'success' : 'info');
     },
   });
@@ -358,7 +362,7 @@ async function savePolicy() {
   if (wantHighRisk !== (current ? current.allow_high_risk : false)) {
     body.allow_high_risk = wantHighRisk;
     if (wantHighRisk) {
-      const code = await totpPrompt('Allow unattended restarts from this policy.');
+      const code = await totpPrompt(t('Allow unattended restarts from this policy.'));
       if (!code) return;
       body.totp = code.trim();
     }
@@ -366,7 +370,7 @@ async function savePolicy() {
   const url = polState.editing ? `/api/v1/policies/${polState.editing}/` : '/api/v1/policies/';
   try {
     const saved = await apiJson(url, { method: polState.editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
-    showToast(`Saved ${saved.name}`, 'success');
+    showToast(t('Saved {name}', { name: saved.name }), 'success');
     await fetchPolicies();
     closePolicyEditor();
   } catch (e) {
@@ -380,7 +384,7 @@ async function savePolicy() {
 async function deletePolicy() {
   if (!polState.editing) return;
   const p = polState.rows.find(r => r.id === polState.editing);
-  if (!window.confirm(`Delete the policy "${p ? p.name : ''}"? Its generated task is archived, not deleted.`)) return;
+  if (!window.confirm(t('Delete the policy "{name}"? Its generated task is archived, not deleted.', { name: p ? p.name : '' }))) return;
   try {
     await fetch(`/api/v1/policies/${polState.editing}/`, {
       method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRFToken': getCsrf() },
@@ -394,7 +398,7 @@ async function deletePolicy() {
 async function loadPolicyPreview() {
   const wrap = _polEl('pol-preview');
   if (!wrap || !polState.editing) return;
-  wrap.innerHTML = '<div class="apps-detail-loading">Working out what would change…</div>';
+  wrap.innerHTML = `<div class="apps-detail-loading">${escHtml(t('Working out what would change…'))}</div>`;
   /** @type {{hosts: PolDriftHost[], compliant: number, unknown: {host_id: string, hostname: string}[]}} */
   let drift;
   try { drift = await apiJson(`/api/v1/policies/${polState.editing}/drift/`); } catch (e) {
@@ -402,11 +406,12 @@ async function loadPolicyPreview() {
     return;
   }
   const p = polState.rows.find(r => r.id === polState.editing);
+  const unknownNames = drift.unknown.map(u => u.hostname).join(', ');
   const summary = `<div class="pol-summary">
-      <span class="chip ${drift.hosts.length ? 'apps-chip-warn' : 'chip-mint'}">${drift.hosts.length} to change</span>
-      <span class="chip chip-mint">${drift.compliant} already in line</span>
-      ${drift.unknown.length ? `<span class="chip chip-muted" title="${escAttr(drift.unknown.map(u => u.hostname).join(', '))}">${drift.unknown.length} not reported yet</span>` : ''}
-      ${p && p.high_risk && !p.allow_high_risk ? '<span class="chip chip-rose">restarts not allowed yet — runs are refused</span>' : ''}
+      <span class="chip ${drift.hosts.length ? 'apps-chip-warn' : 'chip-mint'}">${escHtml(t('{n} to change', { n: drift.hosts.length }))}</span>
+      <span class="chip chip-mint">${escHtml(t('{compliant} already in line', { compliant: drift.compliant }))}</span>
+      ${drift.unknown.length ? `<span class="chip chip-muted" title="${escAttr(unknownNames)}">${escHtml(t('{n} not reported yet', { n: drift.unknown.length }))}</span>` : ''}
+      ${p && p.high_risk && !p.allow_high_risk ? `<span class="chip chip-rose">${escHtml(t('restarts not allowed yet — runs are refused'))}</span>` : ''}
     </div>`;
   const rows = drift.hosts.map(h => `<div class="apps-detail-item">
       <span class="apps-name">${escHtml(h.hostname)}</span>
@@ -419,15 +424,15 @@ async function loadPolicyPreview() {
 
 /** @returns {Promise<void>} */
 async function runPolicyNow() {
-  const totp = await totpPrompt('Running this policy now applies it to every host it targets.',
-    { title: 'Run policy now', confirmText: 'Run now' });
+  const totp = await totpPrompt(t('Running this policy now applies it to every host it targets.'),
+    { title: t('Run policy now'), confirmText: t('Run now') });
   if (!totp) return;
   try {
     const result = await apiJson(`/api/v1/policies/${polState.editing}/run/`, { method: 'POST', body: JSON.stringify({ totp }) });
     if (result.error) { showToast(result.error, 'error'); return; }
-    const text = result.mode === 'approval' ? `${result.queued} change${result.queued === 1 ? '' : 's'} waiting for approval`
-      : result.mode === 'rollout' ? `Rollout started for ${result.dispatched} host${result.dispatched === 1 ? '' : 's'}`
-        : `Sent to ${result.dispatched} host${result.dispatched === 1 ? '' : 's'}`;
+    const text = result.mode === 'approval' ? tn('{n} change waiting for approval', '{n} changes waiting for approval', result.queued)
+      : result.mode === 'rollout' ? tn('Rollout started for {n} host', 'Rollout started for {n} hosts', result.dispatched)
+        : tn('Sent to {n} host', 'Sent to {n} hosts', result.dispatched);
     showToast(text, 'success');
     fetchPolicyChanges();
   } catch (e) { showToast(e.message, 'error'); }

@@ -154,8 +154,8 @@ function defCardHtml(def, opts) {
   return `
     <div class="def-card" data-def-open="${escAttr(def.id)}">
       <div class="def-card-body">
-        <div class="def-card-title">${escHtml(def.name || 'Untitled')}</div>
-        <div class="def-card-desc">${escHtml(def.description || 'No description provided.')}</div>
+        <div class="def-card-title">${escHtml(def.name || t('Untitled'))}</div>
+        <div class="def-card-desc">${escHtml(def.description || t('No description provided.'))}</div>
         <div class="def-card-meta">
           ${riskBadgeHtml(def.risk_level || 'standard')}
           <span class="dot-sep">·</span>
@@ -637,7 +637,7 @@ async function openTaskDetail(runId) {
       const hdr = _tdEl('div', 'display:flex;align-items:center;gap:10px;margin-bottom:6px;');
       hdr.appendChild(_tdEl('span', 'font-size:13px;font-weight:600;color:var(--text-1);', task.step_label || task.action));
       if (task.step_label && task.step_label !== task.action) {
-        hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action));
+        hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action)); // i18n-ignore — a font name
       }
       hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', TASK_STATE_LABELS[task.state] || task.state));
       card.appendChild(hdr);
@@ -664,7 +664,7 @@ async function openTaskDetail(runId) {
 
       if (output) {
         const pre = _tdEl('pre', "margin:0;padding:10px 12px;background:var(--s0);border-radius:var(--r-sm);" +
-          "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" +
+          "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" + // i18n-ignore — a font name
           'white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;');
         pre.textContent = output;
         if (hasRows) {

@@ -62,9 +62,8 @@ function _sessionMMSS(seconds) {
 
 function _sessionMessage(left) {
   return sessionState.limit === 'max'
-    ? 'This sign-in reaches its time limit in ' + _sessionMMSS(left)
-      + ". Save your work — you'll need to sign in again."
-    : "You'll be signed out in " + _sessionMMSS(left) + ' for inactivity.';
+    ? t("This sign-in reaches its time limit in {left}. Save your work — you'll need to sign in again.", { left: _sessionMMSS(left) })
+    : t("You'll be signed out in {left} for inactivity.", { left: _sessionMMSS(left) });
 }
 
 function _sessionWarn() {

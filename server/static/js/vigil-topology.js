@@ -278,7 +278,7 @@ function layoutTopology(data, sitesIn, chosenSite) {
   const activeTags = (data.tags || []).map(t => t.name).filter(name => topoState.tags.has(name));
 
   let sites = (sitesIn || data.sites || []).map(site => ({ id: site.id, name: site.name }));
-  if (!sites.length) sites = [{ id: '', name: hosts.length ? 'All hosts' : 'No hosts' }];
+  if (!sites.length) sites = [{ id: '', name: hosts.length ? t('All hosts') : t('No hosts') }];
   const drawn = chosenSite ? sites.filter(site => site.id === chosenSite) : sites;
   const slot = new Map(drawn.map((site, i) => [site.id, i]));
 

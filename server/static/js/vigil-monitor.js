@@ -150,7 +150,7 @@ function updateSshCommand() {
 function copySshCommand() {
   const cmd = document.getElementById('ssh-cmd').textContent;
   copyText(cmd).then((ok) => showToast(
-    ok ? 'Copied — paste into your terminal' : 'Copy failed',
+    ok ? t('Copied — paste into your terminal') : t('Copy failed'),
     ok ? 'success' : 'error'));
 }
 

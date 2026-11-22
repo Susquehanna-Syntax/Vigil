@@ -63,6 +63,31 @@ JS_TRANSLATED: list[str] = [
     "static/js/vigil-hunts.js",
     "static/js/vigil-instance-settings.js",
     "static/js/vigil-inventory.js",
+    "static/js/vigil-terminal.js",
+    "static/js/vigil-store.js",
+    "static/js/vigil-login-verify.js",
+    "static/js/vigil-policies.js",
+    "static/js/vigil-playbook-flow.js",
+    "static/js/vigil-reprovision.js",
+    "static/js/vigil-jackil-shapes.js",
+    "static/js/vigil-monitor.js",
+    "static/js/vigil-pickers.js",
+    "static/js/vigil-reports.js",
+    "static/js/vigil-stacks.js",
+    "static/js/vigil-rollout.js",
+    "static/js/vigil-runhistory.js",
+    "static/js/vigil-session.js",
+    "static/js/vigil-sitepick.js",
+    "static/js/vigil-siteswitch.js",
+    "static/js/vigil-tags.js",
+    "static/js/vigil-tasks.js",
+    "static/js/vigil-topology.js",
+    "static/js/vigil-ui-kit.js",
+    "static/js/vigil-users.js",
+    "static/js/vigil-usersites.js",
+    "static/js/vigil-vulns.js",
+    "static/js/vigil-waves.js",
+    "static/js/vigil-widgets.js",
 ]
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
@@ -292,4 +317,15 @@ class JsStringRatchetTests(SimpleTestCase):
             rel = str(path.relative_to(ROOT))
             lines = [f"line {n}" for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
                      if stray.search(line)]
+            self.assertEqual(lines, [], rel)
+
+    def test_attribute_values_use_the_attribute_escaper(self):
+        # escHtml escapes & < > only, so inside title="..." a value with a quote
+        # breaks out of the attribute; escAttr also escapes " and '.
+        wrong = re.compile(r'=\s*"\$\{escHtml\(')
+        self.assertTrue(wrong.search('x = `<i title="${escHtml(name)}">`;'))
+        for path in scanned_scripts():
+            rel = str(path.relative_to(ROOT))
+            lines = [f"line {n}" for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
+                     if wrong.search(line)]
             self.assertEqual(lines, [], rel)

@@ -168,7 +168,7 @@ async function _renderStatTile(body, settings) {
 
 //: Mirrors Host.Mode.choices. The host list API sends the raw value; the
 //: badge wants the label the server-rendered card shows.
-const _MODE_LABEL = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full Control' };
+const _MODE_LABEL = { monitor: t('Monitor'), managed: t('Managed'), full_control: t('Full Control') };
 
 /* The widget builds the same .host-card markup templates/_host_card.html
    renders, carrying the same data-* attributes. That is deliberate rather than
@@ -177,7 +177,7 @@ const _MODE_LABEL = { monitor: 'Monitor', managed: 'Managed', full_control: 'Ful
    modal, the OS logo and the five live metric bars without re-implementing any
    of them. */
 function _dashHostCard(h) {
-  const os = h.os || 'Unknown OS';
+  const os = h.os || t('Unknown OS');
   const tags = (h.tags || []).map(String);
   return `<div class="host-card" data-id="${escAttr(h.id)}"
        data-hostname="${escAttr(h.hostname)}"
@@ -259,7 +259,7 @@ async function _renderHostStatusGrid(body, settings) {
     shown = shown.filter(h => h.status === settings.status);
   }
   if (!shown.length) {
-    _wEmpty(body, want ? `No hosts tagged ${settings.tag_filter}` : 'No hosts yet');
+    _wEmpty(body, want ? t('No hosts tagged {tag}', { tag: settings.tag_filter }) : t('No hosts yet'));
     return;
   }
   // Offline and pending first: a fleet view is read for what is wrong with it.
@@ -736,7 +736,7 @@ async function _renderPendingEnrollments(body) {
         _WCACHE.delete('/api/v1/hosts/');
         showToast(approve ? t('{name} approved', { name }) : t('{name} rejected', { name }), 'success');
         _dashPaintAll();
-      } catch (e) { showToast(e.message || 'Failed', 'error'); }
+      } catch (e) { showToast(e.message || t('Failed'), 'error'); }
     };
   });
 }
@@ -1075,7 +1075,7 @@ function _wLicensed(body, payload) {
   // open elsewhere, so this is the widget greying itself rather than erroring.
   if (payload && payload.upgrade_url) {
     body.innerHTML = `<div class="dash-empty muted-note">
-      ${escHtml(payload.detail || 'Requires an SQSY Business licence')}</div>`;
+      ${escHtml(payload.detail || t('Requires an SQSY Business licence'))}</div>`;
     return false;
   }
   return true;
@@ -1166,7 +1166,8 @@ async function _renderReportChart(body, settings, widget) {
 function _renderPending(body, _settings, widget) {
   body.innerHTML =
     `<div class="dash-empty muted-note">`
-    + `${escHtml((widget && widget.kind) || 'This widget')} renders in the next phase.`
+    + escHtml((widget && widget.kind) ? t('{kind} renders in the next phase.', { kind: widget.kind })
+      : t('This widget renders in the next phase.'))
     + `</div>`;
 }
 

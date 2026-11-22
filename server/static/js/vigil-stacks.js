@@ -22,8 +22,13 @@ const stackEd = {
 let _stackCheckSeq = 0;
 let _stackCheckTimer = null;
 
-const _NEW_COMPOSE = 'services:\n  app:\n    image: nginx:stable\n    restart: unless-stopped\n';
-const DEPLOY_SAVE_HINT = 'Save first: deploy ships a saved revision';
+const _NEW_COMPOSE = 'services:\n  app:\n    image: nginx:stable\n    restart: unless-stopped\n';   // i18n-ignore — a YAML sample
+const DEPLOY_SAVE_HINT = t('Save first: deploy ships a saved revision');
+// The command sample and the markup snippet below are not sentences.
+const _GIT_USER_SAMPLE = 'x-access-token';   // i18n-ignore
+const _GIT_HOST_SAMPLE = 'github.com';   // i18n-ignore
+const KEYSCAN_CODE = '<code>ssh-keyscan github.com</code>';   // i18n-ignore
+const SSH_KEY_TEXTAREA = '<textarea class="form-control" id="git-cred-secret" rows="6" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>';   // i18n-ignore
 
 async function renderManagedStacks(hostId) {
   const wrap = document.getElementById('managed-stacks');
@@ -46,9 +51,9 @@ function _renderManagedBar() {
   if (!wrap) return;
   const rest = stackEd.stacks.filter(s => !stackEd.listed.has(s.name));
   wrap.innerHTML = `<div class="managed-stacks-bar">
-      ${rest.length ? '<span class="managed-stacks-label">Managed by Vigil, not deployed</span>' : ''}
+      ${rest.length ? `<span class="managed-stacks-label">${escHtml(t('Managed by Vigil, not deployed'))}</span>` : ''}
       ${rest.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
-      <button class="btn btn-xs btn-mint" type="button" data-stack-new>New stack</button>
+      <button class="btn btn-xs btn-mint" type="button" data-stack-new>${escHtml(t('New stack'))}</button>
     </div>`;
 }
 
@@ -62,7 +67,7 @@ function setListedStacks(names, withContainers) {
 /** The Edit button for a stack header, or '' when Vigil does not manage it. */
 function managedStackEditButton(name) {
   const s = (stackEd.stacks || []).find(m => m.name === name);
-  return s ? `<button class="btn btn-xs btn-outline" type="button" data-stack-edit="${escAttr(s.id)}" title="Edit its compose file and .env (revision ${s.revision})">Edit</button>` : '';
+  return s ? `<button class="btn btn-xs btn-outline" type="button" data-stack-edit="${escAttr(s.id)}" title="${escAttr(t('Edit its compose file and .env (revision {revision})', { revision: s.revision }))}">${escHtml(t('Edit'))}</button>` : '';
 }
 
 function _renderStackEnv() {
@@ -70,11 +75,11 @@ function _renderStackEnv() {
   // Values go in as .value after the markup is built: never interpolate one
   // into an attribute — a revealed secret must not become markup.
   wrap.innerHTML = stackEd.env.map((e, i) => `<div class="stack-env-row" data-env-row="${i}">
-      <input class="form-control" data-env-field="key" value="${escAttr(e.key)}" placeholder="KEY" aria-label="Variable name" autocomplete="off">
+      <input class="form-control" data-env-field="key" value="${escAttr(e.key)}" placeholder="${escAttr(t('KEY'))}" aria-label="${escAttr(t('Variable name'))}" autocomplete="off">
       <input class="form-control" data-env-field="value" type="${e.revealed ? 'text' : 'password'}"
-        placeholder="${e.stored ? '•••••• (unchanged)' : 'value'}" aria-label="Value of ${escAttr(e.key || 'variable')}" autocomplete="off">
-      <button class="btn btn-ghost btn-xs" type="button" data-env-remove="${i}" aria-label="Remove">Remove</button>
-    </div>`).join('') || '<div class="apps-empty-state">No variables.</div>';
+        placeholder="${e.stored ? escAttr(t('•••••• (unchanged)')) : escAttr(t('value'))}" aria-label="${escAttr(t('Value of {key}', { key: e.key || 'variable' }))}" autocomplete="off">
+      <button class="btn btn-ghost btn-xs" type="button" data-env-remove="${i}" aria-label="${escAttr(t('Remove'))}">${escHtml(t('Remove'))}</button>
+    </div>`).join('') || `<div class="apps-empty-state">${escHtml(t('No variables.'))}</div>`;
   // Show values only when there are saved values to show.
   const reveal = /** @type {HTMLElement} */ (document.querySelector('.sted [data-stack-env-reveal]'));
   if (reveal) reveal.hidden = !stackEd.env.some(e => e.stored && !e.revealed);
@@ -137,16 +142,16 @@ const STACK_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;   // apps/stacks/validation.
 
 /** Why a new stack cannot take this name, or '' when it can. */
 function _stackNameProblem(name) {
-  const host = _stedHostLabel(null) || 'This host';
-  if (!name) return 'Give the stack a name.';
+  const host = _stedHostLabel(null) || t('This host');
+  if (!name) return t('Give the stack a name.');
   if (!STACK_NAME_RE.test(name)) {
     return /[A-Z]/.test(name) && STACK_NAME_RE.test(name.toLowerCase())
-      ? 'Use lowercase letters only.'
-      : 'Use lowercase letters, digits, _ and -, starting with a letter or digit (e.g. media or my-app-2).';
+      ? t('Use lowercase letters only.')
+      : t('Use lowercase letters, digits, _ and -, starting with a letter or digit (e.g. media or my-app-2).');
   }
-  if (stackEd.stacks.some(s => s.name === name)) return `${host} already has a stack called ${name}.`;
+  if (stackEd.stacks.some(s => s.name === name)) return t('{host} already has a stack called {name}.', { host, name });
   if (stackEd.running.has(name)) {
-    return `${host} already runs a compose stack called ${name}. Adopt it from the Containers page to manage it.`;
+    return t('{host} already runs a compose stack called {name}. Adopt it from the Containers page to manage it.', { host, name });
   }
   return '';
 }
@@ -211,7 +216,7 @@ async function openStackEditor(stackId) {
   stackEd.source = (stack && stack.git) ? 'git' : 'editor';
   _clearStackDirty();
   _stedEl('sted-host').textContent = _stedHostLabel(stack);
-  _stedEl('sted-name-label').textContent = stack ? stack.name : 'New stack';
+  _stedEl('sted-name-label').textContent = stack ? stack.name : t('New stack');
   const name = /** @type {HTMLInputElement} */ (_stedEl('stack-name'));
   name.value = stack ? stack.name : '';
   name.disabled = !!stack;
@@ -228,8 +233,8 @@ async function openStackEditor(stackId) {
   const recreate = report.recreate || [];
   if (stack && stack.adopted) {
     err.textContent = recreate.length
-      ? `Adopted from ${stack.working_dir}/${stack.compose_file}. Deploying this file would recreate: ${recreate.join(', ')} — their running config differs from the file.`
-      : `Adopted from ${stack.working_dir}/${stack.compose_file}. Deploying it unchanged recreates nothing.`;
+      ? t('Adopted from {path}. Deploying this file would recreate: {services} — their running config differs from the file.', { path: `${stack.working_dir}/${stack.compose_file}`, services: recreate.join(', ') })
+      : t('Adopted from {path}. Deploying it unchanged recreates nothing.', { path: `${stack.working_dir}/${stack.compose_file}` });
     err.classList.add('show');
   }
   _renderStackEnv();
@@ -245,8 +250,8 @@ async function openStackEditor(stackId) {
 
 async function closeStackEditor() {
   if (stackEd.dirty) {
-    const discard = await confirmModal('Discard unsaved changes to this stack?',
-      { danger: true, confirmText: 'Discard' });
+    const discard = await confirmModal(t('Discard unsaved changes to this stack?'),
+      { danger: true, confirmText: t('Discard') });
     if (!discard) return;
   }
   stackEd.env = [];   // forget any revealed values
@@ -272,11 +277,11 @@ function _setStackStatus(problems) {
   if (!pill) return;
   if (problems === null) {
     pill.className = 'sted-status';
-    pill.textContent = 'checking…';
+    pill.textContent = t('checking…');
     return;
   }
   pill.className = 'sted-status ' + (problems ? 'is-bad' : 'is-good');
-  pill.textContent = problems ? `${problems} problem(s)` : 'valid';
+  pill.textContent = problems ? tn('{n} problem', '{n} problems', problems) : t('valid');
 }
 
 function _renderStackCheck(r) {
@@ -286,19 +291,19 @@ function _renderStackCheck(r) {
   let html = '';
   if (r.ok) {
     const services = r.services || [];
-    html += `<div class="sted-check-ok">✓ valid · ${services.length} service(s)</div>`;
+    html += `<div class="sted-check-ok">✓ ${escHtml(t('valid'))} · ${escHtml(tn('{n} service', '{n} services', services.length))}</div>`;
     if (services.length) {
       html += `<div class="sted-services">${services.map(s => `<span class="chip chip-muted sted-service">${escHtml(s.name)}`
         + `<span class="sted-service-img">${escHtml(s.build ? 'build' : (s.image || ''))}</span></span>`).join('')}</div>`;
     }
   } else {
-    html += `<div class="sted-check-bad">✕ ${escHtml(r.error || 'This file does not validate.')}`
-      + (r.line ? `<span class="sted-check-line">line ${r.line}</span>` : '') + '</div>';
+    html += `<div class="sted-check-bad">✕ ${escHtml(r.error || t('This file does not validate.'))}`
+      + (r.line ? `<span class="sted-check-line">${escHtml(t('line {line}', { line: r.line }))}</span>` : '') + '</div>';
   }
   (r.missing_env || []).forEach((v) => {
-    html += `<div class="sted-missing">${escHtml(v)} is used but not set `
-      + `<button class="btn btn-ghost btn-xs" type="button" data-sted-add-env="${escAttr(v)}" `
-      + `aria-label="Add ${escAttr(v)} to the .env">Add ${escHtml(v)}</button></div>`;
+    html += `<div class="sted-missing">${escHtml(t('{var} is used but not set', { var: v }))}`
+      + `<button class="btn btn-ghost btn-xs" type="button" data-sted-add-env="${escAttr(v)}"`
+      + ` aria-label="${escAttr(t('Add {var} to the .env', { var: v }))}">${escHtml(t('Add {var}', { var: v }))}</button></div>`;
   });
   wrap.innerHTML = html;
   stackEd.errorLine = r.ok ? null : (r.line || null);
@@ -339,10 +344,10 @@ async function _loadStackRevisions() {
     wrap.innerHTML = revs.map(r => `<div class="apps-detail-item sted-rev">
         <span class="apps-name">r${r.number}${r.name ? ` <span class="sted-rev-name">${escHtml(r.name)}</span>` : ''}${r.git_commit ? ` <code class="sted-git-chip">${escHtml(r.git_commit.slice(0, 12))}</code>` : ''}</span><span class="apps-detail-scope">${escHtml(r.note || '')} · ${escHtml(r.created_by || '')} · ${escHtml(timeAgo(r.created_at) || '')}</span>
         <span class="sted-rev-acts">
-          ${r.current ? '<span class="chip chip-mint">current</span>' : ''}
-          ${r.deployed ? '<span class="chip chip-muted">deployed</span>' : ''}
-          <button class="btn btn-ghost btn-xs" type="button" data-stack-rev-name="${r.number}">${r.name ? 'Rename' : 'Name'}</button>
-          ${r.current || isGit ? '' : `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>`}
+          ${r.current ? `<span class="chip chip-mint">${escHtml(t('current'))}</span>` : ''}
+          ${r.deployed ? `<span class="chip chip-muted">${escHtml(t('deployed'))}</span>` : ''}
+          <button class="btn btn-ghost btn-xs" type="button" data-stack-rev-name="${r.number}">${r.name ? escHtml(t('Rename')) : escHtml(t('Name'))}</button>
+          ${r.current || isGit ? '' : `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">${escHtml(t('Load this file'))}</button>`}
         </span>
       </div>`).join('');
     stackEd.revisions = revs;
@@ -351,8 +356,8 @@ async function _loadStackRevisions() {
 
 async function nameStackRevision(number) {
   const rev = stackEd.revisions.find(r => r.number === number);
-  const name = await promptModal(`Name revision r${number}`, {
-    value: rev ? rev.name : '', placeholder: 'e.g. before the 2.0 upgrade' });
+  const name = await promptModal(t('Name revision r{number}', { number }), {
+    value: rev ? rev.name : '', placeholder: t('e.g. before the 2.0 upgrade') });
   if (name === null) return;
   try {
     await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/${number}/`,
@@ -364,16 +369,17 @@ async function nameStackRevision(number) {
 async function pruneStackRevisions() {
   const total = stackEd.revisions.length;
   const raw = await promptModal(
-    `Keep the newest how many of ${stackEd.stack.name}'s ${total} revisions? Named revisions, the current one `
-    + 'and the one last deployed always stay.', { value: '10', placeholder: '10' });
+    t('Keep the newest how many of {name}\'s {total} revisions? Named revisions, the current one and the one last deployed always stay.',
+      { name: stackEd.stack.name, total }),
+    { value: '10', placeholder: '10' });
   if (raw === null) return;
   const keep = parseInt(raw, 10);
-  if (!(keep >= 1)) { showToast('Keep at least one revision', 'error'); return; }
+  if (!(keep >= 1)) { showToast(t('Keep at least one revision'), 'error'); return; }
   try {
     const res = await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/prune/`,
       { method: 'POST', body: JSON.stringify({ keep }) });
-    showToast(res.deleted.length ? `Deleted ${res.deleted.length} revision${res.deleted.length === 1 ? '' : 's'}`
-      : 'Nothing to prune', res.deleted.length ? 'success' : 'info');
+    showToast(res.deleted.length ? tn('Deleted {n} revision', 'Deleted {n} revisions', res.deleted.length)
+      : t('Nothing to prune'), res.deleted.length ? 'success' : 'info');
     _loadStackRevisions();
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -407,7 +413,7 @@ function _newGitStackBody(name, env) {
 /* An existing Git stack PUTs nothing but its .env, unless the repository
    settings changed — then git: { … } (with the .env) takes effect by pulling it. */
 function _gitSettingsBody(env) {
-  return { git: _gitFields(), env, note: 'Git settings changed' };
+  return { git: _gitFields(), env, note: t('Git settings changed') };
 }
 
 function _applyStackSource() {
@@ -439,7 +445,7 @@ function _renderGitState() {
   // "Commit abc123def456 · tracking main" / "· pinned to v1.2". The commit is
   // the span's only <code>, so a repository string never becomes markup.
   state.querySelector('code').textContent = (git.commit || '').slice(0, 12);
-  state.querySelector('[data-sted-git-ref]').textContent = git.pin ? ` · pinned to ${git.pin}` : ` · tracking ${git.branch || 'main'}`;
+  state.querySelector('[data-sted-git-ref]').textContent = ' · ' + (git.pin ? t('pinned to {pin}', { pin: git.pin }) : t('tracking {branch}', { branch: git.branch || 'main' }));
 }
 
 function _fillGitFields(git) {
@@ -479,9 +485,9 @@ async function _loadGitCredentials() {
 function _renderGitCredentials() {
   const sel = /** @type {HTMLSelectElement} */ (_stedEl('sted-git-cred'));
   const wanted = stackEd.gitSnapshot ? stackEd.gitSnapshot.credential_id : '';
-  sel.innerHTML = '<option value="">None (public repo)</option>'
+  sel.innerHTML = `<option value="">${escHtml(t('None (public repo)'))}</option>`
     + stackEd.gitCreds.map(c => `<option value="${escAttr(c.id)}">${escHtml(c.name)}</option>`).join('')
-    + '<option value="__add__">Add a credential…</option>';
+    + `<option value="__add__">${escHtml(t('Add a credential…'))}</option>`;
   // A credential that vanishes between the list and now (another tab deleted
   // it) leaves the field empty rather than throwing.
   sel.value = wanted && stackEd.gitCreds.some(c => c.id === wanted) ? wanted : '';
@@ -512,15 +518,15 @@ function addGitCredential() {
     const pass = pick('#git-cred-secret');
     const hosts = pick('#git-cred-hosts');
     const gitHost = pick('#git-cred-host').trim().toLowerCase();
-    if (!name) { showToast('Give the credential a name', 'warn'); return; }
-    if (!gitHost) { showToast('Name the Git server the credential is for', 'warn'); return; }
-    if (!pass.trim()) { showToast('The secret is empty', 'warn'); return; }
+    if (!name) { showToast(t('Give the credential a name'), 'warn'); return; }
+    if (!gitHost) { showToast(t('Name the Git server the credential is for'), 'warn'); return; }
+    if (!pass.trim()) { showToast(t('The secret is empty'), 'warn'); return; }
     if (kind === 'ssh_key' && !hosts.trim()) {
-      showToast('An SSH deploy key needs the host key', 'warn');
+      showToast(t('An SSH deploy key needs the host key'), 'warn');
       return;
     }
     const siteId = sitePickValue(m.modal.querySelector('#git-cred-site'), m.modal.querySelector('#git-cred-site-field'));
-    const code = await totpPrompt('Adding a Git credential');
+    const code = await totpPrompt(t('Adding a Git credential'));
     if (!code) { close(); return; }
     const body = { name, kind, git_host: gitHost, username, secret: pass, known_hosts: hosts, totp: code.trim() };
     if (siteId !== undefined) body.site_id = siteId;
@@ -533,7 +539,7 @@ function addGitCredential() {
       _renderGitCredentials();
       stackEd.gitSnapshot = { ...(stackEd.gitSnapshot || {}), credential_id: created.id };
       /** @type {HTMLSelectElement} */ (_stedEl('sted-git-cred')).value = created.id;
-      showToast(`Added ${created.name}`, 'success');
+      showToast(t('Added {name}', { name: created.name }), 'success');
     } catch (e) {
       _stackError(e.message);
     }
@@ -557,56 +563,53 @@ function addGitCredential() {
     // markup strings; only the kind buttons interpolate.
     const extra = ssh ? `
       <div class="form-group">
-        <label class="form-label" for="git-cred-hosts">Known hosts</label>
+        <label class="form-label" for="git-cred-hosts">${escHtml(t('Known hosts'))}</label>
         <textarea class="form-control" id="git-cred-hosts" rows="3" spellcheck="false"></textarea>
-        <div class="bl-hint">The output of <code>ssh-keyscan github.com</code> — Vigil does not
-          trust an unknown host key.</div>
+        <div class="bl-hint">${t('The output of {scan} — Vigil does not trust an unknown host key.', { scan: KEYSCAN_CODE })}</div>
       </div>` : `
       <div class="form-group">
-        <label class="form-label" for="git-cred-user">Username</label>
-        <input class="form-control" id="git-cred-user" maxlength="255" placeholder="x-access-token"
+        <label class="form-label" for="git-cred-user">${escHtml(t('Username'))}</label>
+        <input class="form-control" id="git-cred-user" maxlength="255" placeholder="${_GIT_USER_SAMPLE}"
           autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>`;
-    const holder = ssh
-      ? '<textarea class="form-control" id="git-cred-secret" rows="6" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>'
-      : '<input class="form-control" id="git-cred-secret" type="password" autocomplete="new-password">';
-    const holderHint = ssh ? 'Paste the private key Vigil should authenticate with.'
-                           : 'The token Vigil should authenticate with.';
+    const holder = ssh ? SSH_KEY_TEXTAREA : '<input class="form-control" id="git-cred-secret" type="password" autocomplete="new-password">';  // i18n-ignore
+    const holderHint = ssh ? t('Paste the private key Vigil should authenticate with.')
+                           : t('The token Vigil should authenticate with.');
     m.setBody(`
       <div class="modal-title">
-        <span>A Git credential</span>
-        <button class="modal-close" data-cred-x aria-label="Close">
+        <span>${escHtml(t('A Git credential'))}</span>
+        <button class="modal-close" data-cred-x aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="sted-git-kinds" role="radiogroup" aria-label="Credential kind">
-        <button class="btn btn-sm" type="button" data-cred-kind="token" aria-pressed="${!ssh}">HTTPS token</button>
-        <button class="btn btn-sm" type="button" data-cred-kind="ssh_key" aria-pressed="${ssh}">SSH deploy key</button>
+      <div class="sted-git-kinds" role="radiogroup" aria-label="${escAttr(t('Credential kind'))}">
+        <button class="btn btn-sm" type="button" data-cred-kind="token" aria-pressed="${!ssh}">${escHtml(t('HTTPS token'))}</button>
+        <button class="btn btn-sm" type="button" data-cred-kind="ssh_key" aria-pressed="${ssh}">${escHtml(t('SSH deploy key'))}</button>
       </div>
       <div class="form-group">
-        <label class="form-label" for="git-cred-name">Name</label>
-        <input class="form-control" id="git-cred-name" maxlength="120" placeholder="GitHub deploy token">
+        <label class="form-label" for="git-cred-name">${escHtml(t('Name'))}</label>
+        <input class="form-control" id="git-cred-name" maxlength="120" placeholder="${escAttr(t('GitHub deploy token'))}">
       </div>
       <div class="form-group" id="git-cred-site-field" hidden>
-        <label class="form-label" for="git-cred-site">Site</label>
+        <label class="form-label" for="git-cred-site">${escHtml(t('Site'))}</label>
         <select class="form-control" id="git-cred-site"></select>
-        <div class="bl-hint">Who may see and use it. A site's credential serves that site's stacks only.</div>
+        <div class="bl-hint">${escHtml(t("Who may see and use it. A site's credential serves that site's stacks only."))}</div>
       </div>
       <div class="form-group">
-        <label class="form-label" for="git-cred-host">Git server</label>
-        <input class="form-control" id="git-cred-host" maxlength="253" placeholder="github.com"
+        <label class="form-label" for="git-cred-host">${escHtml(t('Git server'))}</label>
+        <input class="form-control" id="git-cred-host" maxlength="253" placeholder="${_GIT_HOST_SAMPLE}"
           autocomplete="off" autocapitalize="off" spellcheck="false">
-        <div class="bl-hint">The credential is only ever sent to this server.</div>
+        <div class="bl-hint">${escHtml(t('The credential is only ever sent to this server.'))}</div>
       </div>
       ${extra}
       <div class="form-group">
-        <label class="form-label" for="git-cred-secret">Secret</label>
+        <label class="form-label" for="git-cred-secret">${escHtml(t('Secret'))}</label>
         ${holder}
-        <div class="bl-hint">${holderHint}</div>
+        <div class="bl-hint">${escHtml(holderHint)}</div>
       </div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" data-cred-x>Cancel</button>
-        <button class="btn btn-mint btn-sm" data-cred-save>Save</button>
+        <button class="btn btn-outline btn-sm" data-cred-x>${escHtml(t('Cancel'))}</button>
+        <button class="btn btn-mint btn-sm" data-cred-save>${escHtml(t('Save'))}</button>
       </div>`);
     m.overlay.onclick = close;
     m.modal.querySelectorAll('[data-cred-x]').forEach((/** @type {HTMLElement} */ b) => { b.onclick = close; });
@@ -629,12 +632,12 @@ async function pullStackFromGit() {
   try {
     const res = await apiJson(`/api/v1/stacks/${stack.id}/pull/`, { method: 'POST', body: '{}' });
     if (!res.changed) {
-      showToast('Already at the latest commit', 'info');
+      showToast(t('Already at the latest commit'), 'info');
       return;
     }
     const commit = ((res.stack.git || {}).commit || '').slice(0, 12);
     await renderManagedStacks(stackEd.hostId);   // the chip's r-number changed too
-    showToast(`New commit ${commit} is revision ${res.stack.revision} — deploy it to apply`, 'info');
+    showToast(t('New commit {commit} is revision {revision} — deploy it to apply', { commit, revision: res.stack.revision }), 'info');
     openStackEditor(res.stack.id);
   } catch (e) {
     _stackError(e.message);
@@ -643,7 +646,7 @@ async function pullStackFromGit() {
 
 function _gitFetchedToast(saved) {
   const git = saved.git || {};
-  return `Fetched ${(git.commit || '').slice(0, 12)} from ${git.pin || git.branch || 'main'} — deploy it to run`;
+  return t('Fetched {commit} from {ref} — deploy it to run', { commit: (git.commit || '').slice(0, 12), ref: git.pin || git.branch || 'main' });
 }
 
 async function saveStack() {
@@ -667,7 +670,7 @@ async function saveStack() {
   const wasNew = !editing;
   if (body.git && body.git.credential_id) {
     // Using a credential decides which server a secret goes to: the server asks for TOTP.
-    const code = await totpPrompt('Fetching with a Git credential');
+    const code = await totpPrompt(t('Fetching with a Git credential'));
     if (!code) return;
     body.totp = code.trim();
   }
@@ -676,8 +679,8 @@ async function saveStack() {
       { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
     await renderManagedStacks(stackEd.hostId);
     if (wasNew && stackEd.source === 'git') showToast(_gitFetchedToast(saved), 'success');
-    else showToast(gitChanged ? 'Repository settings updated — pulled what it holds now'
-                              : `Saved ${saved.name} as revision ${saved.revision} — deploy it to apply`, 'success');
+    else showToast(gitChanged ? t('Repository settings updated — pulled what it holds now')
+                              : t('Saved {name} as revision {revision} — deploy it to apply', { name: saved.name, revision: saved.revision }), 'success');
     // Reopen the saved row — but only if the editor is still on screen. An
     // async Ctrl+S can land after the operator has moved on, and dragging
     // them back to the page they left would be worse than a stale view.
@@ -686,7 +689,7 @@ async function saveStack() {
 }
 
 async function _stackTotpAction(path, payload) {
-  const code = await totpPrompt('This change runs on the host.');
+  const code = await totpPrompt(t('This change runs on the host.'));
   if (!code) return null;
   try {
     return await apiJson(path, { method: 'POST', body: JSON.stringify({ ...payload, totp: code.trim() }) });
@@ -696,11 +699,11 @@ async function _stackTotpAction(path, payload) {
 async function revealStackEnv() {
   if (!stackEd.stack) return;
   if (!stackEd.env.some(e => e.stored)) {
-    showToast(`${stackEd.stack.name} has no saved variables to show`, 'info');
+    showToast(t('{name} has no saved variables to show', { name: stackEd.stack.name }), 'info');
     return;
   }
-  const code = await totpPrompt('Showing the .env values in the clear.',
-    { title: 'Show values', confirmText: 'Show values' });
+  const code = await totpPrompt(t('Showing the .env values in the clear.'),
+    { title: t('Show values'), confirmText: t('Show values') });
   if (!code) return;
   let body;
   try {
@@ -716,7 +719,7 @@ async function revealStackEnv() {
   stackEd.env = stackEd.env.map(e => (e.stored && e.key in values) ? { ...e, value: values[e.key], revealed: true } : e);
   _renderStackEnv();
   const shown = stackEd.env.filter(e => e.revealed).length;
-  showToast(shown ? `Showing ${shown} value${shown === 1 ? '' : 's'}` : 'No saved values matched these variables', shown ? 'success' : 'info');
+  showToast(shown ? tn('Showing {n} value', 'Showing {n} values', shown) : t('No saved values matched these variables'), shown ? 'success' : 'info');
 }
 
 async function deployStack() {
@@ -728,9 +731,9 @@ async function deployStack() {
 // the new source lands on the host, but the old image keeps running.
 function _deployedToast(name, body) {
   if (body.rebuilds === false) {
-    showToast(`Deploying ${name}, but its host's agent predates 2026.15.1 and will keep running the old image — update the agent to rebuild`, 'warn');
+    showToast(t('Deploying {name}, but its host\'s agent predates 2026.15.1 and will keep running the old image — update the agent to rebuild', { name }), 'warn');
   } else {
-    showToast(`Deploying ${name} — the agent picks it up at its next check-in`, 'success');
+    showToast(t('Deploying {name} — the agent picks it up at its next check-in', { name }), 'success');
   }
 }
 
@@ -746,7 +749,7 @@ function managedGitStack(name) {
 async function updateGitStack(stackId) {
   const s = (stackEd.stacks || []).find(m => m.id === stackId);
   if (!s) return;
-  const code = await totpPrompt(`Fetching ${s.name}'s latest commit, rebuilding its images and redeploying it.`);
+  const code = await totpPrompt(t('Fetching {name}\'s latest commit, rebuilding its images and redeploying it.', { name: s.name }));
   if (!code) return;
   try {
     const body = await apiJson(`/api/v1/stacks/${s.id}/deploy/`,
@@ -758,8 +761,8 @@ async function updateGitStack(stackId) {
 
 async function removeStack() {
   const stack = stackEd.stack;
-  const sure = await confirmModal(`Take down ${stack.name}?`,
-    { title: 'Take down this stack?', danger: true, confirmText: 'Take down' });
+  const sure = await confirmModal(t('Take down {name}?', { name: stack.name }),
+    { title: t('Take down this stack?'), danger: true, confirmText: t('Take down') });
   if (!sure) return;
   // An adopted stack's folder belongs to someone else — matching the server,
   // there is nothing to delete, so the editor never offers to.
@@ -767,12 +770,12 @@ async function removeStack() {
   if (!stack.adopted) {
     // Cancel means keep the files; the server refuses to delete an adopted
     // stack's folder anyway, so adopted stacks are never asked.
-    wipe = await confirmModal(`Also delete ${stack.name}'s folder on ${stack.hostname}?`,
-      { title: 'Delete its files too?', danger: true, confirmText: 'Delete the folder' });
+    wipe = await confirmModal(t('Also delete {name}\'s folder on {hostname}?', { name: stack.name, hostname: stack.hostname }),
+      { title: t('Delete its files too?'), danger: true, confirmText: t('Delete the folder') });
   }
   const body = await _stackTotpAction(`/api/v1/stacks/${stack.id}/remove/`, { delete_files: wipe });
   if (!body) return;
-  showToast(`Taking down ${stack.name}`, 'success');
+  showToast(t('Taking down {name}', { name: stack.name }), 'success');
   stackEd.env = [];
   _clearStackDirty();
   navigateTo('containers');
@@ -814,7 +817,7 @@ delegateClick('[data-stack-load-rev]', (el) => {
   _syncStackEditor();
   _markStackDirty();
   _scheduleStackCheck();
-  showToast(`Loaded r${rev.number}'s compose file — Save makes it the next revision`, 'success');
+  showToast(t('Loaded r{number}\'s compose file — Save makes it the next revision', { number: rev.number }), 'success');
 });
 document.addEventListener('input', (ev) => {
   const row = /** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-env-row]');
@@ -898,7 +901,7 @@ document.addEventListener('keydown', (ev) => {
         && document.getElementById('page-stack-editor')?.classList.contains('active')
         && stackEd.dirty) {
       navigating = true;
-      confirmModal('Discard unsaved changes to this stack?', { danger: true, confirmText: 'Discard' })
+      confirmModal(t('Discard unsaved changes to this stack?'), { danger: true, confirmText: t('Discard') })
         .then((go) => {
           navigating = false;
           if (!go) return;
