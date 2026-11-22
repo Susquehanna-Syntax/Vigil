@@ -163,7 +163,7 @@ function _renderCommunity(kind) {
   if (!all.length) {
     grid.innerHTML = communityLoaded[kind]
       ? _communityEmptyHtml(kind)
-      : `<div class="empty-state"><div class="empty-state-desc">${escHtml(t('Loading…'))}</div></div>`;
+      : loadingHtml();
     return;
   }
   const q = (/** @type {HTMLInputElement} */ (document.getElementById(`community-${kind}-search`))?.value || '')
@@ -224,7 +224,7 @@ async function loadCommunityKind(kind, force) {
   if (communityLoaded[kind] && !force) return;
   const grid = document.getElementById(`community-${kind}-grid`);
   if (grid && !communityLoaded[kind]) {
-    grid.innerHTML = `<div class="empty-state"><div class="empty-state-desc">${escHtml(t('Loading…'))}</div></div>`;
+    grid.innerHTML = loadingHtml();
   }
   try {
     const url = `/api/v1/tasks/community/${kind}/${force ? '?refresh=1' : ''}`;
@@ -269,7 +269,7 @@ async function _annotateFork(kind) {
       item.have = plan.have === true;
       item._planned = true;
     } catch {
-      // Leave the card as it is; Fork still works and reports its own errors.
+      // state-ok: the fork plan is a convenience; the card still renders and Fork reports its own errors.
       item._planned = true;
     }
   }));

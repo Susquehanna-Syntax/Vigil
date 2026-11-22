@@ -192,12 +192,12 @@ async function loadStore(reset) {
   if (storeState.q) params.set('q', storeState.q);
   if (storeState.platform) params.set('platform', storeState.platform);
   if (storeState.category) params.set('category', storeState.category);
-  if (reset) grid.innerHTML = `<div class="store-loading">${escHtml(t('Loading…'))}</div>`;
+  if (reset) grid.innerHTML = loadingHtml();
   let body;
   try {
     body = await apiJson(`/api/v1/catalog/?${params}`);
   } catch (e) {
-    if (seq === storeState.seq) grid.innerHTML = `<div class="apps-empty-state">${escHtml(e.message)}</div>`;
+    if (seq === storeState.seq) showLoadFailure(grid, t('the store'), e, () => loadStore(true));
     return;
   }
   if (seq !== storeState.seq) return;
@@ -227,7 +227,7 @@ async function loadStoreCategories() {
   try {
     const qs = storeState.platform ? `?platform=${encodeURIComponent(storeState.platform)}` : '';
     cats = (await apiJson(`/api/v1/catalog/categories/${qs}`)).results || [];
-  } catch { cats = []; }
+  } catch { /* state-ok: the category chips are a convenience; the list still loads and searching works */ }
   wrap.innerHTML = cats.length
     ? [`<button class="chip store-cat${storeState.category ? '' : ' is-on'}" type="button" data-store-cat="">${escHtml(t('All'))}</button>`,
        ...cats.map(c => `<button class="chip store-cat${storeState.category === c.name ? ' is-on' : ''}" type="button"
@@ -238,7 +238,7 @@ async function loadStoreCategories() {
 async function refreshStoreStatus() {
   try {
     _renderStoreStatus(await apiJson('/api/v1/catalog/status/'));
-  } catch { /* the status line is decoration; the grid is the page */ }
+  } catch { /* state-ok: the status line is decoration; the grid is the page */ }
 }
 
 /* ── An app's page ───────────────────────────────────────────────────── */

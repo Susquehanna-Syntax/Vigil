@@ -33,7 +33,8 @@ const APPS_EMPTY_TEXT = t('No software reported yet — agents send their list w
  *  details: Record<string, AppRow[]|null>, expanded: Record<string, boolean>,
  *  hostDetails: Record<string, AppRow[]|null>, hostExpanded: Record<string, boolean>,
  *  hostShowAll: Record<string, boolean>, monitorItems: AppRow[],
- *  monitorSnapshot: MonitorSnapshot|null, monitorSeq: number}} */
+ *  monitorSnapshot: MonitorSnapshot|null, monitorSeq: number,
+ *  failed: Record<string, Error>, hostFailed: Record<string, Error>}} */
 const appsState = {
   rows: [],
   count: 0,
@@ -50,11 +51,13 @@ const appsState = {
   monitorItems: [],
   monitorSnapshot: null,
   monitorSeq: 0,
+  failed: {},         // name_key → the error its host list came back with; the row's Try again clears it
+  hostFailed: {},     // host_id → the error its software list came back with
 };
 
 /* ── Shared fragments ────────────────────────────────────────────────── */
 function _loadingRow() {
-  return `<tr><td colspan="${APPS_COLUMNS}" class="apps-detail-loading">${escHtml(t('Loading…'))}</td></tr>`;
+  return stateRowHtml(APPS_COLUMNS, loadingHtml());
 }
 
 function _emptyRow(text) {
@@ -125,13 +128,13 @@ async function fetchApps(reset) {
   }
   const tbody = document.getElementById('apps-table-body');
   if (tbody) tbody.innerHTML = _loadingRow();
-  let body = { count: 0, results: [] };
+  let body;
   try {
-    const resp = await fetch(`/api/v1/software/apps/?${params}`, { credentials: 'same-origin' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    body = await resp.json();
-  } catch {
-    if (seq === appsState.seq) body = { count: 0, results: [] };
+    body = await apiJson(`/api/v1/software/apps/?${params}`);
+  } catch (e) {
+    if (seq !== appsState.seq) return;
+    showLoadFailure(tbody, t('the app list'), e, () => fetchApps(true));
+    return;
   }
   if (seq !== appsState.seq) return;
   appsState.count = body.count || 0;
@@ -166,18 +169,26 @@ function renderAppsTable() {
     html = _emptyRow(hasAnyHostSoftware ? t('No apps match these filters.') : APPS_EMPTY_TEXT);
   }
   tbody.innerHTML = html;
+  for (const key of Object.keys(appsState.failed)) {
+    const cell = tbody.querySelector(`[data-app-detail="${escAttr(key)}"] .apps-detail`);
+    if (cell) showLoadFailure(/** @type {HTMLElement} */ (cell), t('this app’s hosts'), appsState.failed[key], () => retryAppHosts(key));
+  }
+  for (const id of Object.keys(appsState.hostFailed)) {
+    const cell = tbody.querySelector(`[data-app-host-detail="${escAttr(id)}"] .apps-detail`);
+    if (cell) showLoadFailure(/** @type {HTMLElement} */ (cell), t('this host’s software'), appsState.hostFailed[id], () => retryHostSoftware(id));
+  }
   if (more) more.hidden = !(appsState.rows.length > 0 && appsState.rows.length < appsState.count);
 }
 
 function _appDetailHtml(key) {
   const rows = appsState.details[key];
   if (!rows) {
-    return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">${escHtml(t('Loading hosts…'))}</div></td></tr>`;
+    return `<tr class="apps-detail-row" data-app-detail="${escAttr(key)}"><td colspan="${APPS_COLUMNS}">
+      <div class="apps-detail">${loadingHtml(t('Loading hosts…'))}</div></td></tr>`;
   }
   if (!rows.length) {
-    return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">${escHtml(t('No hosts report this app in your scope.'))}</div></td></tr>`;
+    return `<tr class="apps-detail-row" data-app-detail="${escAttr(key)}"><td colspan="${APPS_COLUMNS}">
+      <div class="apps-detail"><div class="apps-detail-loading">${escHtml(t('No hosts report this app in your scope.'))}</div></div></td></tr>`;
   }
   const items = rows.map(row => {
     const latest = row.outdated
@@ -193,8 +204,29 @@ function _appDetailHtml(key) {
       ${unmanaged}
     </div>`;
   }).join('');
-  return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
+  return `<tr class="apps-detail-row" data-app-detail="${escAttr(key)}"><td colspan="${APPS_COLUMNS}">
     <div class="apps-detail">${items}</div></td></tr>`;
+}
+
+async function retryAppHosts(key) {
+  // The failed host list is drawn inside the app's own expanded row, so its
+  // retry clears that cache entry and refetches without collapsing anything.
+  delete appsState.details[key];
+  delete appsState.failed[key];
+  renderAppsTable();
+  await loadAppHosts(key);
+}
+
+async function loadAppHosts(key) {
+  try {
+    const body = await apiJson(`/api/v1/software/apps/${encodeURIComponent(key)}/`);
+    delete appsState.failed[key];
+    appsState.details[key] = body.rows || [];
+  } catch (e) {
+    if (!appsState.expanded[key]) return;
+    appsState.failed[key] = /** @type {Error} */ (e);
+  }
+  if (appsState.expanded[key]) renderAppsTable();
 }
 
 async function toggleAppDetail(key) {
@@ -205,16 +237,10 @@ async function toggleAppDetail(key) {
   }
   appsState.expanded[key] = true;
   renderAppsTable();
+  // The cached rows or the in-flight null stand; a failed row was cleared by its retry.
   if (appsState.details[key] !== undefined) return;
   appsState.details[key] = null;
-  let rows = [];
-  try {
-    const resp = await fetch(`/api/v1/software/apps/${encodeURIComponent(key)}/`, { credentials: 'same-origin' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    rows = (await resp.json()).rows || [];
-  } catch { rows = []; }
-  appsState.details[key] = rows;
-  if (appsState.expanded[key]) renderAppsTable();
+  await loadAppHosts(key);
 }
 
 /* ── By host ─────────────────────────────────────────────────────────── */
@@ -222,14 +248,15 @@ async function fetchAppHosts() {
   const seq = ++appsState.hostSeq;
   const tbody = document.getElementById('apps-hosts-body');
   if (tbody) tbody.innerHTML = _loadingRow();
-  let body = { results: [] };
   try {
-    const resp = await fetch('/api/v1/software/hosts/', { credentials: 'same-origin' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    body = await resp.json();
-  } catch { body = { results: [] }; }
-  if (seq !== appsState.hostSeq) return;
-  appsState.hosts = body.results || [];
+    const body = await apiJson('/api/v1/software/hosts/');
+    if (seq !== appsState.hostSeq) return;
+    appsState.hosts = body.results || [];
+  } catch (e) {
+    if (seq !== appsState.hostSeq) return;
+    showLoadFailure(tbody, t('the host list'), e, fetchAppHosts);
+    return;
+  }
   renderAppsHostsTable();
 }
 
@@ -253,6 +280,27 @@ function renderAppsHostsTable() {
   renderAppsTable();
 }
 
+async function retryHostSoftware(id) {
+  // A failed software list is drawn inside the host's own expanded row, so
+  // its retry clears just that cache entry and redraws.
+  delete appsState.hostDetails[id];
+  delete appsState.hostFailed[id];
+  renderAppsHostsTable();
+  await loadHostSoftware(id);
+}
+
+async function loadHostSoftware(id) {
+  try {
+    const body = await apiJson(`/api/v1/software/hosts/${encodeURIComponent(id)}/`);
+    delete appsState.hostFailed[id];
+    appsState.hostDetails[id] = body.items || [];
+  } catch (e) {
+    if (!appsState.hostExpanded[id]) return;
+    appsState.hostFailed[id] = /** @type {Error} */ (e);
+  }
+  if (appsState.hostExpanded[id]) renderAppsHostsTable();
+}
+
 function _hostSoftwareSorted(items) {
   // The Monitor page's Software list orders this way; By host's expanded rows match it.
   return [...items].sort((a, b) => {
@@ -265,12 +313,12 @@ function _hostSoftwareSorted(items) {
 function _hostDetailHtml(id) {
   const items = appsState.hostDetails[id];
   if (items === null || items === undefined) {
-    return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">${escHtml(t('Loading software…'))}</div></td></tr>`;
+    return `<tr class="apps-detail-row" data-app-host-detail="${escAttr(id)}"><td colspan="${APPS_COLUMNS}">
+      <div class="apps-detail">${loadingHtml(t('Loading software…'))}</div></td></tr>`;
   }
   if (!items.length) {
-    return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
-      <div class="apps-detail-loading">${escHtml(t('No software reported for this host yet.'))}</div></td></tr>`;
+    return `<tr class="apps-detail-row" data-app-host-detail="${escAttr(id)}"><td colspan="${APPS_COLUMNS}">
+      <div class="apps-detail"><div class="apps-detail-loading">${escHtml(t('No software reported for this host yet.'))}</div></div></td></tr>`;
   }
   const sorted = _hostSoftwareSorted(items);
   const showAll = !!appsState.hostShowAll[id];
@@ -289,13 +337,15 @@ function _hostDetailHtml(id) {
     ? `<div class="apps-show-all">
          <button class="btn btn-outline btn-xs" type="button" data-host-show-all="${escAttr(id)}">${escHtml(t('Show all {n}', { n: sorted.length }))}</button>
        </div>` : '';
-  return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
+  return `<tr class="apps-detail-row" data-app-host-detail="${escAttr(id)}"><td colspan="${APPS_COLUMNS}">
+    <div class="apps-detail">
     <table class="hunt-table apps-table apps-host-detail">
       <thead><tr><th>${escHtml(t('Name'))}</th><th>${escHtml(t('Version'))}</th><th>${escHtml(t('Latest'))}</th><th>${escHtml(t('Source'))}</th><th>${escHtml(t('Scope'))}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     ${more}
     <a href="#" class="apps-host-open" data-app-host="${escAttr(id)}">${escHtml(t("Open this host's monitor →"))}</a>
+    </div>
   </td></tr>`;
 }
 
@@ -307,22 +357,20 @@ async function toggleHostDetail(id) {
   }
   appsState.hostExpanded[id] = true;
   renderAppsHostsTable();
+  // The cached rows or the in-flight null stand; a failed row was cleared by its retry.
   if (appsState.hostDetails[id] !== undefined) return;
   appsState.hostDetails[id] = null;
-  let items = [];
-  try {
-    const resp = await fetch(`/api/v1/software/hosts/${encodeURIComponent(id)}/`, { credentials: 'same-origin' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    items = (await resp.json()).items || [];
-  } catch { items = []; }
-  appsState.hostDetails[id] = items;
-  if (appsState.hostExpanded[id]) renderAppsHostsTable();
+  await loadHostSoftware(id);
 }
 
 function refreshApps() {
+  appsState.details = {};
+  appsState.expanded = {};
+  appsState.failed = {};
   appsState.hostDetails = {};
   appsState.hostExpanded = {};
   appsState.hostShowAll = {};
+  appsState.hostFailed = {};
   fetchApps(true);
   fetchAppHosts();
   fetchUpdates();
@@ -332,7 +380,7 @@ function loadMoreApps() { fetchApps(false); }
 
 /* ── By update (M8) ──────────────────────────────────────────────────── */
 const UPDATE_COLUMNS = 7;
-const updState = { rows: [], seq: 0, selected: new Set(), details: {}, expanded: {} };
+const updState = { rows: [], seq: 0, selected: new Set(), details: {}, expanded: {}, failed: {} };
 
 function _updKey(row) { return `${row.kind}|${row.key}`; }
 
@@ -357,22 +405,26 @@ function _ageCell(days) {
 async function fetchUpdates() {
   const seq = ++updState.seq;
   const tbody = document.getElementById('apps-updates-body');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="${UPDATE_COLUMNS}" class="apps-detail-loading">${escHtml(t('Loading…'))}</td></tr>`;
+  if (tbody) tbody.innerHTML = stateRowHtml(UPDATE_COLUMNS, loadingHtml());
   const params = new URLSearchParams();
   for (const [id, name] of [['upd-q', 'q'], ['upd-kind', 'kind'], ['upd-decision', 'decision']]) {
     const value = (/** @type {HTMLInputElement} */ (document.getElementById(id))?.value || '').trim();
     if (value) params.set(name, value);
   }
-  let body = { results: [] };
   try {
-    const resp = await fetch(`/api/v1/software/updates/?${params}`, { credentials: 'same-origin' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    body = await resp.json();
-  } catch { body = { results: [] }; }
-  if (seq !== updState.seq) return;
-  updState.rows = body.results || [];
-  const keys = new Set(updState.rows.map(_updKey));
-  for (const key of [...updState.selected]) if (!keys.has(key)) updState.selected.delete(key);
+    const body = await apiJson(`/api/v1/software/updates/?${params}`);
+    if (seq !== updState.seq) return;
+    updState.rows = body.results || [];
+    const keys = new Set(updState.rows.map(_updKey));
+    for (const key of [...updState.selected]) if (!keys.has(key)) updState.selected.delete(key);
+  } catch (e) {
+    if (seq !== updState.seq) return;
+    if (tbody) {
+      tbody.innerHTML = stateRowHtml(UPDATE_COLUMNS, '');
+      showLoadFailure(/** @type {HTMLTableCellElement | null} */ (tbody.querySelector('td')), t('pending updates'), e, fetchUpdates);
+    }
+    return;
+  }
   renderUpdatesTable();
 }
 
@@ -395,18 +447,22 @@ function renderUpdatesTable() {
     if (updState.expanded[key]) {
       const hosts = updState.details[key];
       const inner = hosts == null
-        ? `<div class="apps-detail-loading">${escHtml(t('Loading…'))}</div>`
+        ? loadingHtml()
         : hosts.map(h => `<div class="apps-detail-item">
             <a class="apps-host-link" href="#" data-app-host="${escAttr(h.host_id)}">${escHtml(h.hostname)}</a>
             <span class="apps-detail-scope">${escHtml(tn('missing for {n} day', 'missing for {n} days', h.age_days))}</span>
             ${h.version ? `<span class="apps-detail-ver">→ ${escHtml(h.version)}</span>` : ''}
           </div>`).join('') || `<div class="apps-detail-loading">${escHtml(t('No hosts in your scope.'))}</div>`;
-      out += `<tr class="apps-detail-row"><td colspan="${UPDATE_COLUMNS}"><div class="apps-detail">${inner}</div></td></tr>`;
+      out += `<tr class="apps-detail-row" data-upd-detail="${escAttr(key)}"><td colspan="${UPDATE_COLUMNS}"><div class="apps-detail">${inner}</div></td></tr>`;
     }
     return out;
   }).join('');
   tbody.innerHTML = html || `<tr><td colspan="${UPDATE_COLUMNS}" class="apps-empty-state">${escHtml(
     t('No pending updates reported. Windows hosts send their list after each update scan; Linux hosts after each software inventory.'))}</td></tr>`;
+  for (const key of Object.keys(updState.failed)) {
+    const cell = tbody.querySelector(`[data-upd-detail="${escAttr(key)}"] .apps-detail`);
+    if (cell) showLoadFailure(/** @type {HTMLElement} */ (cell), t('the hosts missing this update'), updState.failed[key], () => retryUpdateHosts(key));
+  }
   _renderUpdateBulk();
 }
 
@@ -422,16 +478,31 @@ function _renderUpdateBulk() {
 
 async function toggleUpdateHosts(key) {
   updState.expanded[key] = !updState.expanded[key];
-  if (updState.expanded[key] && updState.details[key] === undefined) {
-    updState.details[key] = null;
-    renderUpdatesTable();
-    const [kind, ...rest] = key.split('|');
-    const params = new URLSearchParams({ kind, key: rest.join('|') });
-    try {
-      const body = await apiJson(`/api/v1/software/updates/hosts/?${params}`);
-      updState.details[key] = body.results || [];
-    } catch { updState.details[key] = []; }
+  if (updState.expanded[key] && updState.details[key] === undefined) await loadUpdateHosts(key);
+  renderUpdatesTable();
+}
+
+async function loadUpdateHosts(key) {
+  updState.details[key] = null;
+  const [kind, ...rest] = key.split('|');
+  const params = new URLSearchParams({ kind, key: rest.join('|') });
+  try {
+    const body = await apiJson(`/api/v1/software/updates/hosts/?${params}`);
+    delete updState.failed[key];
+    updState.details[key] = body.results || [];
+  } catch (e) {
+    if (!updState.expanded[key]) return;
+    updState.failed[key] = /** @type {Error} */ (e);
   }
+}
+
+async function retryUpdateHosts(key) {
+  // The failed host list sits inside the update's own expanded row, so its
+  // retry clears that entry and refetches without collapsing anything.
+  delete updState.details[key];
+  delete updState.failed[key];
+  renderUpdatesTable();
+  await loadUpdateHosts(key);
   renderUpdatesTable();
 }
 
@@ -460,17 +531,18 @@ async function renderHostSoftware(hostId) {
   const wrap = document.getElementById('software-list');
   if (!wrap) return;
   const seq = ++appsState.monitorSeq;
-  wrap.innerHTML = `<div class="apps-empty-state">${escHtml(t('Loading…'))}</div>`;
-  let body = { snapshot: null, items: [] };
+  wrap.innerHTML = loadingHtml();
   try {
-    const resp = await fetch(`/api/v1/software/hosts/${encodeURIComponent(hostId)}/`, { credentials: 'same-origin' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    body = await resp.json();
-  } catch { body = { snapshot: null, items: [] }; }
-  if (seq !== appsState.monitorSeq) return;
-  appsState.monitorItems = body.items || [];
-  _softwareShowAll = false;   // a newly selected host starts collapsed
-  appsState.monitorSnapshot = body.snapshot || null;
+    const body = await apiJson(`/api/v1/software/hosts/${encodeURIComponent(hostId)}/`);
+    if (seq !== appsState.monitorSeq) return;
+    appsState.monitorItems = body.items || [];
+    _softwareShowAll = false;   // a newly selected host starts collapsed
+    appsState.monitorSnapshot = body.snapshot || null;
+  } catch (e) {
+    if (seq !== appsState.monitorSeq) return;
+    showLoadFailure(wrap, t('this host’s software'), e, () => renderHostSoftware(hostId));
+    return;
+  }
   renderHostSoftwareList();
 }
 

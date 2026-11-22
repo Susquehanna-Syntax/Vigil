@@ -56,10 +56,16 @@ function _polWindow(p) {
 /** @returns {Promise<void>} */
 async function fetchPolicies() {
   const tbody = /** @type {HTMLElement|null} */ (document.getElementById('pol-table-body'));
-  if (tbody) tbody.innerHTML = `<tr><td colspan="${POL_COLUMNS}" class="apps-detail-loading">${escHtml(t('Loading…'))}</td></tr>`;
+  if (tbody) tbody.innerHTML = stateRowHtml(POL_COLUMNS, loadingHtml());
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
-  } catch { polState.rows = []; }
+  } catch (e) {
+    if (tbody) {
+      tbody.innerHTML = stateRowHtml(POL_COLUMNS, '');
+      showLoadFailure(/** @type {HTMLTableCellElement | null} */ (tbody.querySelector('td')), t('policies'), e, fetchPolicies);
+    }
+    return;
+  }
   renderPolicies();
   const ex = /** @type {HTMLDetailsElement|null} */ (document.getElementById('pol-explain'));
   if (ex && !polState.explainSet) { ex.open = polState.rows.length === 0; polState.explainSet = true; }
@@ -99,7 +105,7 @@ async function fetchCompliance() {
   const wrap = /** @type {HTMLElement|null} */ (document.getElementById('pol-compliance'));
   if (!wrap) return;
   let c;
-  try { c = await apiJson('/api/v1/policies/compliance/'); } catch { wrap.innerHTML = ''; return; }
+  try { c = await apiJson('/api/v1/policies/compliance/'); } catch { wrap.innerHTML = ''; return; /* state-ok: a chip row above the list, not a list */ }
   const late = (c.missing_by_age.critical['31-90'] || 0) + (c.missing_by_age.critical['90+'] || 0);
   wrap.innerHTML = `<span class="chip ${c.patched_pct >= 95 ? 'chip-mint' : 'apps-chip-warn'}">${escHtml(t('{pct}% of hosts patched within SLA', { pct: c.patched_pct }))}</span>
     <span class="chip chip-muted">${escHtml(t('{patched} of {total} hosts with nothing overdue', { patched: c.hosts_patched, total: c.hosts_total }))}</span>
@@ -126,9 +132,14 @@ function _changeText(c) {
 
 /** @returns {Promise<void>} */
 async function fetchPolicyChanges() {
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('pol-changes-list'));
+  if (wrap) showLoading(wrap, t('Loading changes…'));
   try {
     polState.changes = (await apiJson('/api/v1/policies/changes/?state=pending')).results || [];
-  } catch { polState.changes = []; }
+  } catch (e) {
+    if (wrap) showLoadFailure(wrap, t('the changes waiting for approval'), e, fetchPolicyChanges);
+    return;
+  }
   const ids = new Set(polState.changes.map(c => c.id));
   for (const id of [...polState.selected]) if (!ids.has(id)) polState.selected.delete(id);
   renderPolicyChanges();
@@ -185,7 +196,9 @@ async function _loadAppPicker() {
     for (const app of body.results || []) {
       for (const pkg of app.packages || []) polState.apps.push({ ...pkg, name: app.name });
     }
-  } catch { /* the picker is a convenience; typing an id still works */ }
+  } catch {
+    // state-ok: the picker is a convenience; typing an id still works
+  }
   const list = _polEl('pol-app-list');
   if (list) {
     list.innerHTML = polState.apps.map(a =>
@@ -398,11 +411,11 @@ async function deletePolicy() {
 async function loadPolicyPreview() {
   const wrap = _polEl('pol-preview');
   if (!wrap || !polState.editing) return;
-  wrap.innerHTML = `<div class="apps-detail-loading">${escHtml(t('Working out what would change…'))}</div>`;
+  wrap.innerHTML = loadingHtml(t('Working out what would change…'));
   /** @type {{hosts: PolDriftHost[], compliant: number, unknown: {host_id: string, hostname: string}[]}} */
   let drift;
   try { drift = await apiJson(`/api/v1/policies/${polState.editing}/drift/`); } catch (e) {
-    wrap.innerHTML = `<div class="apps-empty-state">${escHtml(e.message)}</div>`;
+    showLoadFailure(wrap, t('the preview of what would change'), e, loadPolicyPreview);
     return;
   }
   const p = polState.rows.find(r => r.id === polState.editing);

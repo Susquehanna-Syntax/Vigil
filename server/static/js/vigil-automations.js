@@ -78,14 +78,14 @@ let _allAutomations = [];  // unfiltered, so the search box can re-filter withou
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
   if (!list) return;
-  list.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
+  list.innerHTML = loadingHtml();
   try {
     const [data, defs, playbooks, hosts, rules] = await Promise.all([
       apiJson('/api/v1/automations/'),
       apiJson('/api/v1/tasks/definitions/'),
       apiJson('/api/v1/playbooks/'),
       apiJson('/api/v1/status-pages/hosts/'),
-      apiJson('/api/v1/alerts/rules/').catch(() => []),
+      apiJson('/api/v1/alerts/rules/').catch(() => []), /* state-ok: alert-rule names are an extra on the trigger row; the automation still loads and works without them */
     ]);
     _autoEvents = data.events || {};
     if (data.condition_meta) _autoCondMeta = data.condition_meta;
@@ -100,7 +100,7 @@ async function loadAutomations() {
     // and this is the fetch that has it.
     return _allAutomations;
   } catch (e) {
-    list.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load automations"))}</h4><p>${escHtml(e.message)}</p></div>`;
+    showLoadFailure(list, t('automations'), e, loadAutomations);
   }
 }
 
