@@ -87,7 +87,7 @@ async function openWaveHosts(rolloutId, waveId) {
       <button class="modal-close" id="wh-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
-    <div id="wh-body"><span class="muted-note">${escHtml(t('Loading…'))}</span></div>`);
+    <div id="wh-body">${loadingHtml()}</div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#wh-x')).onclick = m.close;
   m.open();
 
@@ -95,8 +95,8 @@ async function openWaveHosts(rolloutId, waveId) {
   try {
     data = await apiJson(`/api/v1/rollouts/${rolloutId}/waves/${waveId}/hosts/`);
   } catch (e) {
-    document.getElementById('wh-body').innerHTML =
-      `<span class="bad">${escHtml(e.message || t('Could not load this wave'))}</span>`;
+    showLoadFailure(document.getElementById('wh-body'), t('this wave\'s hosts'), e,
+      () => openWaveHosts(rolloutId, waveId));
     return;
   }
 
@@ -326,13 +326,13 @@ async function _renderRolloutGroupChips() {
   const box = document.getElementById('rollout-start-groups');
   if (!box) return;
   _rolloutState.groupChoices = [];
-  box.innerHTML = `<span class="muted-note">${escHtml(t('Loading wave groups…'))}</span>`;
+  box.innerHTML = loadingHtml(t('Loading wave groups…'));
   try {
     const data = await apiJson('/api/v1/wave-groups/');
     _rolloutState.groupChoices = (data.groups || []).filter(g => g.enabled_waves > 0);
     _paintRolloutGroupChips();
   } catch (e) {
-    box.innerHTML = `<span class="bad">${escHtml(t('Could not load wave groups: {msg}', { msg: e.message || t('Request failed') }))}</span>`;
+    showLoadFailure(box, t('wave groups'), e, _renderRolloutGroupChips);
   }
 }
 

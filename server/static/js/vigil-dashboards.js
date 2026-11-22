@@ -87,7 +87,7 @@ function _widgetShell(widget) {
         </span>
       </div>
       <div class="dash-widget-body" data-widget-body="${escAttr(widget.id)}">
-        <span class="muted-note">${escHtml(t('Loading…'))}</span>
+        ${loadingHtml()}
       </div>
     </div>`;
 }

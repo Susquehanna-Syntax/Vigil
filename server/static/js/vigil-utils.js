@@ -22,7 +22,7 @@ async function copyText(text) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch (e) { /* fall through to the legacy path */ }
+  } catch (e) { /* state-ok: falls back to the legacy copy path below */ }
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -694,7 +694,7 @@ function _storedTheme() {
   try {
     const v = localStorage.getItem('vigil-theme');
     if (THEMES.includes(v) || v === 'system') return v;
-  } catch (e) {}
+  } catch (e) { /* state-ok: a private-mode Safari refuses; the default theme is fine */ }
   return 'dark';
 }
 function _applyThemeIcon(theme) {
@@ -718,7 +718,7 @@ function setTheme(mode) {
   const pref = (THEMES.includes(mode) || mode === 'system') ? mode : 'dark';
   const resolved = pref === 'system' ? _systemTheme() : pref;
   document.documentElement.setAttribute('data-theme', resolved);
-  try { localStorage.setItem('vigil-theme', pref); } catch (e) {}
+  try { localStorage.setItem('vigil-theme', pref); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applyThemeIcon(resolved);
   _applyThemeButtons(pref);
   // Charts draw their grid and tooltips from the tokens once; they re-read them.
@@ -747,7 +747,7 @@ function _applyMotionButton(on) {
 function toggleReduceMotion() {
   const on = !document.documentElement.classList.contains('rm-sim');
   document.documentElement.classList.toggle('rm-sim', on);
-  try { localStorage.setItem('vigil-reduce-motion', on ? '1' : '0'); } catch (e) {}
+  try { localStorage.setItem('vigil-reduce-motion', on ? '1' : '0'); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applyMotionButton(on);
 }
 if (_MQ_DARK && _MQ_DARK.addEventListener) {
@@ -783,7 +783,7 @@ function toggleSidebar() {
   const expanded = document.documentElement.getAttribute('data-sidebar') !== 'expanded';
   if (expanded) document.documentElement.setAttribute('data-sidebar', 'expanded');
   else document.documentElement.removeAttribute('data-sidebar');
-  try { localStorage.setItem('vigil-sidebar', expanded ? 'expanded' : 'collapsed'); } catch (e) {}
+  try { localStorage.setItem('vigil-sidebar', expanded ? 'expanded' : 'collapsed'); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applySidebarToggle(expanded);
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -807,7 +807,7 @@ function _applyDensityButtons(mode) {
 function setDensity(mode) {
   const next = mode === 'compact' ? 'compact' : 'cozy';
   document.documentElement.setAttribute('data-density', next);
-  try { localStorage.setItem('vigil-density', next); } catch (e) {}
+  try { localStorage.setItem('vigil-density', next); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applyDensityButtons(next);
 }
 

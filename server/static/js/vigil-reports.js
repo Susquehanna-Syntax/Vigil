@@ -75,7 +75,7 @@ function _rptHasData(w) {
 async function loadReports(refreshView) {
   const list = /** @type {HTMLElement|null} */ (document.getElementById('rpt-list'));
   if (!list) return;
-  if (!_rptLoaded) list.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
+  if (!_rptLoaded) list.innerHTML = loadingHtml();
   try {
     const [reports, catalog, playbooks, automations] = await Promise.all([
       apiJson('/api/v1/reports/'),

@@ -1388,7 +1388,7 @@ async function openWidgetSettings(widgetId) {
       <button class="modal-close" id="ws-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
-    <div id="ws-body"><span class="muted-note">${escHtml(t('Loading…'))}</span></div>`);
+    <div id="ws-body">${loadingHtml()}</div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#ws-x')).onclick = m.close;
   m.open();
 
@@ -1405,7 +1405,9 @@ async function openWidgetSettings(widgetId) {
   const types = [...new Set(Object.values(schema).map(f => f.type))];
   const lists = {};
   await Promise.all(types.map(async (type) => {
-    try { lists[type] = await _settingsOptions(type); } catch (e) { lists[type] = []; }
+    // A list that came back empty is an editable text field, not an error:
+    // the widget still opens and saves.
+    try { lists[type] = await _settingsOptions(type); } catch (e) { /* state-ok: a picker list degrades to a typed value; the form still opens */ lists[type] = []; }
   }));
 
   // A metric picker chooses the category/metric pair together, so the separate

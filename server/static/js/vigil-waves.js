@@ -81,7 +81,7 @@ function _renderWaves() {
 async function loadWaves() {
   const box = document.getElementById('waves-list');
   if (!box) return;
-  box.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
+  box.innerHTML = loadingHtml();
   try {
     const [waves, groups] = await Promise.all([
       apiJson('/api/v1/waves/'),

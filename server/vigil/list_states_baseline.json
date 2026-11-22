@@ -1,11 +1,2 @@
 {
-  "static/js/vigil-dashboards.js": 1,
-  "static/js/vigil-playbooks.js": 3,
-  "static/js/vigil-reports.js": 1,
-  "static/js/vigil-rollout.js": 2,
-  "static/js/vigil-runhistory.js": 2,
-  "static/js/vigil-tasks.js": 2,
-  "static/js/vigil-utils.js": 6,
-  "static/js/vigil-waves.js": 1,
-  "static/js/vigil-widgets.js": 2
 }

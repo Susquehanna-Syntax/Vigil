@@ -573,10 +573,9 @@ async function openTaskDetail(runId) {
   const stepsEl = document.getElementById('task-detail-steps');
   const actionsEl = document.getElementById('task-detail-actions');
 
-  titleEl.textContent = t('Loading…');
+  stepsEl.innerHTML = loadingHtml();
   metaEl.replaceChildren();
   document.getElementById('task-detail-jackil').style.display = 'none';
-  stepsEl.replaceChildren();
   actionsEl.hidden = true;
   overlay.classList.add('open');
   modal.classList.add('open');
@@ -695,9 +694,7 @@ async function openTaskDetail(runId) {
       };
     }
   } catch (e) {
-    const errEl = _tdEl('div', 'color:var(--rose-ink);padding:16px;');
-    errEl.textContent = t('Failed to load run details: {msg}', { msg: e.message });
-    stepsEl.appendChild(errEl);
+    showLoadFailure(stepsEl, t('the task run'), e, () => openTaskDetail(runId));
   }
 }
 
@@ -831,6 +828,10 @@ async function refreshTaskHistory(page) {
   const list = document.getElementById('task-history-list');
   if (!list) return;
   const p = page || taskHistoryState.page || 1;
+  // The template's placeholder is the first paint, so a load over it keeps it
+  // rather than flashing Loading; only an empty list needs to say Loading.
+  const fromScratch = !list.querySelector('.task-item');
+  if (fromScratch) showLoading(list);
   try {
     const body = await apiJson(`/api/v1/tasks/history/?page=${p}`);
     taskHistoryState.page = body.page;
@@ -843,7 +844,8 @@ async function refreshTaskHistory(page) {
     }
     _renderTaskHistoryPager();
   } catch (e) {
-    // Silent on poll failure — keep last-good list visible.
+    if (!fromScratch) return;   // a poll failure keeps the last good list on screen
+    showLoadFailure(list, t('the task history'), e, () => refreshTaskHistory(p));
   }
 }
 

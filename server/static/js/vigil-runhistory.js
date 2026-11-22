@@ -46,7 +46,7 @@ function _stepMessage(text) {
         const n = body.matches.length;
         return `${n} match${n === 1 ? '' : 'es'}${body.truncated ? ' (cut off at the limit)' : ''}${body.timed_out ? ' — timed out' : ''}`;
       }
-    } catch (e) { /* not JSON after all: show it as text */ }
+    } catch (e) { /* state-ok: not JSON after all: the line is shown as text */ }
   }
   return t.length > 240 ? t.slice(0, 240) + '…' : t;
 }
@@ -200,12 +200,18 @@ async function loadRunHistory(page) {
   const list = document.getElementById('run-history-list');
   if (!list) return;
   const p = page || runHistoryState.page || 1;
+  // The panel starts empty, so "nothing on screen yet" is the loading test: a
+  // poll over rows already drawn keeps them, and a failed list's own retry
+  // redraws the failure rather than flashing Loading under it.
+  const fromScratch = !list.firstChild;
+  if (fromScratch) showLoading(list);
   let body;
   try {
     body = await apiJson(
       `/api/v1/tasks/runs/?page=${p}&source=${encodeURIComponent(runHistoryState.source)}`);
   } catch (e) {
-    // Silent on poll failure — keep the last good list on screen.
+    if (!fromScratch) return;   // a poll failure keeps the last good list on screen
+    showLoadFailure(list, t('the run history'), e, () => loadRunHistory(p));
     return;
   }
   runHistoryState.page = body.page;

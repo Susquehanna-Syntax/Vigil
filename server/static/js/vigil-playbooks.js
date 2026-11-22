@@ -35,7 +35,7 @@ let _allPlaybooks = [];   // cached, for client-side search
 async function loadPlaybooks() {
   const list = document.getElementById('playbooks-list');
   if (!list) return;
-  list.innerHTML = `<div class="empty-block"><p>${escHtml(t('Loading…'))}</p></div>`;
+  list.innerHTML = loadingHtml();
   try {
     // Steps may name your own tasks or shared ones (the built-ins a template
     // playbook uses), so both lists feed the names, risks and outputs.
@@ -224,7 +224,7 @@ async function _openFailures(playbookId, name) {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>`;
-  m.setBody(head + `<p class="muted-note">${escHtml(t('Loading…'))}</p>`);
+  m.setBody(head + loadingHtml());
   m.open();
 
   let rows = [];
@@ -1023,7 +1023,7 @@ async function _confirmAutoEnroll(data) {
     count = `<p>${tn('{n} host matches right now and would start running it within five minutes.',
                      '{n} hosts match right now and would start running it within five minutes.',
                      matching.length, { n: `<strong>${matching.length}</strong>` })}</p>`;
-  } catch (e) { /* the warning stands without a count */ }
+  } catch (e) { /* state-ok: an optional count on a confirmation; the warning still stands without it */ }
 
   return confirmModal(
     `<p>${t('{name} will run unattended on {target}.', { name: `<strong>${escHtml(data.name)}</strong>`, target })}</p>` // i18n-ignore
