@@ -31,8 +31,11 @@ const ctrState = { tab: 'containers', q: '', chip: '', hosts: null, raw: null, d
 /** @param {boolean=} force @returns {Promise<{id: string, hostname: string, containers: number|null, running: number|null, engine?: string}[]>} */
 async function _ctrHosts(force) {
   if (!ctrState.hosts || force) {
-    // state-ok: the picker is a convenience; typing an id still works
-    try { ctrState.hosts = await apiJson('/api/v1/hosts/docker-summary/'); } catch { ctrState.hosts = ctrState.hosts || []; }
+    try { ctrState.hosts = await apiJson('/api/v1/hosts/docker-summary/'); } catch (e) {
+      // Said out loud: an empty picker alone would read as "no Docker hosts".
+      showToast(t('Could not load the Docker hosts: {message}', { message: e.message }), 'error');
+      ctrState.hosts = ctrState.hosts || [];
+    }
   }
   return ctrState.hosts;
 }

@@ -65,7 +65,9 @@ async function openRebuildModal(hostId, hostname) {
       apiJson('/api/v1/hosts/transport-ack/').catch(() => ({ acknowledged: false })),
     ]);
   } catch (e) {
-    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><div id="rb-body"></div>`);
+    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><div id="rb-body"></div>` +
+      `<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">${escHtml(t('Close'))}</button></div>`);
+    document.getElementById('rb-cancel').onclick = m.close;
     showLoadFailure(document.getElementById('rb-body'), t('the rebuild images'), e, () => openRebuildModal(hostId, hostname));
     return;
   }
