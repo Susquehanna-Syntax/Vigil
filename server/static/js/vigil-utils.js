@@ -96,6 +96,51 @@ function showLoadFailure(container, what, err, retry) {
   container.replaceChildren(block);
 }
 
+// ── Loading, empty and failed: one look for every list ──────────────────
+// A list shows exactly one of three states while it has no rows to draw:
+// loading (the request is out), empty (it came back with nothing) or failed
+// (showLoadFailure above). A failed load is never drawn as empty: "No
+// policies yet" after a 500 tells the reader something false.
+// `compact` is the inline size (inside a card, a panel or a picker); the
+// default is the page-level block with a serif title.
+
+/** Markup for a list that is loading. @param {string} [label] @returns {string} */
+function loadingHtml(label) {
+  return `<div class="state-loading" role="status" aria-live="polite">${escHtml(label || t('Loading…'))}</div>`;
+}
+
+/** Draw the loading state in a container. @param {HTMLElement|null} container @param {string} [label] */
+function showLoading(container, label) {
+  if (container) container.innerHTML = loadingHtml(label);
+}
+
+/**
+ * Markup for an empty list. `desc` may hold trusted markup (catalog text with
+ * escaped values); `title` is escaped here.
+ * @param {{title: string, desc?: string, compact?: boolean}} opts @returns {string}
+ */
+function emptyHtml(opts) {
+  if (opts.compact) {
+    return `<div class="apps-empty-state">${escHtml(opts.title)}${opts.desc ? ` ${opts.desc}` : ''}</div>`;
+  }
+  return `<div class="empty-state"><div class="empty-state-title">${escHtml(opts.title)}</div>`
+    + (opts.desc ? `<div class="empty-state-desc">${opts.desc}</div>` : '') + '</div>';
+}
+
+/** Draw the empty state in a container. @param {HTMLElement|null} container @param {{title: string, desc?: string, compact?: boolean}} opts */
+function showEmpty(container, opts) {
+  if (container) container.innerHTML = emptyHtml(opts);
+}
+
+/**
+ * One table row spanning every column, holding a state's markup:
+ * `tbody.innerHTML = stateRowHtml(6, loadingHtml())`.
+ * @param {number} colspan @param {string} inner @returns {string}
+ */
+function stateRowHtml(colspan, inner) {
+  return `<tr class="state-row"><td colspan="${colspan}">${inner}</td></tr>`;
+}
+
 async function apiPost(url) {
   const resp = await fetch(url, {
     method: 'POST',
