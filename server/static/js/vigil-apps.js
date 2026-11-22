@@ -133,7 +133,10 @@ async function fetchApps(reset) {
     body = await apiJson(`/api/v1/software/apps/?${params}`);
   } catch (e) {
     if (seq !== appsState.seq) return;
-    showLoadFailure(tbody, t('the app list'), e, () => fetchApps(true));
+    if (tbody) {
+      tbody.innerHTML = stateRowHtml(APPS_COLUMNS, '');
+      showLoadFailure(/** @type {HTMLTableCellElement | null} */ (tbody.querySelector('td')), t('the app list'), e, () => fetchApps(true));
+    }
     return;
   }
   if (seq !== appsState.seq) return;
@@ -254,7 +257,10 @@ async function fetchAppHosts() {
     appsState.hosts = body.results || [];
   } catch (e) {
     if (seq !== appsState.hostSeq) return;
-    showLoadFailure(tbody, t('the host list'), e, fetchAppHosts);
+    if (tbody) {
+      tbody.innerHTML = stateRowHtml(APPS_COLUMNS, '');
+      showLoadFailure(/** @type {HTMLTableCellElement | null} */ (tbody.querySelector('td')), t('the host list'), e, fetchAppHosts);
+    }
     return;
   }
   renderAppsHostsTable();
