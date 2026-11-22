@@ -46,9 +46,11 @@ function _stateClass(state) {
 
 async function openRebuildModal(hostId, hostname) {
   // Mount and open before fetching — a modal that appears only after the
-  // network settles reads as lag (see commit 57470af).
+  // network settles reads as lag (see commit 57470af). The loading state goes
+  // in its own div below the title, so a failure can replace it by id.
   const m = mountModal('rebuild', { wide: true });
-  m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><p class="muted">${escHtml(t('Loading images…'))}</p>`);
+  m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><div id="rb-body"></div>`);
+  showLoading(document.getElementById('rb-body'), t('Loading images…'));
   m.open();
 
   let images = [];
@@ -63,10 +65,8 @@ async function openRebuildModal(hostId, hostname) {
       apiJson('/api/v1/hosts/transport-ack/').catch(() => ({ acknowledged: false })),
     ]);
   } catch (e) {
-    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3>` +
-      `<p class="bad">${escHtml(t('Could not load the image catalog.'))}</p>` +
-      `<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">${escHtml(t('Close'))}</button></div>`);
-    document.getElementById('rb-cancel').onclick = m.close;
+    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><div id="rb-body"></div>`);
+    showLoadFailure(document.getElementById('rb-body'), t('the rebuild images'), e, () => openRebuildModal(hostId, hostname));
     return;
   }
 
@@ -268,7 +268,7 @@ function _showJobProgress(m, job, hostname) {
       const current = await apiJson(`/api/v1/reprovision/jobs/${job.id}/`);
       render(current);
       if (TERMINAL.includes(current.state)) stop();
-    } catch (e) { /* transient — keep polling */ }
+    } catch (e) { /* state-ok: transient — keep polling */ }
   }, REBUILD_POLL_MS);
 }
 
@@ -440,7 +440,7 @@ function _reproImageRow(img) {
   // custom-URL path.
   try {
     nameTd.appendChild(osLogoNode(img.name || ''));
-  } catch (e) { /* a missing mark is cosmetic — never block the row on it */ }
+  } catch (e) { /* state-ok: a missing mark is cosmetic — never block the row on it */ }
   nameTd.appendChild(document.createTextNode(img.name || ''));
   tr.appendChild(nameTd);
 
@@ -538,6 +538,9 @@ async function _reproLoadCatalog() {
     _reproCatalogEntries = await apiJson('/api/v1/reprovision/catalog/');
   } catch (e) {
     _reproCatalogEntries = [];
+    const grid = document.getElementById('repro-catalog-grid');
+    if (grid) showLoadFailure(grid, t('the app catalog'), e, _reproLoadCatalog);
+    return;
   }
   _reproRenderCatalog();
 }
@@ -559,6 +562,10 @@ function _reproRenderCatalog() {
   if (!grid) return;
 
   const entries = Array.isArray(_reproCatalogEntries) ? _reproCatalogEntries : [];
+  // A failed catalog load leaves its failure in the grid (the filter can call
+  // here with an empty list): keep it rather than drawing "no apps" over a
+  // server error. The retry button offered there still works.
+  if (!entries.length && grid.querySelector('.load-failed')) return;
   const held = _reproLibraryByDigest();
   grid.replaceChildren();
   for (const entry of entries) {
@@ -790,7 +797,9 @@ async function _reproLoadAgentProfiles() {
     const rows = await apiJson('/api/v1/agent-profiles/');
     _reproAgentProfiles = Array.isArray(rows) ? rows : [];
   } catch (e) {
-    _reproAgentProfiles = [];   // non-admin, or the endpoint is off
+    // state-ok: a picker is a convenience; non-admin, or the endpoint is off,
+    // and leaving it on "none" is a valid choice the form still accepts.
+    _reproAgentProfiles = [];
   }
   _reproFillProfileAgentProfiles();
 }

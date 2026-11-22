@@ -22,7 +22,7 @@ let firewallHostsLoaded = false;
 let firewallCurrentHostId = null;
 const FW_HOST_KEY = 'vigil.firewall.host';
 
-function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch { /* private window */ } }
+function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch { /* state-ok: private window */ } }
 function _fwRecall() { try { return localStorage.getItem(FW_HOST_KEY) || ''; } catch { return ''; } }
 
 // Port 22 is always protected; 3389 joins it only on a Windows snapshot.
@@ -79,11 +79,10 @@ async function _fwPopulateHosts() {
   if (!sel) return;
 
   let hosts = [];
-  try {
-    hosts = await apiJson('/api/v1/hosts/');
-  } catch (e) {
-    showToast(t('Failed to load hosts: {message}', { message: e.message }), 'error');
-  }
+  // state-ok: the toast carries the failure, and this page has no list of its
+  // own to draw a failed state inside — the picker keeps its placeholder and
+  // the page stops here rather than behaving as if there were no hosts.
+  try { hosts = await apiJson('/api/v1/hosts/'); } catch (e) { showToast(t('Failed to load hosts: {message}', { message: e.message }), 'error'); return; }
 
   // Monitor-mode hosts report metrics only and never execute tasks — the
   // firewall endpoints refuse them (see host.mode == Host.Mode.MONITOR

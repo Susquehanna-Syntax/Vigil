@@ -541,8 +541,11 @@ async function _ensureFleetCache(force) {
 
 async function openDeployModal(definitionId, prefill) {
   prefill = prefill || {};
-  // Show modal skeleton immediately so the UI feels instant.
-  document.getElementById('deploy-modal-title').textContent = t('Loading…');
+  // Show modal skeleton immediately so the UI feels instant: the title keeps
+  // its static "Deploy Task" text and the target list says what is still
+  // arriving.
+  const rowsEl = document.getElementById('deploy-host-rows');
+  if (rowsEl) rowsEl.innerHTML = loadingHtml();
   document.getElementById('deploy-risk-label').innerHTML = '';
   document.getElementById('deploy-yaml-view').innerHTML = '';
   /** @type {HTMLInputElement} */ (document.getElementById('deploy-host-search')).value = '';
@@ -665,7 +668,7 @@ async function _refreshDeployRefusals() {
   try {
     const qs = encodeURIComponent(ids.join(','));
     rows = (await apiJson(`/api/v1/tasks/definitions/${deployState.definitionId}/refusals/?host_ids=${qs}`)).refusals || [];
-  } catch { rows = []; }
+  } catch { rows = []; /* state-ok: the refusal note is an extra on the target list; the deploy still opens and runs without it */ }
   const before = JSON.stringify(deployState.refusals || {});
   deployState.refusals = Object.fromEntries(rows.map(r => [r.host_id, r.actions]));
   if (box) {

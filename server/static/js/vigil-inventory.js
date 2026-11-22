@@ -80,7 +80,7 @@ function _invVisibleIds() {
   try {
     const saved = localStorage.getItem('vigil_inv_cols');
     if (saved) ids = new Set(JSON.parse(saved));
-  } catch { ids = null; }   // storage can throw in a private window
+  } catch { ids = null; /* state-ok: storage can throw in a private window */ }
   if (!ids) ids = new Set(INV_COLUMNS.filter(c => c.dv).map(c => c.id));
   ids.add('hostname');
   return ids;
@@ -91,7 +91,7 @@ function _invSaveVisible(ids) {
 
 function _invColOrder() {
   const saved = localStorage.getItem('vigil_inv_col_order');
-  if (saved) { try { return JSON.parse(saved); } catch {} }
+  if (saved) { try { return JSON.parse(saved); } catch { /* state-ok: unreadable settings fall back to the default column order */ } }
   return INV_COLUMNS.map(c => c.id);
 }
 function _invSaveOrder(ids) {
@@ -187,7 +187,7 @@ async function refreshInventory() {
     inventoryState.customColumns = data.custom_columns || [];
     renderInventory();
   } catch (e) {
-    showLoadFailure(document.getElementById('inv-content'), 'the inventory', e, () => refreshInventory());
+    showLoadFailure(document.getElementById('inv-content'), t('the inventory'), e, () => refreshInventory());
   }
 }
 
@@ -503,7 +503,7 @@ async function adLoadConfig() {
     } else {
       status.textContent = cfg.has_password ? t('Configured but never synced.') : t('Not yet configured.');
     }
-  } catch (e) { /* settings page may load before login */ }
+  } catch (e) { /* state-ok: the settings page may load before login */ }
 }
 
 async function adSaveConfig() {

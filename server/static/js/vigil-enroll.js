@@ -394,7 +394,7 @@ async function _pollForHost() {
         document.getElementById('enroll-approve-btn').textContent = t('Already approved');
       }
     }
-  } catch (_) { /* silently retry */ }
+  } catch (_) { /* state-ok: the wizard keeps polling until the agent reports in */ }
 }
 
 /** @returns {Promise<void>} */

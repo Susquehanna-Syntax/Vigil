@@ -11,10 +11,14 @@ let _devices = [];
 
 /** @returns {Promise<void>} */
 async function loadDevices() {
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('dev-content'));
+  if (wrap) showLoading(wrap);
   try {
     _devices = await apiJson('/api/v1/hosts/devices/');
   } catch (e) {
     _devices = [];
+    if (wrap) showLoadFailure(wrap, t('unmanaged devices'), e, loadDevices);
+    return;
   }
   renderDevices();
 }

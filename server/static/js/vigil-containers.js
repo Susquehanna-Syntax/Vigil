@@ -31,6 +31,7 @@ const ctrState = { tab: 'containers', q: '', chip: '', hosts: null, raw: null, d
 /** @param {boolean=} force @returns {Promise<{id: string, hostname: string, containers: number|null, running: number|null, engine?: string}[]>} */
 async function _ctrHosts(force) {
   if (!ctrState.hosts || force) {
+    // state-ok: the picker is a convenience; typing an id still works
     try { ctrState.hosts = await apiJson('/api/v1/hosts/docker-summary/'); } catch { ctrState.hosts = ctrState.hosts || []; }
   }
   return ctrState.hosts;
@@ -230,7 +231,7 @@ async function renderDockerContainers(hostId, fromCache) {
       ]);
       if (resp.ok) fetched = await resp.json();
       if (stackResp.ok) stackRows = await stackResp.json();
-    } catch { fetched = []; }
+    } catch (e) { showLoadFailure(wrap, t('this host\'s containers'), e, () => renderDockerContainers(hostId)); return; }
     await managed;   // the Edit buttons need the managed stacks
     if (hostId !== containersHostId) return;   // the operator moved on
     ctrState.raw = { hostId, containers: fetched, stacks: stackRows };
@@ -512,7 +513,7 @@ async function _pollContainerLogs() {
   let body;
   try {
     body = await apiJson(`/api/v1/hosts/log-tails/${logView.session}/?after=${logView.after}`);
-  } catch { return; }
+  } catch { return; /* state-ok: the next poll refetches the log tail */ }
   // Follow the tail only while the reader is already at the bottom; someone
   // scrolled up to read is left where they are.
   const atBottom = els.body.scrollTop + els.body.clientHeight >= els.body.scrollHeight - 8;
@@ -553,7 +554,18 @@ function closeContainerLogs() {
 
 async function loadDockerResources(hostId) {
   let body = null;
-  try { body = await apiJson(`/api/v1/hosts/${encodeURIComponent(hostId)}/docker/`); } catch { body = null; }
+  try {
+    body = await apiJson(`/api/v1/hosts/${encodeURIComponent(hostId)}/docker/`);
+  } catch (e) {
+    if (hostId !== containersHostId) return;
+    ctrState.docker = null;
+    if (ctrState.tab === 'containers') { renderDockerContainers(hostId); return; }
+    // The panel draws the loading state while the retry is out.
+    _renderCtrPanel();
+    const el = document.getElementById(`ctr-${ctrState.tab}`);
+    if (el) showLoadFailure(el, t('this host\'s images, volumes and networks'), e, () => loadDockerResources(hostId));
+    return;
+  }
   if (hostId !== containersHostId) return;
   ctrState.docker = body;
   for (const kind of ['images', 'volumes', 'networks']) {
@@ -709,7 +721,7 @@ function _renderCtrPanel() {
   if (kind === 'containers') { renderDockerContainers(containersHostId, true); return; }
   const el = document.getElementById(`ctr-${kind}`);
   const body = ctrState.docker;
-  if (!body) { el.innerHTML = `<div class="docker-empty">${escHtml(t('Loading…'))}</div>`; return; }
+  if (!body) { el.innerHTML = loadingHtml(); return; }
   const all = body[kind];
   const items = all.filter(item => _ctrResourceMatches(kind, item));
   const countEl = document.getElementById('docker-count');
@@ -735,7 +747,7 @@ function setCtrTab(tab) {
   document.querySelectorAll('[data-ctr-panel]').forEach((/** @type {HTMLElement} */ p) => { p.hidden = p.dataset.ctrPanel !== tab; });
   _renderCtrChips();
   _renderCtrPanel();
-  try { sessionStorage.setItem('vigil-ctr-tab', tab); } catch (e) { /* private window */ }
+  try { sessionStorage.setItem('vigil-ctr-tab', tab); } catch (e) { /* state-ok: private window */ }
 }
 
 delegateClick('[data-ctr-pick-host]', () => pickContainersHost());
@@ -761,6 +773,6 @@ document.addEventListener('input', (/** @type {InputEvent} */ ev) => {
 
 document.addEventListener('DOMContentLoaded', () => {
   let tab = 'containers';
-  try { tab = sessionStorage.getItem('vigil-ctr-tab') || 'containers'; } catch (e) { /* private window */ }
+  try { tab = sessionStorage.getItem('vigil-ctr-tab') || 'containers'; } catch (e) { /* state-ok: private window */ }
   if (CTR_CHIPS[tab]) setCtrTab(tab);
 });

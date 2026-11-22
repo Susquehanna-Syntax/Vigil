@@ -329,7 +329,7 @@ async function _validateStack() {
       method: 'POST',
       body: JSON.stringify({ compose_yaml: ta.value, env_keys: stackEd.env.map(e => e.key.trim()).filter(Boolean) }),
     });
-  } catch { return; }
+  } catch { return; /* state-ok: the next keystroke re-checks the compose file */ }
   if (seq !== _stackCheckSeq) return;                       // a newer keystroke already answered
   if (!_stedEl('sted-check')) return;
   _renderStackCheck(r);
