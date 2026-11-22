@@ -573,6 +573,7 @@ async function openTaskDetail(runId) {
   const stepsEl = document.getElementById('task-detail-steps');
   const actionsEl = document.getElementById('task-detail-actions');
 
+  titleEl.textContent = '';   // the steps say Loading; never the last run's title
   stepsEl.innerHTML = loadingHtml();
   metaEl.replaceChildren();
   document.getElementById('task-detail-jackil').style.display = 'none';
