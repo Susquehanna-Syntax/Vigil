@@ -876,22 +876,24 @@ jobs:
         with:
           release: "14"
           usesh: true
-          # pip from pkg when the catalog has it, else from Python's own
-          # ensurepip: py311-pip was missing from the FreeBSD 14 catalog on
-          # 2026-11-23, and the build only needs some pip, not that package.
+          # The catalog's default Python (lang/python3), not a pinned 3.11: the
+          # FreeBSD 14 catalog dropped py311-pip on 2026-11-23, and the build
+          # needs some Python 3 with pip, not one version's packages. pip comes
+          # from Python's own ensurepip when the package has none.
           prepare: |
-            pkg install -y python311
-            pkg install -y py311-pip || python3.11 -m ensurepip --upgrade
+            pkg install -y python3
+            python3 -m pip --version || python3 -m ensurepip --upgrade
           run: |
             set -e
             cd agent
-            # --break-system-packages: pkg's python311 is PEP 668 "externally
+            # --break-system-packages: pkg's Python is PEP 668 "externally
             # managed", so pip refuses to install into it without this. The ports
             # tree also has a pyinstaller, but it is pinned to whatever that
             # release carries, while requirements-lock.txt pins the PyInstaller
             # this repo builds with — so build with the pip-installed one.
-            python3.11 -m pip install --break-system-packages -r requirements.txt pyinstaller
-            python3.11 -m PyInstaller --onefile --name vigil-agent-freebsd-amd64 \
+            python3 --version
+            python3 -m pip install --break-system-packages -r requirements.txt pyinstaller
+            python3 -m PyInstaller --onefile --name vigil-agent-freebsd-amd64 \
               --collect-all cffi --collect-all nacl vigil_agent_main.py
             # The smoke test is the cheapest proof the frozen binary starts on
             # the OS it will run on: a missing shared library or a bad hidden
