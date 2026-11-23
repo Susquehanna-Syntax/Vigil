@@ -876,8 +876,12 @@ jobs:
         with:
           release: "14"
           usesh: true
+          # pip from pkg when the catalog has it, else from Python's own
+          # ensurepip: py311-pip was missing from the FreeBSD 14 catalog on
+          # 2026-11-23, and the build only needs some pip, not that package.
           prepare: |
-            pkg install -y python311 py311-pip
+            pkg install -y python311
+            pkg install -y py311-pip || python3.11 -m ensurepip --upgrade
           run: |
             set -e
             cd agent
