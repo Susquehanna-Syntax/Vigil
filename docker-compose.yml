@@ -267,7 +267,7 @@ services:
   # TUNNEL_TOKEN (and VIGIL_PUBLIC_URL + VIGIL_TRUST_PROXY=true). Point the
   # tunnel's public hostname at http://web:8000. See docs/REMOTE-ACCESS.md.
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.7
+    image: cloudflare/cloudflared:2026.11.1
     restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
