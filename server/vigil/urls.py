@@ -242,3 +242,5 @@ if settings.BUSINESS_API_KEYS:
     urlpatterns += [path("api/v1/api-keys/", include("apps_business.apikeys.urls"))]
 if settings.BUSINESS_WEBHOOKS:
     urlpatterns += [path("api/v1/webhooks/", include("apps_business.webhooks.urls"))]
+if settings.BUSINESS_CONFIG_BACKUP:
+    urlpatterns += [path("api/v1/config-backups/", include("apps_business.configbackup.urls"))]
