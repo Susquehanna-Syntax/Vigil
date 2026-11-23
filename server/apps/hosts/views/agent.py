@@ -8,6 +8,8 @@ from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
                           HostsErrorSerializer, HostsHostSerializer,
                           HostsRegisterResponseSerializer, HostsRegisterSerializer,
                           HostsTransportAckBodySerializer, HostsTransportAckSerializer)
+from ..device_checks import signed_check_list, store_check_results
+from ..discovery import signed_scan, store_scan_result
 from ._common import *  # noqa: F401,F403
 
 
@@ -278,6 +280,10 @@ def checkin(request):
     # Absent means an agent too old to report it (or Windows) — keep what we knew.
     if isinstance(data.get("runs_as_root"), bool):
         host.agent_runs_as_root = data["runs_as_root"]
+    # S9: the agent's own agent.yml opt-in to polling agent-less devices. Written
+    # only here, never by the dashboard.
+    if isinstance(data.get("poller"), bool):
+        host.agent_poller = data["poller"]
 
     if (outcome := _agent_update_outcome(data.get("agent_update"))) is not None:
         host.agent_update = outcome
@@ -331,6 +337,14 @@ def checkin(request):
     host.tags = merge_auto_tags(host)
 
     host.save()
+
+    # S9: results for the device checks this host polled. Stored after the save above
+    # (which may have brought the host back online), so the assignment sees it as online.
+    if host.status not in (Host.Status.PENDING, Host.Status.REJECTED):
+        store_check_results(host, data.get("check_results"))
+        # S9 06b: this poller's answer to the discovery scan it was handed.
+        if host.agent_poller:
+            store_scan_result(host, data.get("scan_result"))
 
     # A rebuilt host's first check-in closes out its rebuild job: operator
     # tag applied, maintenance window cleared, playbook dispatched. No-op for
@@ -609,6 +623,10 @@ def checkin(request):
             # list, "direct" whether the dashboard itself still accepts agents,
             # and "relays_sig" what proves neither was written by the relay.
             **signed_relay_list(host.token_fingerprint),
+            # S9: the device checks this poller is handed, signed for this agent.
+            **(signed_check_list(host) if host.agent_poller else {}),
+            # S9 06b: the discovery scan this poller is handed, signed for it.
+            **(signed_scan(host) if host.agent_poller else {}),
             # The agent resends its software list when this differs from its
             # own digest. "" when the server holds nothing for this host.
             "software_digest": snapshot.digest if snapshot else "",

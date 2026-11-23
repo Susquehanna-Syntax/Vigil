@@ -803,6 +803,39 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   border-color: var(--sky);
 }
 .alert-check:checked::before { transform: scale(1); }
+
+/* Device alerts (S9 04b): an agent-less device whose check failed twice. */
+.device-alerts { margin-bottom: 18px; }
+.device-alerts-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.device-alert-list { display: flex; flex-direction: column; gap: 8px; }
+.device-alert-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background: var(--s1);
+}
+.device-alert-dot {
+  width: 10px; height: 10px;
+  border-radius: 4px; flex-shrink: 0;
+  background: var(--rose);
+}
+.device-alert-dot-ack { background: var(--text-3); }
+.device-alert-content { flex: 1; min-width: 0; }
+.device-alert-name { font-size: 14px; font-weight: 500; }
+.device-alert-message {
+  font-size: 12px; color: var(--text-3); margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.device-alert-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text-3);
+  white-space: nowrap;
+}
 .bulk-bar {
   display: flex; align-items: center; gap: 14px;
   background: var(--s1);
@@ -2149,6 +2182,227 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   font-size: 12px;
   color: var(--text-2);
 }
+/* The up/down dot on a device row, from the list's check_state. */
+.dev-state-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-left: 7px;
+  vertical-align: middle;
+}
+.dev-state-dot--up { background: var(--mint); }
+.dev-state-dot--down { background: var(--rose); }
+
+/* Checks inside the device editor (S9). A row is a compact grid: dot, label,
+   latency, age, actions, with the latest detail on a second line under the
+   label (the modal is too narrow for it to share the first). Colour comes from the tokens only, and the
+   state is carried by the dot — never a coloured line down one side. */
+.device-checks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.device-check-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto auto;
+  grid-template-areas: "dot label latency age actions" ". detail detail detail detail";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.device-check-row:hover { background: var(--s2); }
+.device-check-dot {
+  grid-area: dot;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.device-check-dot--ok { background: var(--mint); }
+.device-check-dot--bad { background: var(--rose); }
+.device-check-dot--none { background: var(--text-3); }
+.device-check-label { grid-area: label; color: var(--text-1); overflow-wrap: anywhere; }
+.device-check-latency {
+  grid-area: latency;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.device-check-detail {
+  grid-area: detail;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.device-check-age {
+  grid-area: age;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.device-check-detail:empty { display: none; }
+.device-check-actions { grid-area: actions; display: inline-flex; align-items: center; gap: 6px; }
+.device-check-delete { color: var(--rose-ink); }
+.device-check-chart { height: 120px; margin: -2px 0 8px; }
+.device-check-note {
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 4px 0;
+}
+.device-check-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.device-check-add .form-control { width: auto; }
+.device-check-add #device-check-kind { flex: 0 0 130px; }
+.device-check-add #device-check-target { flex: 1 1 180px; min-width: 140px; }
+.device-check-add #device-check-port { flex: 0 0 116px; }
+.device-check-add #device-check-community { flex: 1 1 160px; }
+.device-check-add #device-check-snmp-version { flex: 0 0 76px; }
+/* The v3 fields take a row of their own: user, protocol and two passwords. */
+.device-check-v3 { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
+.device-check-v3 #device-check-v3-user { flex: 1 1 140px; }
+.device-check-v3 #device-check-v3-auth { flex: 0 0 110px; }
+.device-check-v3 input[type="password"] { flex: 1 1 100%; }
+.device-check-add #device-check-interval { flex: 1 1 160px; }
+/* The add row is one flex line, so the OIDs textarea takes a line to itself. */
+.device-check-add .device-check-oids { flex-basis: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 12px; min-height: 64px; }
+.device-check-values { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 12px; }
+.device-check-values dt { color: var(--text-2); }
+.device-check-values dd { margin: 0; font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; }
+.device-check-walk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); flex-basis: 100%; }
+/* SSH config backup (S9 08d): the add row's user and command, and the panel
+   under an expanded SSH row. Tinted boxes, never a one-sided border. */
+.device-check-ssh { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
+.device-check-ssh #device-check-ssh-user { flex: 0 1 160px; }
+.device-check-ssh #device-check-ssh-command { flex: 1 1 260px; }
+.device-check-ssh-panel { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 4px; font-size: 12px; }
+.device-check-ssh-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-2); }
+.device-check-ssh-keyline { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; }
+.device-check-ssh-key { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 11px; word-break: break-all;
+  background: var(--s2); border-radius: var(--r-sm, 6px); padding: 6px 8px; color: var(--text-1); flex: 1 1 auto; }
+.device-check-ssh-unpinned { color: var(--text-3); }
+.device-check-ssh-rotate { align-self: flex-start; }
+.device-check-backups { width: 100%; border-collapse: collapse; }
+.device-check-backups th, .device-check-backups td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.device-check-backups th { color: var(--text-3); font-size: 11px; font-weight: 600; }
+.device-check-backups tbody tr:last-child td { border-bottom: 0; }
+.device-check-backup-size { font-family: var(--font-mono, 'IBM Plex Mono', monospace); color: var(--text-2); }
+.device-check-config { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 12px; line-height: 1.5;
+  max-height: 420px; overflow: auto; white-space: pre; background: var(--s1); border-radius: var(--r-sm, 6px);
+  padding: 8px 10px; margin: 0; }
+.device-check-config > span { display: block; }
+.device-check-config .diff-add { background: color-mix(in srgb, var(--mint) 18%, transparent); }
+.device-check-config .diff-del { background: color-mix(in srgb, var(--rose) 18%, transparent); }
+.device-check-config .diff-hunk { color: var(--sky-ink); }
+.device-check-ifaces { width: 100%; margin: 12px 0 0; border-collapse: collapse; font-size: 12px; }
+.device-check-ifaces th { text-align: left; font-weight: 500; color: var(--text-2); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.device-check-ifaces td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; }
+.device-check-ifaces tbody tr { cursor: pointer; }
+.device-check-ifaces tbody tr:hover, .device-check-ifaces tbody tr.selected { background: var(--s2); }
+.device-check-if-state.up { color: var(--mint-ink); }
+.device-check-if-state.down { color: var(--rose-ink); }
+.device-check-if-chart { height: 140px; margin-top: 8px; }
+
+/* Discovery (S9): the Discover dialog on the Inventory page. The scan rows take
+   the surface and radius of a check row above, and their state is a tinted pill
+   like a container's — colour from tokens only, never a coloured line down one
+   side of anything. */
+.dev-actions { display: inline-flex; align-items: center; gap: 8px; }
+.discovery-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.discovery-form .form-control { width: auto; }
+.discovery-form #discovery-poller { flex: 1 1 150px; min-width: 120px; }
+.discovery-form #discovery-cidr { flex: 1 1 150px; min-width: 120px; }
+.discovery-form #discovery-ports { flex: 1 1 130px; min-width: 110px; }
+.discovery-form #discovery-community { flex: 1 1 130px; min-width: 110px; }
+/* The boxes carry a <label for> each, so they are named for a screen reader
+   without a second label row above a row of inputs. */
+.discovery-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.discovery-help { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.discovery-note { font-size: 12px; color: var(--text-3); padding: 4px 0; }
+.discovery-scans {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.discovery-scan-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.discovery-scan-row:hover { background: var(--s2); }
+.discovery-scan-row.selected { border-color: rgba(var(--rgb-sky), var(--tint-a-line)); }
+.discovery-scan-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.discovery-scan-cidr {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+.discovery-scan-meta { display: block; font-size: 11px; color: var(--text-3); margin-top: 3px; }
+.discovery-scan-state {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.discovery-scan-state--queued,
+.discovery-scan-state--sent { background: rgba(var(--rgb-sky), var(--tint-a)); color: var(--sky-ink); }
+.discovery-scan-state--done { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.discovery-scan-state--failed { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.discovery-result { margin-top: 14px; }
+.discovery-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.discovery-result-title { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.discovery-delete { color: var(--rose-ink); }
+/* Wide enough for the hosts table's six columns side by side; on a narrower
+   screen the table's wrapper scrolls sideways rather than the dialog. */
+.modal.discovery-modal { width: 880px; }
+.discovery-table-wrap { overflow-x: auto; }
+.discovery-table { min-width: 520px; }
+.discovery-table th, .discovery-table td { padding: 6px 10px; }
+.discovery-table th:first-child, .discovery-table td:first-child { width: 36px; }
+.discovery-mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-2); }
+.discovery-known { font-size: 12px; color: var(--text-3); }
+.discovery-adopt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.discovery-adopt .form-control { width: auto; }
+.discovery-type { flex: 0 1 180px; min-width: 140px; }
 
 /* SSH command modal */
 .ssh-cmd-row { display: flex; align-items: center; gap: 10px; }
@@ -2335,6 +2589,12 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   border-radius: 8px; color: var(--text-1); }
 .sp-host-status { font-size: 11px; font-weight: 600; }
 .sp-host-status.up { color: var(--mint-ink); } .sp-host-status.down { color: var(--rose-ink); }
+/* A device whose checks have never reported says neither up nor down. */
+.sp-host-status.unknown { color: var(--text-3); }
+/* The state dot the Inventory list uses, beside a device's name in the picker. */
+.sp-device-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 5px; vertical-align: middle; background: var(--text-3); }
+.sp-device-dot.up { background: var(--mint); } .sp-device-dot.down { background: var(--rose); }
 .sp-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Confirm modal */
@@ -4447,6 +4707,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 .topo-link { fill: none; stroke: var(--text-3); stroke-width: 1.5; stroke-opacity: .7; }
 .topo-link-ext { stroke-dasharray: 3 5; }
+.topo-link-poll { stroke: var(--sky-ink); stroke-dasharray: 2 4; stroke-opacity: .8; }
 .topo-link-hi { stroke: var(--lavender-ink); stroke-width: 2.5; stroke-opacity: 1; }
 .topo-link-dim { stroke-opacity: .16; }
 .topo-link-label { font-size: 10px; font-weight: 700; fill: var(--text-2); paint-order: stroke;

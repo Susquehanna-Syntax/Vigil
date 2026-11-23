@@ -19,6 +19,7 @@ from pathlib import Path
 from . import (
     client,
     collector,
+    discovery,
     failover,
     netmap,
     sessions,
@@ -30,6 +31,7 @@ from . import (
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
+from .poller import Poller
 from .runtime import TaskRuntime
 from .verify import KeyMismatchError
 
@@ -787,6 +789,16 @@ def run_agent() -> None:
                    lambda: verify.get_pinned_key(config.data_dir, config.server_public_key),
                    lambda: _shutdown)
 
+    # Device checks (S9). The thread runs only on a host whose own agent.yml
+    # says poller: true; learn() ignores every list otherwise.
+    poller = Poller(config)
+    if config.poller:
+        poller.start(lambda: _shutdown)
+
+    # Discovery scans (S9). One scan at a time on its own thread; learn()
+    # ignores every scan this agent is not configured or unable to verify.
+    scanner = discovery.Scanner(config)
+
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour
     # rather than on every checkin to avoid wasting cycles on dmidecode.
@@ -888,6 +900,8 @@ def run_agent() -> None:
             # payloads. A plain closure would also do — failover.checkin calls
             # it before the loop re-binds — but defaults say it out loud.
             update_report = probation.report()
+            check_results = poller.take_results()
+            scan_result = scanner.take_result()
             try:
                 response = failover.checkin(
                     endpoints,
@@ -895,7 +909,9 @@ def run_agent() -> None:
                            containers=docker_containers, resources=docker_resources,
                            updates=windows_updates, software=software_payload,
                            update_list=update_list, engines=engines,
-                           network=network_payload, agent_update=update_report: client.checkin(
+                           network=network_payload, agent_update=update_report,
+                           check_results=check_results,
+                           scan_result=scan_result: client.checkin(
                         config, metrics,
                         inventory=inventory,
                         docker_containers=containers,
@@ -907,9 +923,14 @@ def run_agent() -> None:
                         container_engines=engines,
                         network=network,
                         agent_update=agent_update,
+                        check_results=check_results,
+                        scan_result=scan_result,
                     ),
                 )
             except Exception:
+                poller.restore_results(check_results)
+                if scan_result is not None:
+                    scanner.restore_result(scan_result)
                 windows_update.restore_update_list(update_list)
                 # The list never reached the server. Put it back so the next
                 # pass retries it — unless a newer collection already landed
@@ -949,6 +970,8 @@ def run_agent() -> None:
 
             # Fallback addresses, accepted only if signed for this agent
             endpoints.learn(response, verify_key)
+            poller.learn(response, verify_key)
+            scanner.learn(response, verify_key)
 
             # Process tasks
             tasks = response.get("tasks", [])

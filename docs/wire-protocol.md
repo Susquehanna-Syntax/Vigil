@@ -97,6 +97,8 @@ empty".
 | `allow_remote_shell` | boolean | Whether it will open a live shell for a human. |
 | `allow_remote_desktop` | boolean | Same, for RDP. |
 | `runs_as_root` | boolean | A managed agent left unprivileged fails every task, so the server marks such a host. Omitted on Windows. |
+| `poller` | boolean | Whether this agent's own `agent.yml` says `poller: true`. Only the check-in writes it; the dashboard never does. A poller is handed device checks (section 4, Device checks). Agents from 2026.17 always send it. Absent keeps the stored value. |
+| `check_results` | list of object | Results of the device checks this poller ran since its last check-in: at most 500, each `{"check": "<uuid>", "ok": bool, "latency_ms": number or null, "detail": string, "at": ISO 8601 time, ...}`. Sent only when there are results (agents from 2026.17). Results for a check the server did not hand this poller are dropped. `detail` is kept to 300 characters; other keys are kept as `extra` (scalars only, at most 20). |
 | `features` | list of string | Task-language features this agent understands (`signed_v2`, `relevant`, …). The server will not dispatch what the agent cannot read; see section 4 for what `signed_v2` does. |
 | `reboot_required` | boolean | Absent means too old to report; an explicit `false` writes. |
 | `agent_update` | object | How a self-update ended, sent on each check-in until one carrying it succeeds: `state` (`confirmed`, `rolled_back` or `not_applied`), `from_version`, `to_version`, `running` (the version now running) and `reason`. Absent on every other check-in. The server stores it for display with its own timestamp and decides nothing from it. |
@@ -126,6 +128,9 @@ What an approved agent gets back:
 | `relays_issued` | integer | Issue time of the relay list, so an agent refuses a replayed older one. |
 | `relays_sig` | string | Signature over the relay list, bound to this agent's token fingerprint: a relay that could hand the list unsigned could point every agent at an address it controls. |
 | `software_digest` | string | Digest of the software list the server holds; empty when it holds none. The agent resends its list only when this differs from its own. |
+| `checks` | list of object, optional | Only when this host is a poller (`agent.yml` `poller: true`): the device checks it must run, sorted by `id`. Each is `{"id", "kind" (icmp, tcp, http or dns), "params", "interval"}` (seconds). Absent for every other host. |
+| `checks_issued` | integer, optional | Issue time of the check list, so an agent refuses a replayed older one. Present with `checks`. |
+| `checks_sig` | string, optional | Signature over the check list, bound to this agent's token fingerprint, built exactly like `relays_sig`. An agent runs only the checks from a list that verifies. Present with `checks`. |
 
 ## 3. Task envelope
 
@@ -197,6 +202,19 @@ advertises `signed_v2` accepts only v2**: verifying a v2-advertising agent's
 task with an `agent_token` requires `sig_v == 2` and a string `dispatched_at`,
 and rejects the task otherwise — accepting v1 there would let a relay strip both
 bindings. A task with no signature at all is rejected outright.
+
+### Device checks
+
+The check list is signed the same way as the relay list (`vigil.signing`, the
+task key, the canonical form above). The payload is
+`{"v": 1, "type": "check-list", "agent": <token fingerprint>, "issued": <integer>,
+"checks": [{"id", "kind", "params", "interval"}, ...]}`, serialised with
+`json.dumps(payload, sort_keys=True)` and signed with Ed25519. The `type` field
+keeps this signature from being mistaken for a relay list or a task, and
+`agent` stops a poller from replaying a list signed for another agent. The
+response carries the payload's `checks`, `issued` (as `checks_issued`) and the
+base64 signature (as `checks_sig`); a verifier rebuilds the payload from those
+and the agent's own fingerprint.
 
 ### Key rotation
 

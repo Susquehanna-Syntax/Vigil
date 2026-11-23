@@ -197,6 +197,9 @@ class AgentConfig:
     remote_shell_user: str = "root"
     # Only 127.0.0.1 is ever dialled; this says which port to knock on there.
     remote_desktop_port: int = 3389
+    # Polls devices of this site that cannot run an agent (S9). Only a real
+    # `true` in this file turns it on; the dashboard assigns checks, never this.
+    poller: bool = False
     checkin_interval: int = 60
     # Seconds between Docker Hub image-update checks. The check uses
     # unmetered HEAD requests, but the floor keeps misconfigured agents
@@ -441,6 +444,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
     # and a truthy string must not open a shell on this machine.
     allow_remote_shell = raw.get("allow_remote_shell") is True
     allow_remote_desktop = raw.get("allow_remote_desktop") is True
+    poller = raw.get("poller") is True
     remote_shell_user = str(raw.get("remote_shell_user") or "root")
     # RDP listens on 3389 (Windows, and xrdp on Linux); a Mac's Screen Sharing
     # is VNC on 5900.
@@ -492,6 +496,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         allow_reprovision=allow_reprovision,
         allow_remote_shell=allow_remote_shell,
         allow_remote_desktop=allow_remote_desktop,
+        poller=poller,
         remote_shell_user=remote_shell_user,
         remote_desktop_port=remote_desktop_port,
         checkin_interval=int(raw.get("checkin_interval", 60)),

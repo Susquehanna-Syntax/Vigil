@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
 from django.utils.timezone import now
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -11,12 +12,14 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 from apps.alerts.maintenance import covers, hosts_in_maintenance, occurrence
 from apps.alerts.models import MaintenanceWindow
-from apps.hosts.models import Host
+from apps.hosts.device_checks import device_states
+from apps.hosts.models import Host, UnmanagedDevice
 from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
 
 from .api_schema import (
     StatusPageDetailSerializer,
+    StatusPageDeviceChoiceSerializer,
     StatusPageErrorSerializer,
     StatusPageHostChoiceSerializer,
     StatusPageSerializer,
@@ -85,6 +88,67 @@ def _uptime_history(host_objs):
     return history
 
 
+def _device_uptime_history(devices):
+    """Daily uptime bars + overall % for each device over the render window.
+
+    Same return shape as _uptime_history, keyed by device id string; the
+    readings come from the devices' ENABLED checks' CheckResult rows instead of
+    HostUptimeSample. A day with no results is ``nodata``: results are pruned
+    after the metrics retention period, so older days showing no data is
+    expected. One query grouped by device and day, whatever the device count."""
+    from datetime import timedelta
+
+    from django.db.models import Count, Q
+    from django.db.models.functions import TruncDate
+    from django.utils.timezone import localdate
+
+    from apps.hosts.models import CheckResult
+
+    devices = list(devices)
+    if not devices:
+        return {}
+
+    today = localdate()
+    start = today - timedelta(days=UPTIME_WINDOW_DAYS - 1)
+    days = [start + timedelta(days=i) for i in range(UPTIME_WINDOW_DAYS)]
+
+    rows = (CheckResult.objects
+            .filter(device_check__device_id__in=[d.id for d in devices],
+                    device_check__enabled=True, time__date__gte=start)
+            .annotate(day=TruncDate("time"))
+            .values("device_check__device_id", "day")
+            .annotate(total=Count("id"), up=Count("id", filter=Q(ok=True))))
+
+    by_device: dict = {}
+    for r in rows:
+        by_device.setdefault(str(r["device_check__device_id"]), {})[r["day"]] = (
+            r["up"], r["total"])
+
+    history = {}
+    for d in devices:
+        per_day = by_device.get(str(d.id), {})
+        bars, up_total, samp_total = [], 0, 0
+        for day in days:
+            up, total = per_day.get(day, (0, 0))
+            if total:
+                pct = up / total
+                state = ("up" if pct >= 0.995 else
+                         "degraded" if pct >= 0.90 else "down")
+                label = f"{day:%b %-d}: {pct * 100:.1f}% up"
+                up_total += up
+                samp_total += total
+            else:
+                # A gap means "we don't know", not "it was down".
+                pct, state = None, "nodata"
+                label = f"{day:%b %-d}: no data"
+            bars.append({"pct": pct, "state": state, "label": label})
+        history[str(d.id)] = {
+            "bars": bars,
+            "pct": (up_total / samp_total) if samp_total else None,
+        }
+    return history
+
+
 def _public_key(page, host) -> str:
     import hashlib
     import hmac
@@ -104,9 +168,13 @@ def _card_state(in_maintenance: bool, up: bool) -> str:
 
 
 def _page_view(page):
-    """Everything the page renders: host rows with their state, the headline
-    flags, and the maintenance notices. Shared by the HTML page and its polling
-    JSON endpoint."""
+    """Everything the page renders: host rows with their state, then one row per
+    device with the same keys (S9), the headline flags, and the maintenance
+    notices. Shared by the HTML page and its polling JSON endpoint.
+
+    A device whose enabled checks have never reported is left off entirely:
+    nothing is known about it, and showing it down would be a false outage.
+    Maintenance windows name hosts, so a device row is only ever up or down."""
     labels = page.host_labels or {}
     host_objs = list(page.hosts())
     scoping.prime_site_ids(host_objs)
@@ -129,10 +197,33 @@ def _page_view(page):
             "bars": hist.get("bars", []),
             "uptime_pct": f"{pct * 100:.2f}" if pct is not None else None,
         })
+
+    device_objs = list(page.devices())
+    if device_objs:
+        device_labels = page.device_labels or {}
+        # Called only from the public views, which already run in system
+        # scope: the devices a page names were vetted when they were saved
+        # (_device_ids_error) and page.devices() keeps them to the page's site.
+        states = device_states(device_objs)
+        device_history = _device_uptime_history(device_objs)
+        for d in device_objs:
+            # Absent or None: no enabled checks, or none that ever reported.
+            if states.get(d.id) is None:
+                continue
+            hist = device_history.get(str(d.id), {})
+            pct = hist.get("pct")
+            hosts.append({
+                "id": _public_key(page, d),
+                "hostname": device_labels.get(str(d.id)) or d.name,
+                "up": states[d.id] == "up",
+                "state": "up" if states[d.id] == "up" else "down",
+                "bars": hist.get("bars", []),
+                "uptime_pct": f"{pct * 100:.2f}" if pct is not None else None,
+            })
     return {
         "hosts": hosts,
         "all_up": not any(h["state"] == "down" for h in hosts),
-        "up_count": sum(1 for h in host_objs if h.status == Host.Status.ONLINE),
+        "up_count": sum(1 for h in hosts if h["up"]),
         "maintenance_count": len(in_maint),
         "notices": _notices(page, host_objs, labels),
     }
@@ -217,6 +308,8 @@ def _row(p: StatusPage) -> dict:
         "id": str(p.id), "token": p.token, "title": p.title,
         "enabled": p.enabled, "host_ids": [str(h) for h in (p.host_ids or [])],
         "host_labels": p.host_labels or {},
+        "device_ids": [str(d) for d in (p.device_ids or [])],
+        "device_labels": p.device_labels or {},
         "site_id": str(p.site_id) if p.site_id else None,
         "logo_url": p.logo_url, "hide_badge": p.hide_badge,
         "url": f"/status/{p.token}/",
@@ -240,6 +333,21 @@ def selectable_hosts(request):
     ).order_by("hostname")
     return Response([{"id": str(h.id), "hostname": h.hostname,
                       "up": h.status == Host.Status.ONLINE} for h in hosts])
+
+
+@extend_schema(responses={200: StatusPageDeviceChoiceSerializer(many=True),
+                         403: StatusPageDetailSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def selectable_devices(request):
+    """Every device the caller may see, with its check state, for the picker.
+
+    Scoped like every other device list: an admin confined to one site picking
+    devices for a status page must not be offered another site's devices."""
+    devices = list(_visible_devices(request.user))
+    states = device_states(devices)
+    return Response([{"id": str(d.id), "name": d.name, "state": states.get(d.id)}
+                     for d in devices])
 
 
 @extend_schema(methods=["GET"], responses=StatusPageSerializer(many=True))
@@ -308,6 +416,40 @@ def _host_ids_error(user, raw, site_id):
     return None
 
 
+def _visible_devices(user):
+    """Devices *user* may offer to a status page, name order. A plain ``site_id``
+    column is not a site assignment, so this narrows by hand (filter_by_site_field)
+    the way StatusPage.objects already does for pages themselves."""
+    return scoping.filter_by_site_field(
+        UnmanagedDevice.objects.all(), user).order_by("name")
+
+
+def _device_ids_error(user, raw, site_id):
+    """A 400 unless every id is a device *user* can see and, on a site's page,
+    a device in that site. The page is public: listing a device publishes it."""
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, list):
+        return Response({"detail": "device_ids must be a list"}, status=400)
+    import uuid as _uuid
+    try:
+        wanted = {_uuid.UUID(str(d)) for d in raw}
+    except ValueError:
+        return Response({"detail": "device_ids must be device ids"}, status=400)
+    qs = _visible_devices(user).filter(pk__in=wanted)
+    if site_id:
+        # On a site's page, a device of that site or none at all: a global
+        # device is one any page may publish (see StatusPage.devices).
+        keep = [site_id]
+        if (glob := scoping.global_site_id()) is not None:
+            keep.append(glob)
+        qs = qs.filter(Q(site_id__in=keep) | Q(site_id__isnull=True))
+    if set(qs.values_list("pk", flat=True)) != wanted:
+        return Response({"detail": "device_ids may only name devices you can see"
+                                   + (" in this page's site" if site_id else "")}, status=400)
+    return None
+
+
 def _apply(page, request):
     """Apply editable fields; branding fields need the license. Returns an
     error Response or None."""
@@ -326,10 +468,19 @@ def _apply(page, request):
         if err := _host_ids_error(request.user, data["host_ids"],
                                   data.get("site_id", page.site_id)):
             return err
-    for field in ("title", "enabled", "host_ids", "host_labels", *BRANDING_FIELDS):
+    if "device_ids" in data:
+        if err := _device_ids_error(request.user, data["device_ids"],
+                                    data.get("site_id", page.site_id)):
+            return err
+    for field in ("title", "enabled", "host_ids", "host_labels",
+                  "device_ids", "device_labels", *BRANDING_FIELDS):
         if field in data:
             setattr(page, field, data[field] if data[field] != "" else
                     ("" if field == "logo_url" else data[field]))
+    if isinstance(page.host_ids, list):
+        page.host_ids = [str(h) for h in page.host_ids]
+    if isinstance(page.device_ids, list):
+        page.device_ids = [str(d) for d in page.device_ids]
     if data.get("rotate_token"):
         from .models import _token
         page.token = _token()

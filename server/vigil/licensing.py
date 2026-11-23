@@ -76,6 +76,7 @@ BUSINESS_FEATURES = frozenset({
     "jackil",             # bundled ticketing; the Jackil side verifies this same blob
     "api_keys",           # scoped API keys on the general API (apps_business.apikeys)
     "webhooks",           # signed event webhooks (apps_business.webhooks)
+    "config_backup",      # SSH config backup of network devices (apps_business.configbackup)
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).

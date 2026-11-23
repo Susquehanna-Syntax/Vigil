@@ -4,6 +4,9 @@ from . import channel_views, maintenance_views, slack_actions, views
 
 urlpatterns = [
     path("", views.alert_list, name="alert-list"),
+    path("devices/", views.device_alert_list, name="device-alert-list"),
+    path("devices/<uuid:alert_id>/acknowledge/", views.device_alert_acknowledge,
+         name="device-alert-acknowledge"),
     path("rules/", views.rule_list, name="alert-rule-list"),
     path("bulk/", views.alert_bulk, name="alert-bulk"),
     path("<uuid:alert_id>/acknowledge/", views.alert_acknowledge, name="alert-acknowledge"),

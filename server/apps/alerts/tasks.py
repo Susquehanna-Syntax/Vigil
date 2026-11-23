@@ -28,7 +28,7 @@ from apps.hosts.models import Host
 from apps.instance.config import setting
 from apps.metrics.models import MetricPoint
 
-from .models import Alert, AlertRule
+from .models import Alert, AlertRule, DeviceAlert
 from .notifications import dispatch_alert_notification, dispatch_offline_group
 
 logger = logging.getLogger(__name__)
@@ -241,6 +241,15 @@ def _evaluate_alert_rules():
     return f"Evaluated {rules.count()} rules × {online_hosts.count()} hosts: {fired} fired, {resolved} resolved"
 
 
+@shared_task(name="alerts.evaluate_device_alerts")
+@scoping.system_job(reason="background job: device alerts are evaluated for every site's devices")
+def evaluate_device_alerts(check_ids: list[str]) -> str:
+    """Open or resolve device alerts for checks that just reported (S9 04b)."""
+    from .device_alerts import evaluate
+    fired, resolved = evaluate(check_ids)
+    return f"Device alerts: {fired} fired, {resolved} resolved"
+
+
 @shared_task(name="alerts.expire_acknowledgements")
 @scoping.system_job(reason="background job: acknowledgements expire on every site")
 def expire_acknowledgements():
@@ -431,6 +440,14 @@ def prune_old_metric_points():
             dropped = len(cur.fetchall())
         return f"Dropped {dropped} metric chunks older than {retention_days} days"
     cutoff = now() - timedelta(days=retention_days)
+    # Device check results (S9) follow the metrics' retention. They are an
+    # ordinary table even on TimescaleDB, so they are pruned here either way.
+    from apps.hosts.models import CheckResult, InterfaceSample
+    CheckResult.objects.filter(time__lt=cutoff).delete()
+    # Interface samples are the same history at a finer grain (S9 05d).
+    InterfaceSample.objects.filter(time__lt=cutoff).delete()
+    if _metricpoint_is_hypertable():
+        return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()
     if deleted:
         logger.info("Pruned %d metric points older than %d days", deleted, retention_days)
@@ -709,7 +726,11 @@ def prune_old_alerts() -> str:
     cutoff = now() - timedelta(days=days)
     deleted, _ = Alert.objects.filter(
         state=Alert.State.RESOLVED, resolved_at__lt=cutoff).delete()
+    device_deleted, _ = DeviceAlert.objects.filter(
+        state=DeviceAlert.State.RESOLVED, resolved_at__lt=cutoff).delete()
+    deleted += device_deleted
     if deleted:
         logger.info("Pruned %d resolved alert(s) older than %d days",
                     deleted, days)
-    return f"Pruned {deleted} resolved alert(s) older than {days} days"
+    return (f"Pruned {deleted} resolved alert(s) "
+            f"({device_deleted} for a device) older than {days} days")

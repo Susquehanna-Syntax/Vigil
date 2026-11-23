@@ -4,6 +4,7 @@
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
 let _spHosts = [];   // all selectable hosts, cached
+let _spDevices = [];  // all selectable devices, reloaded with the hosts
 
 async function loadStatusPages() {
   const list = document.getElementById('sp-list');
@@ -14,6 +15,11 @@ async function loadStatusPages() {
       apiJson('/api/v1/status-pages/hosts/'),
     ]);
     _spHosts = hosts;
+    // Devices are optional on a page: a failed load leaves the picker empty
+    // rather than failing the whole list.
+    try {
+      _spDevices = await apiJson('/api/v1/status-pages/devices/');
+    } catch { _spDevices = []; }
     if (!pages.length) {
       list.innerHTML = `<div class="empty-block">
         <h4>No status pages yet</h4>
@@ -41,6 +47,20 @@ function _spCard(p) {
     </div>`;
   }).join('') || '<p class="muted-note">No hosts available yet.</p>';
 
+  const selectedDevices = new Set((p.device_ids || []).map(String));
+  // A device's state dot: grey when none of its checks has ever reported.
+  const deviceRows = (_spDevices || []).map(d => {
+    const on = selectedDevices.has(String(d.id));
+    const label = (p.device_labels || {})[String(d.id)] || '';
+    return `<div class="sp-host">
+      <input type="checkbox" data-sp-device="${escAttr(String(d.id))}" ${on ? 'checked' : ''}>
+      <input type="text" class="sp-host-label" data-sp-dlabel="${escAttr(String(d.id))}"
+             placeholder="${escAttr(d.name)}" value="${escAttr(label)}">
+      <span class="sp-host-status ${d.state === 'up' ? 'up' : d.state === 'down' ? 'down' : 'unknown'}">
+        <span class="sp-device-dot ${d.state === 'up' || d.state === 'down' ? d.state : 'none'}"></span>${d.state || 'no checks'}</span>
+    </div>`;
+  }).join('') || '<p class="muted-note">No devices yet. Add them on the Inventory page.</p>';
+
   const branding = p.is_primary ? '' : `
     <label class="setting-check" style="margin-bottom:14px;">
       <input type="checkbox" data-sp-brand="${p.id}" ${p.hide_badge ? 'checked' : ''}>
@@ -58,6 +78,8 @@ function _spCard(p) {
         : '<span class="muted-note">Enable to publish. Nobody can see it while off.</span>'}</div>
     <div class="section-label" style="margin-top:0;">Machines on this page <span class="muted-note" style="text-transform:none;letter-spacing:0;font-weight:400;">— none checked = all hosts</span></div>
     <div class="sp-hosts">${hostRows}</div>
+    <div class="section-label">Devices <span class="muted-note" style="text-transform:none;letter-spacing:0;font-weight:400;">— only the ones checked</span></div>
+    <div class="sp-hosts">${deviceRows}</div>
     ${branding}
     <div class="sp-card-actions">
       <button class="btn btn-mint btn-sm" data-sp-save="${p.id}">Save</button>
@@ -74,11 +96,19 @@ function _collect(card) {
   card.querySelectorAll('[data-sp-hlabel]').forEach(inp => {
     if (inp.value.trim()) host_labels[inp.dataset.spHlabel] = inp.value.trim();
   });
+  // An unchecked device publishes nothing, so its public name is dropped too.
+  const device_ids = [...card.querySelectorAll('[data-sp-device]')].filter(c => c.checked)
+    .map(c => c.dataset.spDevice);
+  const device_labels = {};
+  card.querySelectorAll('[data-sp-dlabel]').forEach(inp => {
+    const cb = card.querySelector(`[data-sp-device="${inp.dataset.spDlabel}"]`);
+    if (cb && cb.checked && inp.value.trim()) device_labels[inp.dataset.spDlabel] = inp.value.trim();
+  });
   const brand = card.querySelector('[data-sp-brand]');
   const body = {
     title: card.querySelector('[data-sp-title]').value,
     enabled: card.querySelector('[data-sp-enabled]').checked,
-    host_ids, host_labels,
+    host_ids, host_labels, device_ids, device_labels,
   };
   if (brand) body.hide_badge = brand.checked;
   return body;

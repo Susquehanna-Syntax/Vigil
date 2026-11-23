@@ -31,6 +31,20 @@ function _topoDevice(id) {
   return ((topoState.data && topoState.data.devices) || []).find(d => d.id === id) || null;
 }
 
+/** A checked device is up or down like a host; one nobody polls stays blue. */
+function _topoDeviceDot(device) {
+  if (device.check_state === 'up') return 'online';
+  if (device.check_state === 'down') return 'offline';
+  return 'device';
+}
+
+/** The check state in the panel's words. */
+function _topoDeviceStateText(device) {
+  if (device.check_state === 'up') return 'up';
+  if (device.check_state === 'down') return 'down';
+  return device.poller_id ? 'no results yet' : 'not polled';
+}
+
 function _topoColor(i) { return `var(--${TOPO_COLORS[i % TOPO_COLORS.length]}-ink)`; }
 
 function _topoCount(host) {
@@ -55,8 +69,10 @@ function _topoOrderedHosts(hosts, tags) {
   return buckets.map(b => b.slice().sort(byName)).concat([rest.slice().sort(byName)]).flat();
 }
 
-/** Devices go to the site of the host they talk to most; a device that talks to
- *  nobody on the map goes to the first site, the only honest place left. */
+/** Devices sit in their own site when they have one; only a device with no
+ *  site of its own falls back to the site of the host it talks to most, and a
+ *  device that talks to nobody on the map goes to the first site, the only
+ *  honest place left. */
 function _topoDeviceSites(data) {
   const byId = new Map(data.hosts.map(host => [host.id, host]));
   const counts = new Map();
@@ -74,9 +90,14 @@ function _topoDeviceSites(data) {
       counts.set(peer.id, per);
     }
   }
+  const onMap = new Set((data.sites || []).map(site => site.id));
   const chosen = new Map();
   const fallback = data.sites.length ? data.sites[0].id : '';
   for (const device of data.devices) {
+    if (device.site_id && onMap.has(device.site_id)) {
+      chosen.set(device.id, device.site_id);   // its own site beats any vote
+      continue;
+    }
     const per = counts.get(device.id);
     let best = null;
     if (per) {
@@ -244,7 +265,7 @@ function _topoSiteCards(groups, hosts, devices, activeTags, internetSite, device
     const at = slot.get(wanted) ?? 0;
     groups[at].cards.push({
       x: 0, y: 0, w: TOPO_DEV_W, h: TOPO_DEV_H, kind: 'device', refId: device.id,
-      siteId: wanted, label: device.name, offline: false, tags: [],
+      siteId: wanted, label: device.name, offline: device.check_state === 'down', tags: [],
       rows: [{ cls: 'topo-card-sub', text: `${device.type || 'device'} · ${device.ip}` }],
     });
     placed += 1;
@@ -348,12 +369,32 @@ function _topoLinkGeometry(data, cards) {
       });
     }
   }
+  for (const device of data.devices || []) {
+    if (!device.poller_id) continue;
+    const toId = `device:${device.id}`;
+    if (!cards[device.poller_id] || !cards[toId]) continue;   // filtered out of this map
+    // A real traffic line between the two already says "this poller talks to
+    // that device"; a second dotted one on top of it is noise.
+    const already = out.some(link =>
+      (link.fromId === device.poller_id && link.toId === toId)
+      || (link.fromId === toId && link.toId === device.poller_id));
+    if (already) continue;
+    const edge = _topoEdge(cards[device.poller_id], cards[toId]);
+    out.push({
+      fromId: device.poller_id, toId, poll: true,
+      path: _topoCurve(edge), lx: (edge.x1 + edge.x2) / 2, ly: (edge.y1 + edge.y2) / 2,
+      count: 0, ports: [],
+    });
+  }
   return out;
 }
 
 function _topoCurve(edge) {
   const { x1, y1, x2, y2, horizontal } = edge;
-  const dist = Math.max(40, Math.hypot(x2 - x1, y2 - y1) * 0.45);
+  // The handles reach at most half the gap: two cards side by side (a poller
+  // and the device it polls, often) get a gentle S, not a loop past both ends.
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const dist = Math.max(Math.min(40, len / 2), len * 0.45);
   const sx = x2 >= x1 ? 1 : -1, sy = y2 >= y1 ? 1 : -1;
   const cx1 = horizontal ? x1 + dist * sx : x1;
   const cx2 = horizontal ? x2 - dist * sx : x2;
@@ -454,7 +495,8 @@ function renderTopology() {
   root.appendChild(linkLayer);
   if (topoState.links) {
     for (const link of layout.links) {
-      const cls = 'topo-link' + (link.external ? ' topo-link-ext' : '');
+      const cls = 'topo-link' + (link.external ? ' topo-link-ext' : '')
+        + (link.poll ? ' topo-link-poll' : '');
       linkLayer.appendChild(_topoSvgEl('path', {
         class: cls, d: link.path,
         'data-topo-link-from': link.fromId, 'data-topo-link-to': link.toId,
@@ -488,6 +530,7 @@ function _topoSelKey(card) {
 
 function _topoCard(card, data) {
   const host = card.kind === 'host' ? _topoHost(card.refId) : null;
+  const device = card.kind === 'device' ? _topoDevice(card.refId) : null;
   const g = _topoSvgEl('g', {
     class: `topo-card topo-card-${card.kind}${card.offline ? ' topo-offline' : ''}`
       + (topoState.selected === _topoSelKey(card) ? ' topo-sel' : ''),
@@ -498,7 +541,7 @@ function _topoCard(card, data) {
   if (card.kind !== 'empty') {
     g.appendChild(_topoSvgEl('circle', {
       class: 'topo-dot', cx: card.x + 18, cy: card.y + 22, r: 4.5,
-      'data-dot': host ? host.status : (card.kind === 'device' ? 'device' : 'net'),
+      'data-dot': host ? host.status : (device ? _topoDeviceDot(device) : 'net'),
     }));
   }
   _topoText(g, { class: 'topo-card-title', x: card.x + 30, y: card.y + 26 },
@@ -869,10 +912,13 @@ function openTopoDevice(id) {
     || (link.target.kind === 'device' && link.target.id === device.id));
   panel.hidden = false;
   panel.innerHTML = [
-    `<div class="topo-p-head"><span class="topo-p-dot" data-dot="device"></span>`
+    `<div class="topo-p-head"><span class="topo-p-dot" data-dot="${_topoDeviceDot(device)}"></span>`
     + `<span class="topo-p-title">${escHtml(device.name)}</span>`
     + '<button type="button" class="topo-p-close" data-topo-close aria-label="Close details">×</button></div>',
-    `<div class="topo-p-sub">${escHtml(device.type || 'device')} · ${escHtml(device.ip)} · unmanaged</div>`,
+    `<div class="topo-p-sub">${escHtml(device.type || 'device')} · ${escHtml(device.ip)}`
+    + ` · ${escHtml(_topoDeviceStateText(device))}</div>`,
+    device.poller_id ? `<div class="topo-p-sub">Polled by `
+      + `${escHtml(_topoHost(device.poller_id)?.hostname || device.poller_id)}</div>` : '',
     _topoPanelList('Connections', links, link => {
       const outgoing = link.source.kind === 'device' && link.source.id === device.id;
       const other = outgoing ? link.target : link.source;

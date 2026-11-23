@@ -9,6 +9,12 @@
         </div>
       </div>
 
+      {# Device alerts (S9 04b): a check an agent-less device failed twice. #}
+      <div class="device-alerts" id="device-alerts-block" hidden>
+        <div class="device-alerts-title">Devices</div>
+        <div class="device-alert-list" id="device-alerts-list"></div>
+      </div>
+
       <div class="tab-bar" data-tab-group="alerts">
         <div class="tab t-rose active" data-tab="alerts-firing">Firing <span style="opacity:.6" id="alerts-count-firing"></span></div>
         <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged <span style="opacity:.6" id="alerts-count-ack"></span></div>

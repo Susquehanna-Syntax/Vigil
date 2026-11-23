@@ -63,6 +63,12 @@ class StatusPage(models.Model):
     # Optional per-host display-name overrides: {host_id: "Public name"}.
     # A client-facing page shouldn't have to expose internal hostnames.
     host_labels = models.JSONField(default=dict, blank=True)
+    # Device UUID strings. Unlike host_ids, EMPTY MEANS NO DEVICES: the device
+    # list is full of printers and switches nobody wants published, so a page
+    # that says nothing about devices publishes none (S9 04c).
+    device_ids = models.JSONField(default=list, blank=True)
+    # Optional per-device display-name overrides: {device_id: "Public name"}.
+    device_labels = models.JSONField(default=dict, blank=True)
     # Business scoping/branding. site_id references business_sites.Site but is
     # a plain UUID (no FK) so the free page never joins a Business table.
     site_id = models.UUIDField(null=True, blank=True)
@@ -94,3 +100,23 @@ class StatusPage(models.Model):
         if self.host_ids:
             qs = qs.filter(id__in=self.host_ids)
         return qs.order_by("hostname")
+
+    def devices(self):
+        """The UnmanagedDevice rows named by ``device_ids``, in name order.
+
+        Empty ``device_ids`` means NO devices (unlike ``host_ids``, where it
+        means every host). On a site's page, only devices of that site or of no
+        site at all: the page is public, so a stale or forged id must not
+        publish another site's device (S1 04e's rule for hosts(), applied to the
+        plain ``site_id`` column a device carries)."""
+        from django.db.models import Q
+
+        from apps.hosts.models import UnmanagedDevice
+
+        if not self.device_ids:
+            return UnmanagedDevice.objects.none()
+        qs = UnmanagedDevice.objects.filter(id__in=self.device_ids)
+        from vigil.scoping import owning_site_id
+        if site := owning_site_id(self):
+            qs = qs.filter(Q(site_id=site) | Q(site_id__isnull=True))
+        return qs.order_by("name")

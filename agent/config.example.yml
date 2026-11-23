@@ -88,6 +88,10 @@ allow_remote_desktop: false   # Web RDP: Windows Remote Desktop, xrdp on Linux,
 # whoever the container itself says.
 remote_shell_user: root
 
+# This host polls devices of its site that cannot run an agent (switches,
+# routers, websites), when the dashboard assigns checks to it. Off by default.
+poller: false
+
 # The local RDP port. Only 127.0.0.1 is ever dialled — this host's own Remote
 # Desktop, never another machine's.
 remote_desktop_port: 3389

@@ -287,8 +287,8 @@ jobs:
   # network (scripts/agent-in-container.sh); on macOS and Windows it runs on
   # the runner itself, as root / Administrator. The server is this commit on
   # SQLite: these jobs test the agent's path, the test job tests Postgres.
-  # New in sprint M2 and not yet required by publish: they become required
-  # once they have been green on a pull request.
+  # Required by publish since sprint M2, once they had been green on every
+  # sprint branch's run (M7, M8, M9).
   agents:
     name: Agent end-to-end — ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -368,7 +368,8 @@ jobs:
   # pass every healthcheck, serve the sign-in page, refuse the old default
   # database password, on a second boot keep the secrets it made, and restore
   # a backup into a brand-new install.
-  # New in sprint M3 and not yet required by publish.
+  # Required by publish since sprint M2, once it had been green on every
+  # sprint branch's run.
   compose-smoke:
     name: Compose from an empty .env
     runs-on: ubuntu-latest
@@ -1042,12 +1043,106 @@ jobs:
         if: failure()
         run: cat /tmp/vigil-server.log || true
 
+  # ── The documented install path on Linux and Windows ──────────────────────
+  # The agents job runs this checkout's source. This one installs the build
+  # this run produced the way the docs tell a user to (install.sh as root in a
+  # stock image, install.ps1 as Administrator), then drives the installed
+  # binary through the same register, approve, signed-task run as the agents
+  # job. It catches what the source run cannot: a digest the installer
+  # refuses, an archive it cannot unpack, and a binary that will not start on
+  # that distribution's libc (the Linux build links against Debian 12's).
+  agents-install:
+    name: Installed agent — ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    needs: [build-agent]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: debian-12, os: ubuntu-latest, image: "debian:12", platform: linux-amd64 }
+          - { name: rocky-9, os: ubuntu-latest, image: "rockylinux:9", platform: linux-amd64 }
+          - { name: ubuntu-24.04, os: ubuntu-latest, image: "ubuntu:24.04", platform: linux-amd64 }
+          - { name: windows, os: windows-latest, platform: windows-amd64 }
+    env:
+      USE_SQLITE: "1"
+      DJANGO_SECRET_KEY: ci-agent-install-secret-key-not-a-real-one-01
+      DJANGO_DEBUG: "false"
+      VIGIL_PUBLIC_URL: http://127.0.0.1:8010
+      VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
+      VIGIL_SKIP_STARTUP_CHECKS: "1"
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Fetch the ${{ matrix.platform }} agent built by this run
+        uses: actions/download-artifact@v8
+        with:
+          name: vigil-agent-${{ matrix.platform }}
+          path: server/agent_dist
+      - name: Normalise the file name the server serves
+        run: |
+          cd server/agent_dist && ls -la
+          if [ "${{ matrix.platform }}" = linux-amd64 ]; then
+            [ -f vigil-agent-linux-amd64 ] || mv vigil-agent-linux-amd64* vigil-agent-linux-amd64
+            chmod +x vigil-agent-linux-amd64
+          fi
+          test -f vigil-agent-${{ matrix.platform }} || test -f vigil-agent-${{ matrix.platform }}.zip
+      - name: Start a seeded server
+        working-directory: server
+        run: |
+          pip install -q -r requirements.txt
+          python manage.py migrate --noinput
+          python manage.py shell -c "exec(open('../scripts/e2e/seed.py').read())"
+          python manage.py runserver 127.0.0.1:8010 --insecure --noreload > ../server.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8010/api/v1/health/ && break; sleep 2; done
+          curl -sf http://127.0.0.1:8010/api/v1/health/ || { cat ../server.log; exit 1; }
+      - name: install.sh in a ${{ matrix.image }} container, then the installed agent
+        if: matrix.image
+        env:
+          AGENT_E2E_WORK: ${{ runner.temp }}/agent-install
+        run: |
+          set -o pipefail
+          python scripts/agent-e2e.py --server http://127.0.0.1:8010 --workdir "$AGENT_E2E_WORK" \
+            --timeout 300 --agent "scripts/agent-installed-in-container.sh ${{ matrix.image }} http://127.0.0.1:8010" \
+            2>&1 | tee agent-install.log
+      - name: install.ps1 as Administrator
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm http://127.0.0.1:8010/agent/install.ps1 | iex
+          $svc = Get-CimInstance Win32_Service -Filter "Name='vigil-agent'"
+          if (-not $svc) { Write-Host "::error::install.ps1 registered no vigil-agent service"; exit 1 }
+          Write-Host "service: $($svc.PathName) ($($svc.State))"
+          # The driver below runs the installed executable itself, so the
+          # service must not register a second host beside it.
+          Stop-Service vigil-agent -ErrorAction SilentlyContinue
+          $exe = Get-ChildItem "C:\Program Files\Vigil" -Filter "vigil-agent*.exe" -Recurse -File | Select-Object -First 1
+          if (-not $exe) { Write-Host "::error::no vigil-agent executable under C:\Program Files\Vigil"; exit 1 }
+          if ($svc.PathName -notlike "*$($exe.FullName)*") { Write-Host "::error::the service does not run $($exe.FullName)"; exit 1 }
+          "AGENT_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: The installed agent on Windows
+        if: runner.os == 'Windows'
+        run: |
+          set -o pipefail
+          python scripts/agent-e2e.py --server http://127.0.0.1:8010 \
+            --workdir "${{ runner.temp }}/agent-install" --agent "\"$AGENT_EXE\"" 2>&1 | tee agent-install.log
+      - name: Server log
+        if: failure()
+        run: |
+          tail -200 server.log
+          scripts/ci-annotate.sh "Installed agent" 80 agent-install.log server.log
+
   # ── Build and push Docker image (main branch + tags only) ──────────────────
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, js-tests, e2e, upgrade, pip-audit, security-scan, build-agent,
-            build-agent-freebsd, smoke-macos-install]
+    needs: [test, js-tests, e2e, agents, agents-install, compose-smoke, upgrade, pip-audit,
+            security-scan, build-agent, build-agent-freebsd, smoke-macos-install]
     # What a push publishes, once every check above has passed:
     #   v2026.17.0       -> 2026.17.0 and latest        (production)
     #   v2026.17.0-rc1   -> 2026.17.0-rc1 and rc-latest (release candidate)

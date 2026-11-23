@@ -1,9 +1,12 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
+import itertools
+import json
 import uuid
 from datetime import timedelta
 from datetime import timezone as dt_timezone
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from drf_spectacular.types import OpenApiTypes
@@ -18,6 +21,11 @@ from ..api_schema import (
     HostsAgentVersionsSerializer,
     HostsDeletedSerializer,
     HostsDependsOnWriteSerializer,
+    HostsDeviceCheckInterfaceSeriesSerializer,
+    HostsDeviceCheckInterfaceSerializer,
+    HostsDeviceCheckResultSerializer,
+    HostsDeviceCheckSerializer,
+    HostsDeviceCheckWriteSerializer,
     HostsDeviceSerializer,
     HostsDeviceWriteSerializer,
     HostsErrorSerializer,
@@ -27,7 +35,12 @@ from ..api_schema import (
     HostsTotpSerializer,
     HostsValidationErrorSerializer,
 )
+from apps.alerts.device_alerts import resolve_for_check
 from apps.alerts.tasks import _is_older, _version_key
+from ..crypto import encrypt_secret
+from ..device_checks import (DEFAULT_SSH_INTERVAL, MIN_SSH_INTERVAL, device_states, ssh_private_key,
+                             stored_v3_passwords, validate_interval, validate_params)
+from ..models import DeviceCheck, Host
 from ._common import *  # noqa: F401,F403
 
 
@@ -167,12 +180,20 @@ def host_detail(request, host_id):
 def unmanaged_devices(request):
     """List every unmanaged device, or add one (manual network inventory)."""
     if request.method == "GET":
-        qs = UnmanagedDevice.objects.all()
-        return Response(UnmanagedDeviceSerializer(qs, many=True).data)
+        devices = list(UnmanagedDevice.objects.all())
+        data = UnmanagedDeviceSerializer(devices, many=True).data
+        states = device_states(devices)
+        is_admin = IsAdmin().has_permission(request, None)
+        can_edit = {d.id: _device_can_edit(request, d, is_admin) for d in devices}
+        for row, device in zip(data, devices):
+            # check_state is the dot on the row; can_edit_checks says whether
+            # to offer the write controls at all (see _device_can_edit).
+            row["check_state"] = states.get(device.id)
+            row["can_edit_checks"] = can_edit[device.id]
+        return Response(data)
 
     # Editing and deleting a device are admin-only; adding one is the same kind
     # of inventory write (SEC-1).
-    from apps.accounts.permissions import IsAdmin
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
     site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
@@ -229,6 +250,447 @@ def unmanaged_device_detail(request, device_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     serializer.save(**extra)
     return Response(serializer.data)
+
+
+def _community_value(raw):
+    """The community of an SNMP check: 1 to 64 printable ASCII characters."""
+    if not isinstance(raw, str) or not (1 <= len(raw) <= 64) \
+            or not all(32 <= ord(c) <= 126 for c in raw):
+        raise ValueError("community must be 1 to 64 printable characters")
+    return encrypt_secret(raw)
+
+
+def _v3_password(raw, name: str) -> str:
+    """An SNMPv3 password: 8 to 64 printable ASCII characters."""
+    if not isinstance(raw, str) or not (8 <= len(raw) <= 64) \
+            or not all(32 <= ord(c) <= 126 for c in raw):
+        raise ValueError(f"{name} must be 8 to 64 printable characters")
+    return raw
+
+
+def _v3_secret(auth_password: str, priv_password: str | None) -> bytes:
+    """The secret column of an SNMPv3 check: both passwords, JSON, encrypted."""
+    return encrypt_secret(json.dumps({"auth": auth_password, "priv": priv_password}))
+
+
+def _check_out(check) -> dict:
+    latest = check.results.order_by("-time").first()
+    params = check.params if isinstance(check.params, dict) else {}
+    v3 = params.get("version") == "3" and bool(check.secret)
+    passwords = stored_v3_passwords(check) if v3 else None
+    return {
+        "id": str(check.id),
+        "kind": check.kind,
+        "params": check.params,
+        # A v3 secret holds no community, so has_community says nothing about it;
+        # the two v3 flags answer for its passwords instead. Never a password.
+        "has_community": bool(check.secret) and not v3,
+        "has_auth_password": bool(passwords),
+        "has_priv_password": bool(passwords and passwords["priv"]),
+        # An SSH check's private key: whether one is stored, never the key.
+        "has_key": check.kind == DeviceCheck.Kind.SSH and bool(ssh_private_key(check)),
+        "interval_seconds": check.interval_seconds,
+        "enabled": check.enabled,
+        "poller": str(check.poller_id) if check.poller_id else None,
+        "created_at": check.created_at,
+        "latest": ({"ok": latest.ok, "latency_ms": latest.latency_ms,
+                    "detail": latest.detail, "time": latest.time,
+                    "extra": latest.extra} if latest else None),
+    }
+
+
+def _device_can_edit(request, device, is_admin) -> bool:
+    """Whether this user may add, change or delete a device's checks.
+
+    The check writes refuse exactly this combination (admin role and a device
+    inside the user's write scope), so the list answers with it and the page
+    offers only what the server will accept. *is_admin* is asked once per list
+    by the caller: the role never varies by device, but whether the device is
+    in this user's site does.
+    """
+    return bool(is_admin and not scoping.write_denied(request.user, device))
+
+
+def _check_fields(device, data, current=None) -> dict:
+    """Validated check fields from a request body, merged over ``current`` on PATCH.
+
+    Raises ValueError with the one sentence an API answer carries.
+    """
+    fields = {}
+    if current is None or "kind" in data or "params" in data:
+        kind = data.get("kind", current.kind if current else None)
+        params = data.get("params", current.params if current else {})
+        fields["kind"] = kind
+        fields["params"] = validate_params(kind, params)
+    if "interval_seconds" in data or current is None:
+        fields["interval_seconds"] = validate_interval(data.get("interval_seconds", 60))
+    if "enabled" in data or current is None:
+        enabled = data.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be true or false")
+        fields["enabled"] = enabled
+    if "poller" in data or current is None:
+        raw = data.get("poller")
+        if raw in (None, ""):
+            fields["poller"] = None
+        else:
+            try:
+                poller = Host.objects.get(pk=raw)
+            except (Host.DoesNotExist, ValueError, DjangoValidationError):
+                poller = None
+            if poller is None or not poller.agent_poller or (
+                    device.site_id is not None and scoping.site_id_of(poller) != device.site_id):
+                raise ValueError("poller must be a poller host of this device's site")
+            fields["poller"] = poller
+    # The secrets live on their own encrypted column, never in params. For v2c
+    # that column holds the community: an SNMP check needs one when it is
+    # created and keeps the stored one when a PATCH leaves it out. For v3 it
+    # holds both passwords as JSON. Any other kind has none, so a check changed
+    # away from SNMP forgets them and a secret in that body is ignored.
+    # encrypt_secret("") is b"", which is the field's default.
+    kind = fields.get("kind", current.kind if current else None)
+    if kind == DeviceCheck.Kind.SSH:
+        _ssh_fields(fields, data, current)
+    elif kind == DeviceCheck.Kind.SNMP:
+        params = fields.get("params", current.params if current else {})
+        if params.get("version") == "3":
+            fields["secret"] = _v3_fields(data, params, current)
+        else:
+            fields["secret"] = _v2c_secret(data, current)
+    elif kind is not None:
+        fields["secret"] = encrypt_secret("")
+    return fields
+
+
+def _new_ssh_key() -> tuple[bytes, str]:
+    """A fresh Ed25519 key pair: (encrypted OpenSSH private key, OpenSSH public key line)."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key = Ed25519PrivateKey.generate()
+    private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
+                                serialization.NoEncryption()).decode()
+    public = key.public_key().public_bytes(serialization.Encoding.OpenSSH,
+                                           serialization.PublicFormat.OpenSSH).decode()
+    return encrypt_secret(private), f"{public} vigil-config-backup"
+
+
+def _ssh_fields(fields, data, current) -> None:
+    """The SSH-only parts of a check write, in place on *fields* (S9 08).
+
+    - Config backup is a Business feature: a check becomes SSH only under a
+      license that grants it. One that already is can still be edited,
+      disabled or deleted after the license lapses (it is simply not handed
+      to a poller, device_checks._ssh_wire_params).
+    - It runs at most every 15 minutes, daily unless the body says otherwise.
+    - The server makes the key pair. The private half is the check's secret
+      and is never answered; the public half goes in params for an admin to
+      put in the device's authorized keys. A PATCH keeps the pair unless it
+      sends ``rotate_key: true``.
+    - A pinned host key survives an edit that does not mention it, as long as
+      the host and port stay the same; ``host_key: ""`` unpins it so the next
+      run learns the device's key again.
+    """
+    from vigil.licensing import has_feature
+
+    was_ssh = current is not None and current.kind == DeviceCheck.Kind.SSH
+    if not was_ssh and not has_feature("config_backup"):
+        raise ValueError("SSH config backup needs a Business license")
+    if "interval_seconds" not in data and not was_ssh:
+        fields["interval_seconds"] = DEFAULT_SSH_INTERVAL
+    interval = fields.get("interval_seconds", current.interval_seconds if current else None)
+    if interval is not None and interval < MIN_SSH_INTERVAL:
+        raise ValueError("an SSH check runs at most every 15 minutes (interval_seconds 900 or more)")
+
+    old = dict(current.params) if was_ssh and isinstance(current.params, dict) else {}
+    params = fields.get("params")
+    if params is None:
+        params = dict(old)
+    else:
+        sent = data.get("params") if isinstance(data.get("params"), dict) else {}
+        same_target = (params.get("host") == old.get("host")
+                       and params.get("port", 22) == old.get("port", 22))
+        if "host_key" not in sent and old.get("host_key") and same_target:
+            params["host_key"] = old["host_key"]
+    rotate = data.get("rotate_key", False)
+    if not isinstance(rotate, bool):
+        raise ValueError("rotate_key must be true or false")
+    if was_ssh and not rotate and ssh_private_key(current) and old.get("public_key"):
+        fields["secret"] = current.secret
+        params["public_key"] = old["public_key"]
+    else:
+        fields["secret"], params["public_key"] = _new_ssh_key()
+    fields["params"] = params
+
+
+def _v2c_secret(data, current) -> bytes:
+    """The community column of a v2c check: the body's, or the stored one."""
+    if "community" in data:
+        return _community_value(data["community"])
+    # A PATCH that leaves the community out keeps the stored one — unless it is
+    # a v3 secret, which holds no community to keep.
+    if current is not None and current.secret and (current.params or {}).get("version") != "3":
+        return current.secret
+    raise ValueError("an SNMP check needs a community")
+
+
+def _v3_fields(data, params, current) -> bytes:
+    """The password column of an SNMPv3 check, from the body over the stored one.
+
+    A ``community`` in this body is ignored: v3 has none. Passwords given in the
+    body are validated first; one taken back out of the column is not — it was
+    checked when it was written, and re-checking it here would refuse a PATCH
+    that changes nothing about the secrets. Never in an exception message.
+    """
+    # Only a check that was already v3 has passwords to keep: a v2c community is
+    # never read as one, whatever text it happens to be.
+    was_v3 = current is not None and (current.params or {}).get("version") == "3"
+    stored = stored_v3_passwords(current) if was_v3 else None
+    if "auth_password" in data:
+        auth = _v3_password(data["auth_password"], "auth_password")
+    elif stored is not None:
+        auth = stored["auth"]
+    else:
+        raise ValueError("an SNMPv3 check needs an auth password")
+
+    if params.get("priv", True):
+        if "priv_password" in data:
+            priv_password = _v3_password(data["priv_password"], "priv_password")
+        elif stored is not None and stored["priv"] is not None:
+            priv_password = stored["priv"]
+        else:
+            raise ValueError("an SNMPv3 check with privacy needs a privacy password")
+    else:
+        # `priv` false says the check does not encrypt: no privacy password.
+        priv_password = None
+    return _v3_secret(auth, priv_password)
+
+
+@extend_schema(methods=["GET"], responses=HostsDeviceCheckSerializer(many=True))
+@extend_schema(methods=["POST"], request=HostsDeviceCheckWriteSerializer,
+               responses={201: HostsDeviceCheckSerializer,
+                          400: HostsValidationErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_checks(request, device_id):
+    """List a device's checks with each one's latest result, or add a check (admin)."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+    except UnmanagedDevice.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        return Response([_check_out(c) for c in device.checks.order_by("created_at", "id")])
+
+    # Same rule as the device writes above (SEC-1): reads open, writes admin-only.
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+    if denied := scoping.write_denied(request.user, device):
+        return denied
+    if not isinstance(request.data, dict):
+        return Response({"error": "The body must be an object."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        fields = _check_fields(device, request.data)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    check = DeviceCheck.objects.create(device=device, **fields)
+    return Response(_check_out(check), status=status.HTTP_201_CREATED)
+
+
+@extend_schema(methods=["PATCH"], request=HostsDeviceCheckWriteSerializer,
+               responses={200: HostsDeviceCheckSerializer,
+                          400: HostsValidationErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@extend_schema(methods=["DELETE"], responses={204: None,
+                                              403: HostsErrorSerializer,
+                                              404: HostsErrorSerializer})
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_detail(request, device_id, check_id):
+    """Change or delete one device check (admin)."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+        check = DeviceCheck.objects.get(pk=check_id, device=device)
+    except (UnmanagedDevice.DoesNotExist, DeviceCheck.DoesNotExist):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+    if denied := scoping.write_denied(request.user, device):
+        return denied
+
+    if request.method == "DELETE":
+        # Resolve first: the alert's device_check FK is SET_NULL, so deleting
+        # the check would leave open alerts nothing can resolve (S9 04b).
+        resolve_for_check(check)
+        check.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if not isinstance(request.data, dict):
+        return Response({"error": "The body must be an object."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        fields = _check_fields(device, request.data, current=check)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    for key, value in fields.items():
+        setattr(check, key, value)
+    check.save()
+    if not check.enabled:
+        # A stopped check would otherwise leave its alert firing forever with
+        # nobody polling to resolve it (S9 04b).
+        resolve_for_check(check)
+    return Response(_check_out(check))
+
+
+@extend_schema(methods=["GET"],
+               parameters=[OpenApiParameter(
+                   "hours", int, required=False,
+                   description="How far back to read, 1 to 720 hours. Default 24.")],
+               responses={200: HostsDeviceCheckResultSerializer(many=True),
+                          400: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_results(request, device_id, check_id):
+    """The stored results of one device check, newest last, at most 2000 rows."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+        check = DeviceCheck.objects.get(pk=check_id, device=device)
+    except (UnmanagedDevice.DoesNotExist, DeviceCheck.DoesNotExist):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        hours = int(request.query_params.get("hours", 24))
+    except (TypeError, ValueError):
+        hours = 0
+    if not 1 <= hours <= 720:
+        return Response({"error": "hours must be a whole number from 1 to 720"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    rows = list(check.results.filter(time__gte=now() - timedelta(hours=hours))
+                .order_by("-time")[:2000])
+    rows.reverse()
+    return Response([{"time": r.time, "ok": r.ok, "latency_ms": r.latency_ms,
+                      "detail": r.detail} for r in rows])
+
+
+MAX_SERIES_POINTS = 2000
+
+
+def _check_window(request, device_id, check_id):
+    """(check, hours) for an interface read, or an error Response to return."""
+    try:
+        device = UnmanagedDevice.objects.get(pk=device_id)
+        check = DeviceCheck.objects.get(pk=check_id, device=device)
+    except (UnmanagedDevice.DoesNotExist, DeviceCheck.DoesNotExist):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        hours = int(request.query_params.get("hours", 24))
+    except (TypeError, ValueError):
+        hours = 0
+    if not 1 <= hours <= 720:
+        return Response({"error": "hours must be a whole number from 1 to 720"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return check, hours
+
+
+def _rate(newer, older, field):
+    """Bits per second between two samples of one interface, or None.
+
+    No previous sample, a counter the device never reported, no elapsed time
+    or a counter that went backwards — a reset or a reboot — all mean the same
+    thing: this interval has no rate to report.
+    """
+    if older is None:
+        return None
+    high = getattr(newer, field)
+    low = getattr(older, field)
+    if high is None or low is None:
+        return None
+    seconds = (newer.time - older.time).total_seconds()
+    if seconds <= 0 or high < low:
+        return None
+    return round((high - low) * 8 / seconds)
+
+
+@extend_schema(methods=["GET"],
+               parameters=[OpenApiParameter(
+                   "hours", int, required=False,
+                   description="How far back to read, 1 to 720 hours. Default 24.")],
+               responses={200: HostsDeviceCheckInterfaceSerializer(many=True),
+                          400: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_interfaces(request, device_id, check_id):
+    """What each interface of an SNMP check was doing at its newest sample.
+
+    The newest row of every interface in the window, with its rate over the gap
+    behind it — see `_rate`, which both these views use so the answer to "no
+    usable pair" is written once. A check of another kind answers `[]`: an empty
+    table and no interfaces are the same thing to a chart.
+    """
+    found = _check_window(request, device_id, check_id)
+    if isinstance(found, Response):
+        return found
+    check, hours = found
+    if check.kind != DeviceCheck.Kind.SNMP:
+        # Samples only ever come from an SNMP check's walk, so a check of any
+        # other kind has no interfaces to answer with.
+        return Response([])
+    since = now() - timedelta(hours=hours)
+    # Only the two newest runs matter here: the newest sample and the one behind
+    # it. Reading the whole window would be up to 720 h x 64 interfaces of rows.
+    runs = list(check.interface_samples.filter(time__gte=since).order_by("-time")
+                .values_list("time", flat=True).distinct()[:2])
+    rows = list(check.interface_samples.filter(time__in=runs).order_by("if_index", "time"))
+    newest: dict[int, list] = {}
+    for row in rows:
+        newest.setdefault(row.if_index, []).append(row)
+    out = []
+    for index in sorted(newest):
+        seen = newest[index]
+        latest = seen[-1]
+        out.append({"time": latest.time, "index": index, "name": latest.name,
+                    "up": latest.up, "speed_mbps": latest.speed_mbps,
+                    "in_bps": _rate(latest, seen[-2] if len(seen) > 1 else None, "in_octets"),
+                    "out_bps": _rate(latest, seen[-2] if len(seen) > 1 else None, "out_octets")})
+    return Response(out)
+
+
+@extend_schema(methods=["GET"],
+               parameters=[OpenApiParameter(
+                   "hours", int, required=False,
+                   description="How far back to read, 1 to 720 hours. Default 24.")],
+               responses={200: HostsDeviceCheckInterfaceSeriesSerializer,
+                          400: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
+def device_check_interface(request, device_id, check_id, if_index):
+    """One interface's rate over the window, oldest first: a point per pair of samples."""
+    found = _check_window(request, device_id, check_id)
+    if isinstance(found, Response):
+        return found
+    check, hours = found
+    rows = list(check.interface_samples
+                .filter(if_index=if_index, time__gte=now() - timedelta(hours=hours))
+                .order_by("-time")[:MAX_SERIES_POINTS])
+    if not rows:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    rows.reverse()
+    series = [{"time": newer.time,
+               "in_bps": _rate(newer, older, "in_octets"),
+               "out_bps": _rate(newer, older, "out_octets")}
+              for older, newer in itertools.pairwise(rows)]
+    return Response({"index": if_index, "name": rows[-1].name, "series": series})
 
 
 @extend_schema(methods=["GET"], responses=HostsAdConfigSerializer)
