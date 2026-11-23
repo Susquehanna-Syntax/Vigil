@@ -1,6 +1,6 @@
 """The ssh check kind (S9, phase 08a): one read-only command on a device with a key.
 
-No ssh is ever run here: shutil.which and subprocess.run are mocked in the
+No ssh is ever run here: shutil.which and _run_bounded are mocked in the
 netcheck namespace, so a test box without an ssh client runs this file exactly
 like one with it. The side effect of the fake run is where the interesting
 assertions live — it sees the argv, and it can read the private key file and the
@@ -103,7 +103,7 @@ class _Fixture(unittest.TestCase):
         runner = _Runner(result=result, error=error, learn=learn)
         params = dict(BASE, **(changes or {}))
         with mock.patch("vigil_agent.netcheck.shutil.which", return_value=which), \
-                mock.patch("vigil_agent.netcheck.subprocess.run", side_effect=runner):
+                mock.patch("vigil_agent.netcheck._run_bounded", side_effect=runner):
             out = run_check(params)
         self.assertEqual(len(runner.dirs), 1 if which is not None else 0)
         if which is not None:
@@ -114,7 +114,7 @@ class _Fixture(unittest.TestCase):
     def rejected(self, check):
         """run_check on a bad param: its detail is there and nothing was run."""
         with mock.patch("vigil_agent.netcheck.shutil.which") as which, \
-                mock.patch("vigil_agent.netcheck.subprocess.run") as run:
+                mock.patch("vigil_agent.netcheck._run_bounded") as run:
             out = run_check(check)
         run.assert_not_called()
         which.assert_not_called()
@@ -173,9 +173,16 @@ class ArgvTests(_Fixture):
         argv, kwargs = runner.calls[0]
         self.assertIsInstance(argv, list)
         self.assertNotIn("shell", kwargs)
-        self.assertTrue(kwargs["capture_output"])
-        self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
         self.assertTrue(out["ok"], out)
+
+    def test_the_bounded_runner_gives_no_stdin_and_never_a_shell(self):
+        # _run_bounded itself: the Popen it starts, read off the source.
+        import inspect
+
+        from vigil_agent import netcheck
+        source = inspect.getsource(netcheck._run_bounded)
+        self.assertIn("stdin=subprocess.DEVNULL", source)
+        self.assertNotIn("shell=True", source)
 
     def test_the_key_and_known_hosts_paths_are_the_two_files_in_one_directory(self):
         _out, runner = self.run_ssh()
@@ -450,7 +457,7 @@ class ParamTests(_Fixture):
         self.assertNotIn("port", BASE)  # the port is optional; ssh's default it is
         runner = _Runner()
         with mock.patch("vigil_agent.netcheck.shutil.which", return_value="/usr/bin/ssh"), \
-                mock.patch("vigil_agent.netcheck.subprocess.run", side_effect=runner):
+                mock.patch("vigil_agent.netcheck._run_bounded", side_effect=runner):
             out = run_check(dict(BASE))
         argv = runner.calls[0][0]
         self.assertEqual(argv[argv.index("-p") + 1], "22")
@@ -507,7 +514,7 @@ class TempDirTests(_Fixture):
 
         probe = _Probe()
         with mock.patch("vigil_agent.netcheck.shutil.which", return_value="/usr/bin/ssh"), \
-                mock.patch("vigil_agent.netcheck.subprocess.run", side_effect=probe):
+                mock.patch("vigil_agent.netcheck._run_bounded", side_effect=probe):
             run_check(dict(BASE))
         self.assertTrue(seen["name"].startswith("vigil-ssh-"), seen["name"])
         if os.name != "nt":
@@ -530,3 +537,31 @@ def _leftovers() -> list[str]:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BoundedRunTests(unittest.TestCase):
+    """_run_bounded with real child processes (the Python running these tests):
+    a stream past its cap is cut and the process killed; a hang raises."""
+
+    def test_a_flood_of_output_is_cut_at_the_cap_and_the_process_killed(self):
+        from vigil_agent.netcheck import _run_bounded
+        argv = [sys.executable, "-c",
+                "import sys\nwhile True: sys.stdout.write('x' * 65536)"]
+        done = _run_bounded(argv, timeout=20, env=dict(os.environ), max_stdout=200_000)
+        self.assertGreater(len(done.stdout), 200_000)
+        self.assertLessEqual(len(done.stdout), 200_001)
+        self.assertNotEqual(done.returncode, 0)
+
+    def test_a_normal_run_comes_back_whole(self):
+        from vigil_agent.netcheck import _run_bounded
+        done = _run_bounded([sys.executable, "-c", "print('hello'); import sys; sys.stderr.write('warn')"],
+                            timeout=20, env=dict(os.environ))
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(done.stdout.strip(), b"hello")
+        self.assertEqual(done.stderr, b"warn")
+
+    def test_a_hang_raises_timeout_and_leaves_no_process(self):
+        from vigil_agent.netcheck import _run_bounded
+        with self.assertRaises(subprocess.TimeoutExpired):
+            _run_bounded([sys.executable, "-c", "import time; time.sleep(30)"],
+                         timeout=1, env=dict(os.environ))

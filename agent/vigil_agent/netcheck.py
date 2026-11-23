@@ -812,6 +812,55 @@ def _ssh_failure(code: int, stderr: bytes, host: str, host_key: str | None,
                    host_key=_ssh_host_key(host_key, known_hosts))
 
 
+SSH_MAX_STDERR = 64_000  # ssh's own complaints; a device that floods stderr is cut off too
+
+
+def _run_bounded(argv: list[str], *, timeout: float, env: dict,
+                 max_stdout: int = SSH_MAX_OUTPUT, max_stderr: int = SSH_MAX_STDERR):
+    """subprocess.run, except no stream is held past its cap.
+
+    A device can print without end; with capture_output the whole of it would
+    sit in the poller's memory before any length check. Here each stream is
+    read in chunks on its own thread, and the moment one passes its cap the
+    process is killed, so at most cap + one chunk is ever held. The answer is
+    a CompletedProcess whose stdout is longer than ``max_stdout`` exactly when
+    the cap was hit; ``subprocess.TimeoutExpired`` past ``timeout``.
+    """
+    import threading
+
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, env=env)
+    buffers = {"out": bytearray(), "err": bytearray()}
+
+    def pump(stream, key, cap):
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                return
+            room = cap + 1 - len(buffers[key])
+            buffers[key] += chunk[:max(room, 0)]
+            if len(buffers[key]) > cap:
+                proc.kill()
+                return
+
+    readers = [threading.Thread(target=pump, args=(proc.stdout, "out", max_stdout), daemon=True),
+               threading.Thread(target=pump, args=(proc.stderr, "err", max_stderr), daemon=True)]
+    for reader in readers:
+        reader.start()
+    try:
+        code = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise
+    finally:
+        for reader in readers:
+            reader.join(timeout=5)
+        proc.stdout.close()
+        proc.stderr.close()
+    return subprocess.CompletedProcess(argv, code, bytes(buffers["out"]), bytes(buffers["err"]))
+
+
 def _ssh_run(directory: str, private_key: str, host: str, port: int, username: str,
              command: str, host_key: str | None, timeout: float) -> dict:
     """The temp-directory body of _ssh: the key file, the run, and its result."""
@@ -823,8 +872,7 @@ def _ssh_run(directory: str, private_key: str, host: str, port: int, username: s
     argv = _ssh_argv(key_path, known_hosts, host, port, username, command, host_key, timeout)
     started = time.monotonic()
     try:
-        completed = subprocess.run(argv, capture_output=True, timeout=SSH_TIMEOUT,
-                                   env=clean_env(), stdin=subprocess.DEVNULL)
+        completed = _run_bounded(argv, timeout=SSH_TIMEOUT, env=clean_env())
     except subprocess.TimeoutExpired:
         return _result("ssh", host, False, "ssh timed out", time.monotonic() - started,
                        host_key=_ssh_host_key(host_key, known_hosts))
@@ -835,11 +883,13 @@ def _ssh_run(directory: str, private_key: str, host: str, port: int, username: s
     raw_code = getattr(completed, "returncode", 1)
     code = raw_code if isinstance(raw_code, int) else 1
 
-    if code != 0:
-        return _ssh_failure(code, stderr, host, host_key, known_hosts, latency)
+    # Before the exit code: _run_bounded kills a run that passed the cap, so its
+    # code says "killed" while the real answer is "too much output".
     if len(stdout) > SSH_MAX_OUTPUT:
         return _result("ssh", host, False, "output over 1 MB", latency,
                        host_key=_ssh_host_key(host_key, known_hosts))
+    if code != 0:
+        return _ssh_failure(code, stderr, host, host_key, known_hosts, latency)
 
     text = stdout.decode("utf-8", "replace").replace("\r\n", "\n")
     encoded = text.encode("utf-8")
