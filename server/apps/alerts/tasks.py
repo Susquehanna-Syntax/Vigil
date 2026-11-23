@@ -16,13 +16,20 @@ from vigil.locks import advisory_lock
 #: an hour later still pages.
 FLAP_WINDOW_SECONDS = 900
 
+#: Every offline alert's message starts with this; check-in matches on it.
+OFFLINE_PREFIX = "Host offline:"
+
+#: This many hosts of one site going offline (or coming back) in the same pass
+#: of the stale-host job send one notice instead of one each.
+GROUP_MIN = 3
+
 
 from apps.hosts.models import Host
 from apps.instance.config import setting
 from apps.metrics.models import MetricPoint
 
 from .models import Alert, AlertRule
-from .notifications import dispatch_alert_notification
+from .notifications import dispatch_alert_notification, dispatch_offline_group
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +53,39 @@ def _not_in_maintenance():
     from django.db.models import Q
 
     return Q(maintenance_until__isnull=True) | Q(maintenance_until__lte=now())
+
+
+def _parent_down(host):
+    """The parent host this one depends on, when that parent is offline.
+
+    Same site only, checked here and not just when the dependency is set: a
+    host can move to another site afterwards, and one site's outage must
+    never silence another site's pages.
+    """
+    parent = host.depends_on
+    if parent is None or parent.status != Host.Status.OFFLINE:
+        return None
+    if scoping.site_id_of(parent) != scoping.site_id_of(host):
+        return None
+    return parent
+
+
+def _send_offline_notices(alerts, event) -> list:
+    """Send firing or resolved notices for offline alerts: 3 or more of one
+    site as one grouped notice, the rest one by one. Returns the alerts whose
+    notice went out."""
+    by_site = {}
+    for alert in alerts:
+        by_site.setdefault(scoping.site_id_of(alert.host), []).append(alert)
+    sent = []
+    for group in by_site.values():
+        if len(group) >= GROUP_MIN:
+            sent.extend(dispatch_offline_group(group, event=event))
+            continue
+        for alert in group:
+            if dispatch_alert_notification(alert, event=event):
+                sent.append(alert)
+    return sent
 
 
 def _check_rule(rule, host, current_time):
@@ -113,6 +153,11 @@ def _evaluate_alert_rules():
         status=Host.Status.ONLINE).filter(_not_in_maintenance())
     if not online_hosts.exists():
         return "No online hosts"
+
+    from .maintenance import hosts_in_maintenance
+    skip = hosts_in_maintenance(online_hosts)
+    if skip:
+        online_hosts = online_hosts.exclude(pk__in=skip)
 
     current_time = now()
     fired = 0
@@ -251,23 +296,80 @@ def _mark_stale_hosts_offline():
     count = stale.update(status=Host.Status.OFFLINE)
     if count:
         logger.info("Marked %d stale hosts as offline", count)
-        for host in stale_list:
-            already_firing = Alert.objects.filter(
-                host=host,
-                rule=None,
-                state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
-                message__startswith="Host offline:",
-            ).exists()
-            if not already_firing:
-                Alert.objects.create(
-                    host=host,
-                    rule=None,
-                    state=Alert.State.FIRING,
-                    severity="warning",
-                    message=f"Host offline: {host.hostname} has not checked in for 5+ minutes",
-                    metric_value=None,
-                )
-    return f"{count} hosts marked offline"
+    to_page = []
+    for host in stale_list:
+        already_firing = Alert.objects.filter(
+            host=host,
+            rule=None,
+            state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+            message__startswith=OFFLINE_PREFIX,
+        ).exists()
+        if already_firing:
+            continue
+        parent = _parent_down(host)
+        message = f"{OFFLINE_PREFIX} {host.hostname} has not checked in for 5+ minutes"
+        if parent is not None:
+            message += f" (it depends on {parent.hostname}, which is offline)"
+        alert = Alert.objects.create(
+            host=host,
+            rule=None,
+            state=Alert.State.FIRING,
+            severity="warning",
+            message=message,
+            metric_value=None,
+        )
+        # A scheduled maintenance window holds the notice back (the host is
+        # not in stale_list's maintenance_until exclusion, only in a window);
+        # notified_at stays null then, so its return is not announced either.
+        # A host behind an offline parent is not paged for: the parent's own
+        # alert is the page. _send_late_offline_notices sends this one later,
+        # once the parent is back and this host is still down.
+        if parent is None:
+            to_page.append(alert)
+
+    for alert in _send_offline_notices(to_page, "firing"):
+        alert.notified_at = now()
+        alert.save(update_fields=["notified_at"])
+    _send_late_offline_notices()
+    sent = _send_owed_resolutions()
+    return f"{count} hosts marked offline, {sent} back-online notices sent"
+
+
+def _send_owed_resolutions() -> int:
+    """Send the resolved notices that check-ins left owing (see
+    apps.hosts.views.agent). Only an alert whose firing notice went out
+    announces its end. The count is the number of alerts the notices covered,
+    so a grouped notice counts as the hosts it names."""
+    owed = list(Alert.objects.filter(resolve_pending=True).select_related("host"))
+    announced = [a for a in owed if a.notified_at is not None]
+    sent = len(_send_offline_notices(announced, "resolved"))
+    # An offline notice still un-sent here belongs to an outage nobody was
+    # paged for: its end stays quiet with its beginning, and the flag clears
+    # so no later pass pages over an outage nobody heard begin.
+    Alert.objects.filter(pk__in=[a.pk for a in owed]).update(resolve_pending=False)
+    return sent
+
+
+def _send_late_offline_notices() -> int:
+    """Send the offline notices held back earlier, now that nothing holds them:
+    the parent came back while this host is still down, or the maintenance
+    window ended. Acknowledged alerts are left alone — someone already knows —
+    and so is a notice whose host has since come back: only an outage still
+    unfinished is worth a page."""
+    sent = 0
+    held = (Alert.objects
+            .filter(rule=None, state=Alert.State.FIRING, notified_at=None,
+                    message__startswith=OFFLINE_PREFIX,
+                    host__status=Host.Status.OFFLINE)
+            .select_related("host", "host__depends_on"))
+    for alert in held:
+        if _parent_down(alert.host) is not None:
+            continue
+        if dispatch_alert_notification(alert, event="firing"):
+            alert.notified_at = now()
+            alert.save(update_fields=["notified_at"])
+            sent += 1
+    return sent
 
 
 def _metricpoint_has_retention_policy() -> bool:

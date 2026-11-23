@@ -313,6 +313,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Relays too: the list is admin-only, and it polls while you look at it.
       if (item.dataset.pane === 'relays' && typeof loadRelays === 'function') loadRelays();
+      if (item.dataset.pane === 'notifications' && typeof loadChannels === 'function') loadChannels();
+      if (item.dataset.pane === 'notifications' && typeof loadMaintenance === 'function') loadMaintenance();
       // The account pane holds the security-keys card (QA-65); it is also what
       // refreshTotpStatus() loads, and that runs on page load from the monitor.
       if (item.dataset.pane === 'identity') loadSecurityKeys();

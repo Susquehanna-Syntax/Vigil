@@ -86,6 +86,7 @@ function openHostDetail(card) {
   // Tags — initial render from card data, then refresh from API.
   _renderDetailTags(d.id, (d.tags || '').split(',').filter(Boolean));
   _refreshDetailTags(d.id);
+  _loadDetailDependsOn(d.id);
 
   // Fetch live metrics for this host
   loadDetailMetrics(d.id);
@@ -310,6 +311,82 @@ async function _refreshDetailTags(hostId) {
     const host = await apiJson(`/api/v1/hosts/${hostId}/`);
     _renderDetailTags(hostId, host.tags || []);
   } catch (e) { /* keep card-derived tags as fallback */ }
+}
+
+/* ── Depends on (the drawer) ──────────────────────────────────────────── */
+
+// Which host the drawer is showing, so a slow answer for a host the user has
+// already left is dropped instead of painted over the current one.
+const _detailDependsState = { hostId: null, value: '' };
+
+async function _loadDetailDependsOn(hostId) {
+  _detailDependsState.hostId = hostId;
+  const select = document.getElementById('detail-depends-on');
+  if (!select) return;
+  // Never leave the previous host's choice showing while this one loads.
+  const placeholder = (text) => {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = text;
+    select.replaceChildren(opt);
+  };
+  placeholder('Loading...');
+  select.disabled = true;
+  let host;
+  let all;
+  try {
+    [host, all] = await Promise.all([apiJson(`/api/v1/hosts/${hostId}/`), fetchAllHosts()]);
+  } catch (e) {
+    if (_detailDependsState.hostId === hostId) placeholder('Could not load the hosts');
+    return;
+  }
+  if (_detailDependsState.hostId !== hostId) return;
+  const current = host.depends_on ? String(host.depends_on) : '';
+  // Only hosts of the same site can be chosen (the server refuses others).
+  const choices = all.filter(h => String(h.id) !== String(hostId) && (h.site || null) === (host.site || null))
+    .sort((a, b) => String(a.hostname).localeCompare(String(b.hostname)));
+  select.replaceChildren();
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'Nothing';
+  select.appendChild(none);
+  for (const h of choices) {
+    const opt = document.createElement('option');
+    opt.value = String(h.id);
+    opt.textContent = h.hostname;
+    select.appendChild(opt);
+  }
+  // A parent this user cannot list still shows, by id, rather than vanishing.
+  if (current && !choices.some(h => String(h.id) === current)) {
+    const opt = document.createElement('option');
+    opt.value = current;
+    opt.textContent = current;
+    select.appendChild(opt);
+  }
+  select.value = current;
+  _detailDependsState.value = current;
+  select.disabled = false;
+}
+
+async function saveDetailDependsOn(select) {
+  const hostId = _detailDependsState.hostId;
+  if (!hostId) return;
+  const before = _detailDependsState.value;
+  const wanted = select.value || null;
+  select.disabled = true;
+  try {
+    const host = await apiJson(`/api/v1/hosts/${hostId}/depends-on/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ depends_on: wanted }),
+    });
+    _detailDependsState.value = host.depends_on ? String(host.depends_on) : '';
+    showToast(wanted ? 'Dependency saved' : 'Dependency cleared', 'success');
+  } catch (e) {
+    select.value = before;
+    showToast('Could not save: ' + e.message, 'error');
+  } finally {
+    select.disabled = false;
+  }
 }
 
 async function _saveDetailTags(tags) {
@@ -982,3 +1059,5 @@ function deleteHostFromDetailPanel(btn) {
   if (!panel) return;
   deleteHost(panel.dataset.hostId, panel.dataset.hostname, btn);
 }
+
+document.getElementById('detail-depends-on')?.addEventListener('change', (e) => saveDetailDependsOn(e.target));

@@ -211,12 +211,17 @@ def checkin(request):
     if host.status == Host.Status.OFFLINE:
         host.status = Host.Status.ONLINE
         from apps.alerts.models import Alert as _Alert
+        from apps.alerts.tasks import OFFLINE_PREFIX
+        # Acknowledged counts too: someone saying "I know" does not keep the
+        # alert open after the host is back. The resolved notice is owed, not
+        # sent: a slow channel must not hold up this check-in, so the
+        # stale-host job sends it (alerts.tasks._send_owed_resolutions).
         _Alert.objects.filter(
             host=host,
             rule=None,
-            state=_Alert.State.FIRING,
-            message__startswith="Host offline:",
-        ).update(state=_Alert.State.RESOLVED, resolved_at=now())
+            state__in=[_Alert.State.FIRING, _Alert.State.ACKNOWLEDGED],
+            message__startswith=OFFLINE_PREFIX,
+        ).update(state=_Alert.State.RESOLVED, resolved_at=now(), resolve_pending=True)
 
     # Auto-tag based on intrinsic facts (OS family, mode). Runs after the
     # agent.yml merge so derived tags appear alongside operator-set ones.

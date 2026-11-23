@@ -31,6 +31,7 @@ class HostSerializer(serializers.ModelSerializer):
             "reboot_required",
             "last_checkin",
             "created_at",
+            "depends_on",
             "site",
             "site_name",
         ]

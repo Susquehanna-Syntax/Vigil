@@ -4804,7 +4804,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 .relay-meta { font-size: 0.76rem; color: var(--text-3); }
 .relay-url { font-size: 0.8rem; color: var(--text-2); word-break: break-all; }
-.relay-status-cell { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.relay-status-cell { display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; max-width: 100%; }
 .relay-status-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .relay-status {
   display: inline-block; padding: 2px 9px; border-radius: 999px;
@@ -4815,6 +4815,9 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .relay-status.off { background: var(--s2); color: var(--text-3); }
 .relay-err { font-size: 0.72rem; color: var(--text-3); max-width: 260px; }
 .relay-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Maintenance window form: the seven weekday boxes, spaced so each label reads with its own box. */
+.maint-days { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 
 /* Commands and the compose snippet are set with textContent, so they keep the
    server's line breaks. */
@@ -4957,3 +4960,16 @@ a.jk-card { text-decoration: none; }
 .settings-greyed-note { font-size: 13px; color: var(--text-2); background: var(--wash);
   border-radius: var(--r-sm); padding: 10px 14px; margin: 0 0 18px; }
 .settings-greyed :is(input, select, textarea, button):disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* A multi-select list (maintenance window hosts): the browser's own highlight
+   for a chosen option reads dimmer than an unchosen one on the dark surface,
+   so chosen options get the mint tint and full-strength text. */
+select.form-control[multiple] { padding: 6px; background-image: none; }
+select.form-control[multiple] option { padding: 4px 8px; border-radius: var(--r-sm, 6px); }
+select.form-control[multiple] option:checked {
+  background: rgba(var(--rgb-mint), var(--tint-a)) linear-gradient(0deg, rgba(var(--rgb-mint), var(--tint-a)), rgba(var(--rgb-mint), var(--tint-a)));
+  color: var(--mint-ink); font-weight: 600;
+}
+
+/* A channel's JSON template (the ticket channel's request body). */
+.form-control.channel-json { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }

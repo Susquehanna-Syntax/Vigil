@@ -113,6 +113,11 @@ class Host(models.Model):
     #: dashboard itself — the built-in relay.
     last_relay = models.ForeignKey("relays.Relay", null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
+    #: The host this one sits behind: a switch, firewall or hypervisor. While
+    #: it is offline this host's offline alert is created but not sent, so one
+    #: outage is one page (apps.alerts.tasks). Same site only; no loops.
+    depends_on = models.ForeignKey("self", null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="dependents")
     #: What this machine is missing, as the agent last counted it:
     #: {"pending", "critical", "important", "reboot_required"}. Null means no
     #: agent has ever counted — not Windows, too old to report, or the scan
