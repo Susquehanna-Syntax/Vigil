@@ -11,9 +11,10 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-rollout.js"
-CSS = ROOT / "static/css/vigil.css"
 BASE = ROOT / "templates/base.html"
 
 
@@ -123,7 +124,7 @@ class LaneStyleTests(SimpleTestCase):
         return "\n".join(re.findall(r"\.rlt-lane[\w-]*\s*\{[^}]*\}", css))
 
     def test_lanes_have_no_side_stripe(self):
-        rules = self._lane_rules(CSS.read_text())
+        rules = self._lane_rules(design_css())
         # tinted as a whole surface (--s2: the card itself is --s1, so a --s1
         # lane would not show against it)
         self.assertRegex(rules, r"background: var\(--s\d\)")
@@ -131,7 +132,7 @@ class LaneStyleTests(SimpleTestCase):
             self.assertNotIn(banned, rules)
 
     def test_lanes_stack_under_640px(self):
-        css = CSS.read_text()
+        css = design_css()
         self.assertIn(".rlt-lanes { display: grid; grid-template-columns: "
                       "repeat(auto-fit, minmax(260px, 1fr));", css)
         self.assertRegex(

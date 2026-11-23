@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-reprovision.js
 // Owns: host Rebuild ceremony + Settings → OS Images pane + the Reprovision
 //   page (image library, pull controls, install profiles, rebuild jobs).
@@ -29,8 +30,10 @@ const ABORT_WINDOW_SECONDS = 60;
 const ABORTABLE = ['pending', 'staging', 'staged'];
 const TERMINAL = ['completed', 'failed', 'aborted', 'timed_out'];
 
+// A file size in GiB. The unit is part of the sentence: a translation may want
+// "2,3 GB" with the number after it or a different unit name entirely.
 function _bytesToGiB(n) {
-  return (Number(n || 0) / 1024 / 1024 / 1024).toFixed(1) + ' GiB';
+  return t('{size} GiB', { size: (Number(n || 0) / 1024 / 1024 / 1024).toFixed(1) });
 }
 
 function _stateClass(state) {
@@ -43,9 +46,11 @@ function _stateClass(state) {
 
 async function openRebuildModal(hostId, hostname) {
   // Mount and open before fetching — a modal that appears only after the
-  // network settles reads as lag (see commit 57470af).
+  // network settles reads as lag (see commit 57470af). The loading state goes
+  // in its own div below the title, so a failure can replace it by id.
   const m = mountModal('rebuild', { wide: true });
-  m.setBody('<h3>Rebuild host</h3><p class="muted">Loading images…</p>');
+  m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><div id="rb-body"></div>`);
+  showLoading(document.getElementById('rb-body'), t('Loading images…'));
   m.open();
 
   let images = [];
@@ -60,19 +65,18 @@ async function openRebuildModal(hostId, hostname) {
       apiJson('/api/v1/hosts/transport-ack/').catch(() => ({ acknowledged: false })),
     ]);
   } catch (e) {
-    m.setBody('<h3>Rebuild host</h3>' +
-      '<p class="bad">Could not load the image catalog.</p>' +
-      '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">Close</button></div>');
+    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3><div id="rb-body"></div>` +
+      `<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">${escHtml(t('Close'))}</button></div>`);
     document.getElementById('rb-cancel').onclick = m.close;
+    showLoadFailure(document.getElementById('rb-body'), t('the rebuild images'), e, () => openRebuildModal(hostId, hostname));
     return;
   }
 
   const ready = images.filter((i) => i.status === 'ready');
   if (!ready.length) {
-    m.setBody('<h3>Rebuild host</h3>' +
-      '<p class="muted">No images are ready. Pull or upload one under '
-      + 'Reprovision → Add an image.</p>' +
-      '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">Close</button></div>');
+    m.setBody(`<h3>${escHtml(t('Rebuild host'))}</h3>` +
+      `<p class="muted">${escHtml(t('No images are ready. Pull or upload one under Reprovision → Add an image.'))}</p>` +
+      '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">' + escHtml(t('Close')) + '</button></div>');
     document.getElementById('rb-cancel').onclick = m.close;
     return;
   }
@@ -82,36 +86,34 @@ async function openRebuildModal(hostId, hostname) {
     `<option value="${escAttr(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
 
   m.setBody(
-    `<h3>Rebuild ${escHtml(hostname)}</h3>` +
-    `<p class="bad"><strong>This erases everything on the target disk.</strong> ` +
-    `There is no undo once the installer starts.</p>` +
-    `<label>Image<select class="form-control" id="rb-image">${imageOpts}</select></label>` +
-    `<label>Profile<select class="form-control" id="rb-profile"></select></label>` +
-    `<div id="rb-summary" class="rb-summary muted">Select an image and profile…</div>` +
-    `<div id="rb-preflight" class="rb-preflight"><span class="muted">Checking rebuild readiness…</span></div>` +
+    `<h3>${escHtml(t('Rebuild {hostname}', { hostname }))}</h3>` +
+    `<p class="bad"><strong>${escHtml(t('This erases everything on the target disk.'))}</strong> ` +
+    `${escHtml(t('There is no undo once the installer starts.'))}</p>` +
+    `<label>${escHtml(t('Image'))}<select class="form-control" id="rb-image">${imageOpts}</select></label>` +
+    `<label>${escHtml(t('Profile'))}<select class="form-control" id="rb-profile"></select></label>` +
+    `<div id="rb-summary" class="rb-summary muted">${escHtml(t('Select an image and profile…'))}</div>` +
+    `<div id="rb-preflight" class="rb-preflight"><span class="muted">${escHtml(t('Checking rebuild readiness…'))}</span></div>` +
     (insecure
       ? `<label class="rb-warn"><input type="checkbox" id="rb-ack-plain"> ` +
-        `Vigil is served over plain HTTP. The answer file carries the admin ` +
-        `password hash, SSH keys, and the enrolment token in clear text. ` +
-        `Proceed anyway.</label>`
+        `${escHtml(t('Vigil is served over plain HTTP. The answer file carries the admin password hash, SSH keys, and the enrolment token in clear text. Proceed anyway.'))}</label>`
       : '') +
     `<hr>` +
-    `<label>Password<input class="form-control" type="password" id="rb-password" autocomplete="current-password"></label>` +
+    `<label>${escHtml(t('Password'))}<input class="form-control" type="password" id="rb-password" autocomplete="current-password"></label>` +
     // placeholder is set as a DOM property below, not interpolated: escHtml
     // does not escape quotes, and the hostname is agent-supplied.
-    `<label>Type the hostname to confirm<input class="form-control mono" id="rb-hostname" autocomplete="off"></label>` +
+    `<label>${escHtml(t('Type the hostname to confirm'))}<input class="form-control mono" id="rb-hostname" autocomplete="off"></label>` +
     `<div class="modal-actions">` +
-      `<button class="btn btn-outline" id="rb-cancel">Cancel</button>` +
-      `<button class="btn btn-danger" id="rb-go" disabled>Rebuild this machine</button>` +
+      `<button class="btn btn-outline" id="rb-cancel">${escHtml(t('Cancel'))}</button>` +
+      `<button class="btn btn-danger" id="rb-go" disabled>${escHtml(t('Rebuild this machine'))}</button>` +
     `</div>`);
 
-  const imageSel = document.getElementById('rb-image');
-  const profileSel = document.getElementById('rb-profile');
+  const imageSel = /** @type {HTMLSelectElement} */ (document.getElementById('rb-image'));
+  const profileSel = /** @type {HTMLSelectElement} */ (document.getElementById('rb-profile'));
   const summary = document.getElementById('rb-summary');
-  const hostnameInput = document.getElementById('rb-hostname');
+  const hostnameInput = /** @type {HTMLInputElement} */ (document.getElementById('rb-hostname'));
   hostnameInput.placeholder = hostname;
-  const goBtn = document.getElementById('rb-go');
-  const ackBox = document.getElementById('rb-ack-plain');
+  const goBtn = /** @type {HTMLButtonElement} */ (document.getElementById('rb-go'));
+  const ackBox = /** @type {HTMLInputElement|null} */ (document.getElementById('rb-ack-plain'));
 
   function currentProfile() {
     return profiles.find((p) => p.id === profileSel.value);
@@ -120,12 +122,12 @@ async function openRebuildModal(hostId, hostname) {
   function refreshSummary() {
     const img = ready.find((i) => i.id === imageSel.value);
     const prof = currentProfile();
-    if (!img || !prof) { summary.textContent = 'Select an image and profile…'; return; }
+    if (!img || !prof) { summary.textContent = t('Select an image and profile…'); return; }
     summary.innerHTML =
-      `<div><span class="muted">Target disk</span> <strong class="bad">${escHtml(prof.disk_target)}</strong></div>` +
-      `<div><span class="muted">Image</span> ${escHtml(img.name)}</div>` +
-      `<div><span class="muted">Checksum</span> <code>${escHtml(img.sha256)}</code></div>` +
-      `<div><span class="muted">Network</span> ${escHtml(prof.network_mode)}` +
+      `<div><span class="muted">${escHtml(t('Target disk'))}</span> <strong class="bad">${escHtml(prof.disk_target)}</strong></div>` +
+      `<div><span class="muted">${escHtml(t('Image'))}</span> ${escHtml(img.name)}</div>` +
+      `<div><span class="muted">${escHtml(t('Checksum'))}</span> <code>${escHtml(img.sha256)}</code></div>` +
+      `<div><span class="muted">${escHtml(t('Network'))}</span> ${escHtml(prof.network_mode)}` +
         (prof.network_mode === 'static' ? ` ${escHtml(prof.static_address || '')}` : '') + `</div>`;
   }
 
@@ -133,7 +135,7 @@ async function openRebuildModal(hostId, hostname) {
     const forImage = profiles.filter((p) => p.image === imageSel.value);
     profileSel.innerHTML = forImage.length
       ? forImage.map((p) => `<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join('')
-      : '<option value="">No profile for this image</option>';
+      : `<option value="">${escHtml(t('No profile for this image'))}</option>`;
     refreshSummary();
   }
 
@@ -160,8 +162,8 @@ async function openRebuildModal(hostId, hostname) {
   _runPreflight(hostId);
 
   goBtn.onclick = async () => {
-    const totp = await totpPrompt(`Rebuilding ${hostname} erases it and reinstalls the operating system.`,
-      { title: 'Rebuild this machine', confirmText: 'Rebuild' });
+    const totp = await totpPrompt(t('Rebuilding {hostname} erases it and reinstalls the operating system.', { hostname }),
+      { title: t('Rebuild this machine'), confirmText: t('Rebuild') });
     if (!totp) return;
     goBtn.disabled = true;
     try {
@@ -171,7 +173,7 @@ async function openRebuildModal(hostId, hostname) {
           host: hostId,
           image: imageSel.value,
           profile: profileSel.value,
-          password: document.getElementById('rb-password').value,
+          password: /** @type {HTMLInputElement} */ (document.getElementById('rb-password')).value,
           totp,
           typed_hostname: hostnameInput.value,
           acknowledge_plaintext_transport: !!(ackBox && ackBox.checked),
@@ -179,7 +181,7 @@ async function openRebuildModal(hostId, hostname) {
       });
       _showJobProgress(m, job, hostname);
     } catch (e) {
-      showToast(e.message || 'Rebuild was refused', 'error');
+      showToast(e.message || t('Rebuild was refused'), 'error');
       goBtn.disabled = false;
     }
   };
@@ -193,24 +195,22 @@ async function _runPreflight(hostId) {
       method: 'POST', body: JSON.stringify({ host: hostId }),
     });
     if (!result || !result.disks) {
-      box.innerHTML = '<span class="muted">Readiness check dispatched — ' +
-        'results appear after the agent next checks in.</span>';
+      box.innerHTML = `<span class="muted">${escHtml(t('Readiness check dispatched — results appear after the agent next checks in.'))}</span>`;
       return;
     }
-    const rows = result.disks.map((d) =>
-      `<li><code>${escHtml(d.name)}</code> ${_bytesToGiB(d.size_bytes)}` +
-      (d.mountpoints && d.mountpoints.length
-        ? ` <span class="muted">mounted at ${escHtml(d.mountpoints.join(', '))}</span>` : '') +
-      `</li>`).join('');
+    const rows = result.disks.map((d) => {
+      return `<li><code>${escHtml(d.name)}</code> ${escHtml(_bytesToGiB(d.size_bytes))}` +
+        (d.mountpoints && d.mountpoints.length
+          ? ` <span class="muted">${escHtml(t('mounted at {paths}', { paths: d.mountpoints.join(', ') }))}</span>` : '') +
+        `</li>`;
+    }).join('');
     box.innerHTML =
       (result.ok
-        ? '<p class="ok">Preflight passed.</p>'
-        : '<p class="bad">Preflight failed: ' +
-          escHtml((result.failures || []).join('; ')) + '</p>') +
-      `<p class="muted">Disks found on this machine — check the target above ` +
-      `is the one you mean:</p><ul class="rb-disks">${rows}</ul>`;
+        ? `<p class="ok">${escHtml(t('Preflight passed.'))}</p>`
+        : `<p class="bad">${escHtml(t('Preflight failed: {failures}', { failures: (result.failures || []).join('; ') }))}</p>`) +
+      `<p class="muted">${escHtml(t('Disks found on this machine — check the target above is the one you mean:'))}</p><ul class="rb-disks">${rows}</ul>`;
   } catch (e) {
-    box.innerHTML = '<span class="muted">Readiness check unavailable.</span>';
+    box.innerHTML = `<span class="muted">${escHtml(t('Readiness check unavailable.'))}</span>`;
   }
 }
 
@@ -227,24 +227,23 @@ function _showJobProgress(m, job, hostname) {
   function render(current) {
     const abortable = ABORTABLE.includes(current.state);
     m.setBody(
-      `<h3>Rebuilding ${escHtml(hostname)}</h3>` +
+      `<h3>${escHtml(t('Rebuilding {hostname}', { hostname }))}</h3>` +
       `<p class="rb-state ${_stateClass(current.state)}">${escHtml(current.state)}</p>` +
       (current.failure_reason
         ? `<p class="bad">${escHtml(current.failure_reason)}</p>` : '') +
       (abortable
-        ? `<p class="muted">Abort is still possible — nothing has been erased yet.` +
-          (remaining > 0 ? ` Staging begins in ${remaining}s.` : '') + `</p>`
+        ? `<p class="muted">${escHtml(t('Abort is still possible — nothing has been erased yet.'))}` +
+          (remaining > 0 ? ` ${escHtml(t('Staging begins in {seconds}s.', { seconds: remaining }))}</p>` : '</p>')
         : (TERMINAL.includes(current.state)
           ? ''
-          : `<p class="bad">Past the point of no return — the disk is being ` +
-            `rewritten and this can no longer be stopped.</p>`)) +
+          : `<p class="bad">${escHtml(t('Past the point of no return — the disk is being rewritten and this can no longer be stopped.'))}</p>`)) +
       `<div class="modal-actions">` +
         (abortable
-          ? `<button class="btn btn-danger" id="rb-abort">Abort rebuild</button>` : '') +
-        `<button class="btn btn-outline" id="rb-close">Close</button>` +
+          ? `<button class="btn btn-danger" id="rb-abort">${escHtml(t('Abort rebuild'))}</button>` : '') +
+        `<button class="btn btn-outline" id="rb-close">${escHtml(t('Close'))}</button>` +
       `</div>`);
     document.getElementById('rb-close').onclick = () => { stop(); m.close(); };
-    const abortBtn = document.getElementById('rb-abort');
+    const abortBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('rb-abort'));
     if (abortBtn) {
       abortBtn.onclick = async () => {
         abortBtn.disabled = true;
@@ -252,10 +251,10 @@ function _showJobProgress(m, job, hostname) {
           const updated = await apiJson(
             `/api/v1/reprovision/jobs/${job.id}/abort/`,
             { method: 'POST', body: JSON.stringify({}) });
-          showToast('Rebuild aborted — nothing was erased', 'success');
+          showToast(t('Rebuild aborted — nothing was erased'), 'success');
           render(updated);
         } catch (e) {
-          showToast(e.message || 'Too late to abort', 'error');
+          showToast(e.message || t('Too late to abort'), 'error');
         }
       };
     }
@@ -271,7 +270,7 @@ function _showJobProgress(m, job, hostname) {
       const current = await apiJson(`/api/v1/reprovision/jobs/${job.id}/`);
       render(current);
       if (TERMINAL.includes(current.state)) stop();
-    } catch (e) { /* transient — keep polling */ }
+    } catch (e) { /* state-ok: transient — keep polling */ }
   }, REBUILD_POLL_MS);
 }
 
@@ -284,7 +283,7 @@ async function loadOSImages() {
     const images = await apiJson('/api/v1/reprovision/images/');
     list.innerHTML = '';
     if (!images.length) {
-      list.innerHTML = '<p class="muted">No OS images registered yet.</p>';
+      list.innerHTML = `<p class="muted">${escHtml(t('No OS images registered yet.'))}</p>`;
       return;
     }
     images.forEach((img) => {
@@ -296,31 +295,31 @@ async function loadOSImages() {
           `<span class="site-row-desc muted">${escHtml(img.os_family)} ` +
             `${escHtml(img.version)} · ${escHtml(img.architecture)}</span>` +
           (img.status === 'failed'
-            ? `<span class="bad">${escHtml(img.import_error || 'Import failed')}</span>` : '') +
+            ? `<span class="bad">${escHtml(img.import_error || t('Import failed'))}</span>` : '') +
         `</div>` +
         `<div class="site-row-meta">` +
           `<span class="${_stateClass(img.status === 'ready' ? 'completed' : img.status)}">` +
             `${escHtml(img.status)}</span>` +
           `<div class="site-row-actions">` +
-            `<button class="btn btn-rose btn-sm img-del" data-id="${escAttr(img.id)}">Delete</button>` +
+            `<button class="btn btn-rose btn-sm img-del" data-id="${escAttr(img.id)}">${escHtml(t('Delete'))}</button>` +
           `</div>` +
         `</div>`;
       list.appendChild(row);
     });
-    list.querySelectorAll('.img-del').forEach((btn) => {
+    list.querySelectorAll('.img-del').forEach((/** @type {HTMLElement} */ btn) => {
       btn.onclick = async () => {
-        if (!await confirmModal('Delete this image? Rebuilds using it will fail.')) return;
+        if (!await confirmModal(t('Delete this image? Rebuilds using it will fail.'))) return;
         try {
           await apiJson(`/api/v1/reprovision/images/${btn.dataset.id}/`,
                         { method: 'DELETE' });
           loadOSImages();
-        } catch (e) { showToast(e.message || 'Could not delete', 'error'); }
+        } catch (e) { showToast(e.message || t('Could not delete'), 'error'); }
       };
     });
   } catch (e) {
     // Non-admins simply do not see this pane; a 403/404 here is not an error
     // worth shouting about.
-    list.innerHTML = '<p class="muted">OS image management requires an admin account.</p>';
+    list.innerHTML = `<p class="muted">${escHtml(t('OS image management requires an admin account.'))}</p>`;
   }
 }
 
@@ -341,11 +340,11 @@ function _reproAge(iso) {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
   const mins = Math.max(0, Math.floor((Date.now() - then) / 60000));
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('just now');
+  if (mins < 60) return t('{m}m ago', { m: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 24) return t('{h}h ago', { h: hrs });
+  return t('{d}d ago', { d: Math.floor(hrs / 24) });
 }
 
 // Maps the ok/bad/pending vocabulary from _stateClass() to a plain colored
@@ -357,7 +356,7 @@ function _reproStatusSpan(rawValue, classifyAs) {
   const cls = _stateClass(classifyAs !== undefined ? classifyAs : rawValue);
   const colorMap = { ok: 'var(--mint)', bad: 'var(--rose)', pending: 'var(--peach)' };
   span.style.color = colorMap[cls] || 'var(--text-3)';
-  span.textContent = rawValue || 'unknown'; // server-controlled enum either way
+  span.textContent = rawValue || t('unknown'); // server-controlled enum either way
   return span;
 }
 
@@ -386,7 +385,7 @@ async function _reproLoadImages() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Image library requires an admin account.';
+    p.textContent = t('Image library requires an admin account.');
     list.appendChild(p);
     return;
   }
@@ -406,7 +405,7 @@ function _reproRenderImageTable(list, images) {
   if (!images.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No OS images registered yet — pull one below.';
+    p.textContent = t('No OS images registered yet — pull one below.');
     list.appendChild(p);
     return;
   }
@@ -416,7 +415,7 @@ function _reproRenderImageTable(list, images) {
 
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  for (const label of ['Name', 'Family', 'Version', 'Size', 'Status', '']) {
+  for (const label of [t('Name'), t('Family'), t('Version'), t('Size'), t('Status'), '']) {
     const th = document.createElement('th');
     th.textContent = label;
     headRow.appendChild(th);
@@ -443,7 +442,7 @@ function _reproImageRow(img) {
   // custom-URL path.
   try {
     nameTd.appendChild(osLogoNode(img.name || ''));
-  } catch (e) { /* a missing mark is cosmetic — never block the row on it */ }
+  } catch (e) { /* state-ok: a missing mark is cosmetic — never block the row on it */ }
   nameTd.appendChild(document.createTextNode(img.name || ''));
   tr.appendChild(nameTd);
 
@@ -457,7 +456,7 @@ function _reproImageRow(img) {
 
   const sizeTd = document.createElement('td');
   sizeTd.className = 'mono';
-  sizeTd.textContent = img.size_bytes ? formatBytes(img.size_bytes) : 'unknown';
+  sizeTd.textContent = img.size_bytes ? formatBytes(img.size_bytes) : t('unknown');
   tr.appendChild(sizeTd);
 
   const statusTd = document.createElement('td');
@@ -468,7 +467,7 @@ function _reproImageRow(img) {
   actTd.style.textAlign = 'right';
   const delBtn = document.createElement('button');
   delBtn.className = 'btn btn-outline btn-sm';
-  delBtn.textContent = 'Delete';
+  delBtn.textContent = t('Delete');
   delBtn.addEventListener('click', () => _reproDeleteImage(img.id, img.name));
   actTd.appendChild(delBtn);
   tr.appendChild(actTd);
@@ -498,8 +497,8 @@ function _reproImageStatusCell(img) {
     const label = document.createElement('div');
     label.style.cssText = 'margin-top:4px;font-size:11px;color:var(--text-3);';
     label.textContent = size > 0
-      ? `${formatBytes(downloaded)} / ${formatBytes(size)}`
-      : `${formatBytes(downloaded)} downloaded (total size unknown)`;
+      ? t('{downloaded} / {total}', { downloaded: formatBytes(downloaded), total: formatBytes(size) })
+      : t('{downloaded} downloaded (total size unknown)', { downloaded: formatBytes(downloaded) });
     wrap.appendChild(label);
   }
 
@@ -509,7 +508,7 @@ function _reproImageStatusCell(img) {
     // import_error is free text produced by a failed import — the whole
     // diagnostic for a multi-gigabyte fetch, and operator-supplied on the
     // custom-URL path. textContent only; see SECURITY note atop this file.
-    err.textContent = img.import_error || 'Import failed';
+    err.textContent = img.import_error || t('Import failed');
     wrap.appendChild(err);
   }
 
@@ -519,13 +518,13 @@ function _reproImageStatusCell(img) {
 async function _reproDeleteImage(id, name) {
   // confirmModal sets `message` via textContent internally (vigil-utils.js),
   // so interpolating the operator-supplied name here is safe.
-  if (!await confirmModal(`Delete "${name}"? Rebuilds using it will fail.`)) return;
+  if (!await confirmModal(t('Delete "{name}"? Rebuilds using it will fail.', { name }))) return;
   try {
     await apiJson(`/api/v1/reprovision/images/${id}/`, { method: 'DELETE' });
-    showToast('Image deleted', 'success');
+    showToast(t('Image deleted'), 'success');
     _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not delete image', 'error');
+    showToast(e.message || t('Could not delete image'), 'error');
   }
 }
 
@@ -541,6 +540,9 @@ async function _reproLoadCatalog() {
     _reproCatalogEntries = await apiJson('/api/v1/reprovision/catalog/');
   } catch (e) {
     _reproCatalogEntries = [];
+    const grid = document.getElementById('repro-catalog-grid');
+    if (grid) showLoadFailure(grid, t('the app catalog'), e, _reproLoadCatalog);
+    return;
   }
   _reproRenderCatalog();
 }
@@ -562,6 +564,10 @@ function _reproRenderCatalog() {
   if (!grid) return;
 
   const entries = Array.isArray(_reproCatalogEntries) ? _reproCatalogEntries : [];
+  // A failed catalog load leaves its failure in the grid (the filter can call
+  // here with an empty list): keep it rather than drawing "no apps" over a
+  // server error. The retry button offered there still works.
+  if (!entries.length && grid.querySelector('.load-failed')) return;
   const held = _reproLibraryByDigest();
   grid.replaceChildren();
   for (const entry of entries) {
@@ -606,9 +612,9 @@ function _reproCatalogCard(entry, existing) {
     btn.classList.add('btn-outline');
     btn.disabled = true;
     const status = String(existing.status || '').toLowerCase();
-    btn.textContent = status === 'ready' ? 'In library'
-      : status === 'failed' ? 'Retry pull'
-      : 'Downloading…';
+    btn.textContent = status === 'ready' ? t('In library')
+      : status === 'failed' ? t('Retry pull')
+      : t('Downloading…');
     if (status === 'failed') {
       // A failed pull retries in place on the same row — the one case where
       // pulling again is the right move rather than a duplicate.
@@ -617,7 +623,7 @@ function _reproCatalogCard(entry, existing) {
     }
   } else {
     btn.classList.add('btn-mint');
-    btn.textContent = 'Pull';
+    btn.textContent = t('Pull');
   }
   btn.addEventListener('click', () => _reproPullFromCatalog(entry.id, btn));
   card.appendChild(btn);
@@ -629,18 +635,18 @@ async function _reproPullFromCatalog(catalogId, btn) {
   const label = btn ? btn.textContent : '';
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Queueing…';
+    btn.textContent = t('Queueing…');
   }
   try {
     await apiJson('/api/v1/reprovision/images/pull/', {
       method: 'POST',
       body: JSON.stringify({ catalog_id: catalogId }),
     });
-    showToast('Download queued', 'success');
+    showToast(t('Download queued'), 'success');
     // Repaints the card as held — _reproLoadImages re-renders the catalog.
     await _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not queue the pull', 'error');
+    showToast(e.message || t('Could not queue the pull'), 'error');
     if (btn) {
       btn.disabled = false;
       btn.textContent = label;
@@ -664,19 +670,19 @@ async function _reproPullFromCatalog(catalogId, btn) {
 // after the operator may have already picked a multi-gigabyte file, would
 // be worse than the button doing nothing.
 function _reproPresetFamily(family) {
-  const famSel = document.getElementById('repro-custom-family');
+  const famSel = /** @type {HTMLSelectElement|null} */ (document.getElementById('repro-custom-family'));
   if (famSel) famSel.value = family;
-  const fileInput = document.getElementById('repro-custom-file');
+  const fileInput = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-file'));
   if (fileInput) fileInput.focus();
 }
 
 function _reproRefreshCustomGate() {
-  const btn = document.getElementById('repro-custom-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-custom-submit'));
   if (!btn) return;
-  const ack = document.getElementById('repro-custom-ack');
-  const name = document.getElementById('repro-custom-name');
-  const url = document.getElementById('repro-custom-url');
-  const sha = document.getElementById('repro-custom-sha256');
+  const ack = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-ack'));
+  const name = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-name'));
+  const url = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-url'));
+  const sha = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-sha256'));
   btn.disabled = !(ack && ack.checked &&
     name && name.value.trim() &&
     url && url.value.trim() &&
@@ -684,14 +690,14 @@ function _reproRefreshCustomGate() {
 }
 
 async function _reproSubmitCustom() {
-  const btn = document.getElementById('repro-custom-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-custom-submit'));
   if (!btn) return;
-  const nameEl = document.getElementById('repro-custom-name');
-  const familyEl = document.getElementById('repro-custom-family');
-  const versionEl = document.getElementById('repro-custom-version');
-  const urlEl = document.getElementById('repro-custom-url');
-  const shaEl = document.getElementById('repro-custom-sha256');
-  const ackEl = document.getElementById('repro-custom-ack');
+  const nameEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-name'));
+  const familyEl = /** @type {HTMLSelectElement} */ (document.getElementById('repro-custom-family'));
+  const versionEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-version'));
+  const urlEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-url'));
+  const shaEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-sha256'));
+  const ackEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-ack'));
 
   btn.disabled = true;
   try {
@@ -705,7 +711,7 @@ async function _reproSubmitCustom() {
         sha256: shaEl.value.trim(),
       }),
     });
-    showToast('Download queued', 'success');
+    showToast(t('Download queued'), 'success');
     nameEl.value = '';
     versionEl.value = '';
     urlEl.value = '';
@@ -713,7 +719,7 @@ async function _reproSubmitCustom() {
     ackEl.checked = false;
     _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not queue the pull', 'error');
+    showToast(e.message || t('Could not queue the pull'), 'error');
   } finally {
     _reproRefreshCustomGate();
   }
@@ -727,24 +733,24 @@ async function _reproSubmitCustom() {
 // which is wrong for a file body, so this uses fetch directly and lets the
 // browser set the multipart boundary itself.
 function _reproRefreshUploadGate() {
-  const btn = document.getElementById('repro-upload-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-upload-submit'));
   if (!btn) return;
-  const name = document.getElementById('repro-custom-name');
-  const sha = document.getElementById('repro-custom-sha256');
-  const file = document.getElementById('repro-custom-file');
+  const name = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-name'));
+  const sha = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-sha256'));
+  const file = /** @type {HTMLInputElement|null} */ (document.getElementById('repro-custom-file'));
   btn.disabled = !(name && name.value.trim() &&
     sha && sha.value.trim() &&
     file && file.files && file.files.length > 0);
 }
 
 async function _reproSubmitUpload() {
-  const btn = document.getElementById('repro-upload-submit');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-upload-submit'));
   if (!btn) return;
-  const nameEl = document.getElementById('repro-custom-name');
-  const familyEl = document.getElementById('repro-custom-family');
-  const versionEl = document.getElementById('repro-custom-version');
-  const shaEl = document.getElementById('repro-custom-sha256');
-  const fileEl = document.getElementById('repro-custom-file');
+  const nameEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-name'));
+  const familyEl = /** @type {HTMLSelectElement} */ (document.getElementById('repro-custom-family'));
+  const versionEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-version'));
+  const shaEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-sha256'));
+  const fileEl = /** @type {HTMLInputElement} */ (document.getElementById('repro-custom-file'));
   const file = fileEl && fileEl.files && fileEl.files[0];
   if (!file) return;
 
@@ -757,7 +763,7 @@ async function _reproSubmitUpload() {
 
   btn.disabled = true;
   const originalLabel = btn.textContent;
-  btn.textContent = 'Uploading…';
+  btn.textContent = t('Uploading…');
   try {
     const resp = await fetch('/api/v1/reprovision/images/upload/', {
       method: 'POST',
@@ -766,15 +772,15 @@ async function _reproSubmitUpload() {
       body: formData,
     });
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(body.error || 'Upload failed');
-    showToast('Image uploaded and imported', 'success');
+    if (!resp.ok) throw new Error(body.error || t('Upload failed'));
+    showToast(t('Image uploaded and imported'), 'success');
     nameEl.value = '';
     versionEl.value = '';
     shaEl.value = '';
     fileEl.value = '';
     _reproLoadImages();
   } catch (e) {
-    showToast(e.message || 'Could not upload the image', 'error');
+    showToast(e.message || t('Could not upload the image'), 'error');
   } finally {
     btn.textContent = originalLabel;
     _reproRefreshUploadGate();
@@ -793,7 +799,9 @@ async function _reproLoadAgentProfiles() {
     const rows = await apiJson('/api/v1/agent-profiles/');
     _reproAgentProfiles = Array.isArray(rows) ? rows : [];
   } catch (e) {
-    _reproAgentProfiles = [];   // non-admin, or the endpoint is off
+    // state-ok: a picker is a convenience; non-admin, or the endpoint is off,
+    // and leaving it on "none" is a valid choice the form still accepts.
+    _reproAgentProfiles = [];
   }
   _reproFillProfileAgentProfiles();
 }
@@ -804,7 +812,7 @@ function _reproFillProfileAgentProfiles() {
   sel.replaceChildren();
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = 'none';
+  none.textContent = t('none');
   sel.appendChild(none);
   for (const ap of _reproAgentProfiles) {
     const opt = document.createElement('option');
@@ -824,7 +832,7 @@ async function _reproLoadProfiles() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Install profiles require an admin account.';
+    p.textContent = t('Install profiles require an admin account.');
     list.appendChild(p);
     return;
   }
@@ -832,7 +840,7 @@ async function _reproLoadProfiles() {
   if (!profiles.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No install profiles yet.';
+    p.textContent = t('No install profiles yet.');
     list.appendChild(p);
     return;
   }
@@ -856,13 +864,14 @@ function _reproProfileRow(prof) {
   const desc = document.createElement('span');
   desc.className = 'site-row-desc muted';
   const img = _reproImagesById[prof.image];
-  const imgLabel = img ? img.name : `image ${prof.image || '?'}`;
-  let descText = `${imgLabel} · disk ${prof.disk_target || '?'} · ${prof.network_mode || '?'}`;
+  const imgLabel = img ? img.name : t('image {image}', { image: prof.image || '?' });
+  const diskLabel = t('disk {disk}', { disk: prof.disk_target || '?' });
+  let descText = t('{image} · {disk} · {mode}', { image: imgLabel, disk: diskLabel, mode: prof.network_mode || '?' });
   if (prof.network_mode === 'static' && prof.static_address) {
     descText += ` ${prof.static_address}`;
   }
   if (Array.isArray(prof.completion_tags) && prof.completion_tags.length) {
-    descText += ` · tags ${prof.completion_tags.join(', ')}`;
+    descText += ` · ${t('tags {tags}', { tags: prof.completion_tags.join(', ') })}`;
   }
   desc.textContent = descText; // built from operator-authored fields — textContent
   main.appendChild(desc);
@@ -879,14 +888,14 @@ function _reproProfileRow(prof) {
   const edit = document.createElement('button');
   edit.className = 'btn btn-outline btn-sm';
   edit.type = 'button';
-  edit.textContent = 'Edit';
+  edit.textContent = t('Edit');
   edit.addEventListener('click', () => _reproOpenProfile(prof));
   meta.appendChild(edit);
 
   const del = document.createElement('button');
   del.className = 'btn btn-outline btn-sm img-del';
   del.type = 'button';
-  del.textContent = 'Delete';
+  del.textContent = t('Delete');
   del.addEventListener('click', () => _reproDeleteProfile(prof));
   meta.appendChild(del);
 
@@ -916,14 +925,14 @@ function _reproSetProfileOpen(open) {
 // Static/DHCP: the static fields are meaningless under DHCP, and the
 // serializer rejects static without an address and gateway.
 function _reproSyncProfileNetwork() {
-  const mode = document.getElementById('repro-prof-netmode')?.value;
-  for (const el of document.querySelectorAll('#repro-profile-modal .repro-prof-static')) {
+  const mode = (/** @type {HTMLSelectElement|null} */ (document.getElementById('repro-prof-netmode')))?.value;
+  for (const el of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#repro-profile-modal .repro-prof-static'))) {
     el.style.display = mode === 'static' ? '' : 'none';
   }
 }
 
 function _reproFillProfileImages(selectedId) {
-  const sel = document.getElementById('repro-prof-image');
+  const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('repro-prof-image'));
   const hint = document.getElementById('repro-prof-image-hint');
   if (!sel) return;
   sel.replaceChildren();
@@ -934,13 +943,15 @@ function _reproFillProfileImages(selectedId) {
   for (const img of ready) {
     const opt = document.createElement('option');
     opt.value = img.id;
-    opt.textContent = `${img.name || img.id}${img.status === 'ready' ? '' : ' (not ready)'}`;
+    opt.textContent = img.status === 'ready'
+      ? (img.name || img.id)
+      : t('{name} (not ready)', { name: img.name || img.id });
     sel.appendChild(opt);
   }
   if (selectedId) sel.value = String(selectedId);
   if (hint) {
     hint.textContent = ready.length ? ''
-      : 'No image is ready yet — pull or upload one first.';
+      : t('No image is ready yet — pull or upload one first.');
   }
 }
 
@@ -950,11 +961,11 @@ function _reproOpenProfile(prof) {
   const editing = prof && prof.id ? String(prof.id) : '';
   modal.dataset.editing = editing;
   document.getElementById('repro-profile-title').textContent =
-    editing ? 'Edit install profile' : 'New install profile';
+    editing ? t('Edit install profile') : t('New install profile');
 
-  const set = (id, value) => {
-    const el = document.getElementById(id);
-    if (el) el.value = value;
+  const set = (/** @type {string} */ id, /** @type {string|number|null|undefined} */ value) => {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    if (el) el.value = /** @type {string} */ (value);
   };
   set('repro-prof-name', prof?.name || '');
   set('repro-prof-disk', prof?.disk_target || '');
@@ -982,15 +993,15 @@ function _reproOpenProfile(prof) {
   const pwHint = document.getElementById('repro-prof-password-hint');
   if (pwHint) {
     pwHint.textContent = editing
-      ? 'Leave blank to keep the stored hash. A crypt hash, never a plaintext password.'
-      : 'A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with mkpasswd -m sha-512.';
+      ? t('Leave blank to keep the stored hash. A crypt hash, never a plaintext password.')
+      : t('A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with {command}', { command: 'mkpasswd -m sha-512' });
   }
 
-  sitePickFill(document.getElementById('repro-prof-site'), document.getElementById('repro-prof-site-field'),
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('repro-prof-site')), /** @type {HTMLElement} */ (document.getElementById('repro-prof-site-field')),
     prof ? prof.site_id : null, { editing: !!editing });
   _reproFillProfileImages(prof?.image);
   _reproFillProfileAgentProfiles();
-  const agentProfile = document.getElementById('repro-prof-agentprofile');
+  const agentProfile = /** @type {HTMLSelectElement|null} */ (document.getElementById('repro-prof-agentprofile'));
   if (agentProfile) agentProfile.value = prof?.agent_profile ? String(prof.agent_profile) : '';
   _reproSyncProfileNetwork();
   _reproSetProfileOpen(true);
@@ -999,7 +1010,7 @@ function _reproOpenProfile(prof) {
 async function _reproSaveProfile() {
   const modal = _reproProfileModal();
   if (!modal) return;
-  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const val = (/** @type {string} */ id) => ((/** @type {HTMLInputElement|null} */ (document.getElementById(id)))?.value || '').trim();
   const editing = modal.dataset.editing;
 
   const body = {
@@ -1035,12 +1046,12 @@ async function _reproSaveProfile() {
                                document.getElementById('repro-prof-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
 
-  if (!body.name) return showToast('Give the profile a name', 'error');
-  if (!body.image) return showToast('Pick an image', 'error');
-  if (!body.disk_target) return showToast('Name the target disk', 'error');
-  if (!body.admin_username) return showToast('Set an admin username', 'error');
+  if (!body.name) return showToast(t('Give the profile a name'), 'error');
+  if (!body.image) return showToast(t('Pick an image'), 'error');
+  if (!body.disk_target) return showToast(t('Name the target disk'), 'error');
+  if (!body.admin_username) return showToast(t('Set an admin username'), 'error');
 
-  const btn = document.getElementById('repro-profile-save');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('repro-profile-save'));
   if (btn) btn.disabled = true;
   try {
     if (editing) {
@@ -1050,11 +1061,11 @@ async function _reproSaveProfile() {
       await apiJson('/api/v1/reprovision/profiles/',
                     { method: 'POST', body: JSON.stringify(body) });
     }
-    showToast('Profile saved', 'success');
+    showToast(t('Profile saved'), 'success');
     _reproSetProfileOpen(false);
     _reproLoadProfiles();
   } catch (e) {
-    showToast(e.message || 'Could not save the profile', 'error');
+    showToast(e.message || t('Could not save the profile'), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1063,15 +1074,15 @@ async function _reproSaveProfile() {
 async function _reproDeleteProfile(prof) {
   if (!prof || !prof.id) return;
   const ok = await confirmModal(
-    `Delete install profile “${prof.name || prof.id}”?`,
-    { confirmText: 'Delete', danger: true });
+    t('Delete install profile “{name}”?', { name: prof.name || prof.id }),
+    { confirmText: t('Delete'), danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/reprovision/profiles/${prof.id}/`, { method: 'DELETE' });
-    showToast('Profile deleted', 'success');
+    showToast(t('Profile deleted'), 'success');
     _reproLoadProfiles();
   } catch (e) {
-    showToast(e.message || 'Could not delete the profile', 'error');
+    showToast(e.message || t('Could not delete the profile'), 'error');
   }
 }
 
@@ -1087,7 +1098,7 @@ async function _reproLoadJobs() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Could not load rebuild jobs.';
+    p.textContent = t('Could not load rebuild jobs.');
     list.appendChild(p);
     return;
   }
@@ -1095,7 +1106,7 @@ async function _reproLoadJobs() {
   if (!jobs.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No rebuild jobs yet.';
+    p.textContent = t('No rebuild jobs yet.');
     list.appendChild(p);
     return;
   }
@@ -1118,8 +1129,7 @@ function _reproJobRow(job) {
 
   const desc = document.createElement('span');
   desc.className = 'site-row-desc muted';
-  desc.textContent = `${job.image_name || ''} · ${job.profile_name || ''} · ` +
-    `requested ${_reproAge(job.requested_at)}`;
+  desc.textContent = t('{image} · {profile} · requested {ago}', { image: job.image_name || '', profile: job.profile_name || '', ago: _reproAge(job.requested_at) });
   main.appendChild(desc);
 
   if (job.state === 'failed' && job.failure_reason) {
@@ -1171,7 +1181,7 @@ document.getElementById('repro-profile-new-btn')
 document.getElementById('repro-rebuild-btn')?.addEventListener('click', () => {
   openPicker({
     type: 'machine',
-    title: 'Which host should be rebuilt?',
+    title: t('Which host should be rebuilt?'),
     allowAdd: false,
     onSelect: (item) => {
       closePicker();
@@ -1211,7 +1221,7 @@ for (const id of ['repro-custom-name', 'repro-custom-sha256', 'repro-custom-file
 // Auto-load the first time the Reprovision tab is opened, following the
 // wrap-navigateTo pattern documented atop vigil-nav.js.
 const _reproNavigateTo = navigateTo;
-navigateTo = function (page) {
+window.navigateTo = function (page) {
   _reproNavigateTo(page);
   if (page === 'reprovision') loadReprovisionPage();
 };

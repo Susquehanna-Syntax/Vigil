@@ -1,3 +1,4 @@
+// @ts-check
 /* ── Web RDP (QA-59) ────────────────────────────────────────────────────────
    A Windows desktop, a Linux one through xrdp, or a Mac's Screen Sharing (VNC)
    in the browser. Not loaded by base.html: loadRdpAssets() in
@@ -17,11 +18,13 @@
    never becomes markup: Guacamole paints it into a canvas, and this file writes
    none of it into the page. */
 
+/** @typedef {{teardown: () => void, teardownDone: boolean}} RdpSession */
+/** @type {RdpSession|null} */
 let _rdpSession = null;
 
 async function openRdpSession(hostId) {
-  const code = await totpPrompt('Open a remote desktop on this host',
-    { title: 'Start a session', confirmText: 'Continue' });
+  const code = await totpPrompt(t('Open a remote desktop on this host'),
+    { title: t('Start a session'), confirmText: t('Continue') });
   if (!code) return;
 
   let started;
@@ -43,31 +46,31 @@ async function openRdpSession(hostId) {
 function _signInThenConnect(started) {
   const m = mountModal('rdp-login', { variant: 'm-pop' });
   m.setBody(`<div class="modal-title"><span id="rdp-login-title"></span>
-      <button class="modal-close" type="button" id="rdp-login-x" aria-label="Cancel">
+      <button class="modal-close" type="button" id="rdp-login-x" aria-label="${escAttr(t('Cancel'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
     <form id="rdp-login-form" autocomplete="off">
-      <div class="setting-row"><label for="rdp-user">Username</label>
+      <div class="setting-row"><label for="rdp-user">${escHtml(t('Username'))}</label>
         <input class="form-control" id="rdp-user" name="username" type="text"
                autocomplete="username" required></div>
-      <div class="setting-row"><label for="rdp-pass">Password</label>
+      <div class="setting-row"><label for="rdp-pass">${escHtml(t('Password'))}</label>
         <input class="form-control" id="rdp-pass" name="password" type="password"
                autocomplete="new-password"></div>
-      <div class="setting-row"><label for="rdp-domain">Domain (optional)</label>
+      <div class="setting-row"><label for="rdp-domain">${escHtml(t('Domain (optional)'))}</label>
         <input class="form-control" id="rdp-domain" name="domain" type="text"
                autocomplete="off"></div>
       <div class="modal-actions">
-        <button class="btn btn-outline btn-sm" type="button" id="rdp-login-cancel">Cancel</button>
-        <button class="btn btn-sm" type="submit">Connect</button>
+        <button class="btn btn-outline btn-sm" type="button" id="rdp-login-cancel">${escHtml(t('Cancel'))}</button>
+        <button class="btn btn-sm" type="submit">${escHtml(t('Connect'))}</button>
       </div>
     </form>`);
   m.modal.querySelector('#rdp-login-title').textContent =
-    `Sign in to ${started.host || 'the host'}`;
+    t('Sign in to {host}', { host: started.host || t('the host') });
 
   const drop = () => {
     // Blank the password before the element goes away: otherwise the field
     // holds it until the node itself is collected.
-    const pass = m.modal.querySelector('#rdp-pass');
+    const pass = /** @type {HTMLInputElement|null} */ (m.modal.querySelector('#rdp-pass'));
     if (pass) pass.value = '';
     m.close();
   };
@@ -75,12 +78,12 @@ function _signInThenConnect(started) {
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const login = {
-      username: m.modal.querySelector('#rdp-user').value,
-      password: m.modal.querySelector('#rdp-pass').value,
-      domain: m.modal.querySelector('#rdp-domain').value,
+      username: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-user')).value,
+      password: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-pass')).value,
+      domain: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-domain')).value,
     };
     drop();
-    if (!login.username) { showToast('A username is required.', 'error'); return; }
+    if (!login.username) { showToast(t('A username is required.'), 'error'); return; }
     _connectRdp(started, login);
   });
   m.modal.querySelector('#rdp-login-cancel').addEventListener('click', drop);
@@ -94,19 +97,19 @@ function _connectRdp(started, login) {
   const m = mountModal('rdp', { xwide: true });
   m.modal.classList.add('rdp-modal');
   m.setBody(`<div class="modal-title"><span id="rdp-title"></span>
-      <button class="modal-close" type="button" id="rdp-x" aria-label="Close">
+      <button class="modal-close" type="button" id="rdp-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
     <div class="rdp-bar">
-      <span class="run-state t-lemon" id="rdp-state">Connecting…</span>
-      ${started.recorded ? '<span class="chip chip-muted" title="guacd records this session">Recorded</span>' : ''}
-      <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="rdp-end">End session</button>
+      <span class="run-state t-lemon" id="rdp-state">${escHtml(t('Connecting…'))}</span>
+      ${started.recorded ? `<span class="chip chip-muted" title="${escAttr(t('guacd records this session'))}">${escHtml(t('Recorded'))}</span>` : ''}
+      <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="rdp-end">${escHtml(t('End session'))}</button>
     </div>
     <div class="rdp-display" id="rdp-display"></div>`);
   // The keyboard below is document-wide, so Tab belongs to the far desktop wherever
   // focus sits in this dialog: the focus trap must not move it as well.
   m.modal.setAttribute('data-keeps-tab', '');
-  m.modal.querySelector('#rdp-title').textContent = `Desktop — ${started.host || 'the host'}`;
+  m.modal.querySelector('#rdp-title').textContent = t('Desktop — {host}', { host: started.host || t('the host') });
 
   const stateEl = m.modal.querySelector('#rdp-state');
   const displayEl = m.modal.querySelector('#rdp-display');
@@ -122,12 +125,14 @@ function _connectRdp(started, login) {
   const client = new Guacamole.Client(tunnel);
 
   tunnel.onstatechange = (state) => {
-    if (state === Guacamole.Tunnel.State.CONNECTING) setState('Connecting…', 't-lemon');
-    else if (state === Guacamole.Tunnel.State.OPEN) setState('Connected', 't-mint');
-    else setState('Closed', 't-rose');
+    // The pill's three words; the CONNECTING text is the dialog's initial one.
+    if (state === Guacamole.Tunnel.State.CONNECTING) setState(t('Connecting…'), 't-lemon');
+    else if (state === Guacamole.Tunnel.State.OPEN) setState(t('Connected'), 't-mint');
+    else setState(t('Closed'), 't-rose');
   };
   client.onerror = (status) => {
-    showToast(`Remote desktop: ${(status && status.message) || 'the connection failed'}`, 'error');
+    showToast(t('Remote desktop: {reason}',
+      { reason: (status && status.message) || t('the connection failed') }), 'error');
   };
 
   displayEl.appendChild(client.getDisplay().getElement());
@@ -172,7 +177,7 @@ function _connectRdp(started, login) {
     keyboard.onkeydown = null;
     keyboard.onkeyup = null;
     keyboard.reset();
-    try { client.disconnect(); } catch (e) {}
+    try { client.disconnect(); } catch (e) { /* state-ok: a cleanup on a client already disconnected */ }
     _rdpSession = null;
   };
 
@@ -193,10 +198,7 @@ function _connectRdp(started, login) {
 async function _endRdpSession(sessionId) {
   try {
     await apiJson(`/api/v1/sessions/${sessionId}/close/`, { method: 'POST' });
-  } catch (e) {
-    // The socket we just closed is the authoritative end; a 404 here means it
-    // had already finished, which is what the operator asked for.
-  }
+  } catch (e) { /* state-ok: the socket we just closed is the authoritative end; a 404 means it had already finished */ }
 }
 
 /* ── The tunnel ─────────────────────────────────────────────────────────────
@@ -205,6 +207,7 @@ async function _endRdpSession(sessionId) {
    one's transport is a WebSocket to Vigil rather than Guacamole's HTTP tunnel —
    which is also why the vendored HTTP tunnels are not used here: they put their
    parameters in a query string, and an access log would keep a Windows password. */
+/** @param {string} url @param {{username: string, password: string, domain?: string}} login */
 function VigilRdpTunnel(url, login) {
   const tunnel = this;
   let socket = null;
@@ -244,7 +247,7 @@ function VigilRdpTunnel(url, login) {
     };
     socket.onerror = () => {
       if (tunnel.onerror) {
-        tunnel.onerror(new Guacamole.Status(512, 'the connection failed'));
+        tunnel.onerror(new Guacamole.Status(512, t('the connection failed')));
       }
     };
     socket.onclose = () => tunnel.setState(Guacamole.Tunnel.State.CLOSED);

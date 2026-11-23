@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-branding.js
 // Owns: Settings → Branding pane, and the client-side apply of branding on
 //   every authed page (title, accent, footer, sidebar identity).
@@ -35,12 +36,12 @@ function applyBranding(b) {
     const avatar = document.querySelector('.sidebar-avatar');
     if (avatar) avatar.textContent = b.product_name.trim().charAt(0).toUpperCase();
 
-    const logoImg = document.querySelector('.sidebar-logo img');
+    const logoImg = /** @type {HTMLImageElement|null} */ (document.querySelector('.sidebar-logo img'));
     if (logoImg) logoImg.alt = b.product_name;
   }
 
   if (b.logo_url) {
-    const logoImg = document.querySelector('.sidebar-logo img');
+    const logoImg = /** @type {HTMLImageElement|null} */ (document.querySelector('.sidebar-logo img'));
     if (logoImg) logoImg.src = b.logo_url;
   }
 
@@ -66,28 +67,28 @@ function applyBranding(b) {
 }
 
 function _fillBrandingForm(b) {
-  const product = document.getElementById('br-product');
+  const product = /** @type {HTMLInputElement|null} */ (document.getElementById('br-product'));
   if (!product) return;   // not on the settings page
   product.value = b.product_name || '';
-  document.getElementById('br-logo').value = b.logo_url || '';
-  document.getElementById('br-accent').value = b.accent || '';
-  document.getElementById('br-footer').value = b.footer_text || '';
-  document.getElementById('br-support').value = b.support_url || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('br-logo')).value = b.logo_url || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('br-accent')).value = b.accent || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('br-footer')).value = b.footer_text || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('br-support')).value = b.support_url || '';
 
-  const picker = document.getElementById('br-accent-picker');
+  const picker = /** @type {HTMLInputElement|null} */ (document.getElementById('br-accent-picker'));
   if (picker && /^#[0-9A-Fa-f]{6}$/.test(b.accent || '')) picker.value = b.accent;
 
-  const note = document.getElementById('br-note');
-  const save = document.getElementById('br-save');
+  const note = /** @type {HTMLElement|null} */ (document.getElementById('br-note'));
+  const save = /** @type {HTMLButtonElement|null} */ (document.getElementById('br-save'));
   ['br-product', 'br-logo', 'br-accent', 'br-footer', 'br-support', 'br-accent-picker']
     .forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.disabled = !_brandingLicensed;
+      if (el) /** @type {HTMLInputElement} */ (el).disabled = !_brandingLicensed;
     });
   if (save) save.disabled = !_brandingLicensed;
   if (note) {
     note.textContent = _brandingLicensed
-      ? '' : 'Branding is a Business feature — Free installs use the Vigil identity.';
+      ? '' : t('Branding is a Business feature — Free installs use the Vigil identity.');
   }
 }
 
@@ -96,7 +97,7 @@ async function loadBranding() {
   try {
     b = await apiJson('/api/v1/branding/');
   } catch (e) {
-    return;   // never let branding break a page
+    return;   // state-ok: not a list — the page keeps the stock Vigil identity
   }
   applyBranding(b);
 
@@ -107,25 +108,25 @@ async function loadBranding() {
 }
 
 async function saveBranding() {
-  const note = document.getElementById('br-note');
-  const accent = document.getElementById('br-accent').value.trim();
+  const note = /** @type {HTMLElement} */ (document.getElementById('br-note'));
+  const accent = /** @type {HTMLInputElement} */ (document.getElementById('br-accent')).value.trim();
   if (accent && !/^#[0-9A-Fa-f]{6}$/.test(accent)) {
-    note.textContent = 'Accent must be a hex color in the format #RRGGBB.';
+    note.textContent = t('Accent must be a hex color in the format #RRGGBB.');
     return;
   }
   const body = {
-    product_name: document.getElementById('br-product').value.trim(),
-    logo_url: document.getElementById('br-logo').value.trim(),
+    product_name: /** @type {HTMLInputElement} */ (document.getElementById('br-product')).value.trim(),
+    logo_url: /** @type {HTMLInputElement} */ (document.getElementById('br-logo')).value.trim(),
     accent: accent,
-    footer_text: document.getElementById('br-footer').value.trim(),
-    support_url: document.getElementById('br-support').value.trim(),
+    footer_text: /** @type {HTMLInputElement} */ (document.getElementById('br-footer')).value.trim(),
+    support_url: /** @type {HTMLInputElement} */ (document.getElementById('br-support')).value.trim(),
   };
   try {
     const saved = await apiJson('/api/v1/branding/', {
       method: 'PATCH', body: JSON.stringify(body),
     });
     note.textContent = '';
-    showToast('Branding saved', 'success');
+    showToast(t('Branding saved'), 'success');
     applyBranding(saved);
   } catch (e) {
     note.textContent = e.message;   // 402 upgrade body, 403, or validation error
@@ -137,8 +138,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (save) save.addEventListener('click', saveBranding);
 
   // Keep the color picker and the hex field in step.
-  const picker = document.getElementById('br-accent-picker');
-  const hex = document.getElementById('br-accent');
+  const picker = /** @type {HTMLInputElement|null} */ (document.getElementById('br-accent-picker'));
+  const hex = /** @type {HTMLInputElement|null} */ (document.getElementById('br-accent'));
   if (picker && hex) {
     picker.addEventListener('input', () => { hex.value = picker.value; });
     hex.addEventListener('input', () => {

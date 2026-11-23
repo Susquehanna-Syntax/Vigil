@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-enroll.js
 // Owns: Enrollment wizard modal — 4-step flow for adding a new host.
 // HTML: templates/base.html #enroll-modal
@@ -7,29 +8,45 @@
 //   POST /api/v1/agent-profiles/enroll-config/
 
 /* ── state ── */
+/* The id of the host being approved, minted by POST /hosts/enroll-request/. */
+/** @type {string|null} */
 let _enrollToken = null;
+/** @type {any} */
 let _enrollPollTimer = null;
+/** @type {any} */
 let _enrollDetectedHost = null;
+/** @type {string} */
 let _enrollOs = 'unix';  // 'unix' (Linux/macOS, any arch) or 'windows'
 
 /* The one-time config token QA-62 mints, and the address its agent.yml points
    at. Both only exist once "Create install command" has run: until then there
    is no command to show, because nothing about the agent is decided yet. */
+/** @type {string|null} */
 let _enrollConfigToken = null;
+/** @type {string} */
 let _enrollServer = window.location.origin;
+/** @type {any[]} */
 let _enrollProfiles = [];
+/** @type {string} */
 let _enrollProfileId = '';
 
 /* ── helpers ── */
 
+/** @returns {string} */
 function _uuidv4() {
-  return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+  /* The `[1e7] + -1e3 + …` idiom below is what turns the array into the
+     template "10000000-1000-4000-8000-100000000000"; its `+` operands are
+     written as strings because tsc reads them as numbers and reports TS2365 on
+     the array + number form. Same bytes, same replacement below — the leading
+     1 of each group is what the '-' came from. */
+  return ([1e7] + '-1000' + '-4000' + '-8000' + '-100000000000').replace(/[018]/g, (/** @type {any} */ c) =>
     (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
   );
 }
 
+/** @param {number} n @returns {void} */
 function _enrollSetStep(n) {
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4].forEach((/** @type {number} */ i) => {
     document.getElementById('enroll-s' + i).style.display = i === n ? 'block' : 'none';
     document.getElementById('enroll-pip-' + i).classList.toggle('active', i === n);
   });
@@ -49,8 +66,9 @@ function _enrollSetStep(n) {
 
 const _ENROLL_WIN_CMD = '$env:VIGIL_TOKEN = "${_enrollToken}"; irm ${origin}/agent/install.ps1 | iex';
 
+/** @returns {string} */
 function _enrollWindowsCmd() {
-  const command = _ENROLL_WIN_CMD.replace('${_enrollToken}', _enrollToken).replace('${origin}', _enrollServer);
+  const command = _ENROLL_WIN_CMD.replace('${_enrollToken}', /** @type {string} */ (_enrollToken)).replace('${origin}', _enrollServer);
   // Its own statement before irm, in the same session, so install.ps1 sees it.
   return _enrollConfigToken
     ? command.replace('; irm', `; $env:VIGIL_CONFIG_TOKEN = "${_enrollConfigToken}"; irm`)
@@ -59,8 +77,9 @@ function _enrollWindowsCmd() {
 
 const _ENROLL_LINUX_CMD = 'curl -fsSL ${origin}/agent/install.sh | sudo env VIGIL_TOKEN=${_enrollToken} bash';
 
+/** @returns {string} */
 function _enrollLinuxCmd() {
-  const command = _ENROLL_LINUX_CMD.replace('${_enrollToken}', _enrollToken).replace('${origin}', _enrollServer);
+  const command = _ENROLL_LINUX_CMD.replace('${_enrollToken}', /** @type {string} */ (_enrollToken)).replace('${origin}', _enrollServer);
   // Before ` bash`, inside the `sudo env` list: anywhere else neither sudo nor
   // install.sh ever sees it.
   return _enrollConfigToken
@@ -68,16 +87,19 @@ function _enrollLinuxCmd() {
     : command;
 }
 
+/** @returns {HTMLElement|null} */
 function _enrollForm() {
   return document.getElementById('enroll-config');
 }
 
+/** @param {string|number} id @returns {any} */
 function _enrollProfile(id) {
-  return _enrollProfiles.find(p => String(p.id) === String(id)) || null;
+  return _enrollProfiles.find((/** @type {any} */ p) => String(p.id) === String(id)) || null;
 }
 
 /* Every field the form holds that the profile does not — sent as overrides, so
    "Create install command" mints exactly what is on screen and nothing else. */
+/** @param {any} profile @param {Record<string, any>} values @returns {Record<string, any>} */
 function _enrollDiff(profile, values) {
   if (!profile) return values;
   const out = {};
@@ -95,6 +117,7 @@ function _enrollDiff(profile, values) {
 
 /* Step 1 has no command until the settings are turned into one: the block is
    hidden, and this both fills it and reveals it. */
+/** @returns {void} */
 function _enrollRenderCmd() {
   const block = document.getElementById('enroll-cmd-block');
   if (!_enrollConfigToken) {
@@ -107,13 +130,14 @@ function _enrollRenderCmd() {
   const hint = document.getElementById('enroll-cmd-hint');
   if (hint) {
     hint.textContent = _enrollOs === 'windows'
-      ? 'Run this in an elevated (Administrator) PowerShell on the machine you want to add. The agent installs as a Windows service and will appear in the queue below.'
-      : 'Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.';
+      ? t('Run this in an elevated (Administrator) PowerShell on the machine you want to add. The agent installs as a Windows service and will appear in the queue below.')
+      : t('Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.');
   }
 }
 
 /* The form changed after the command was minted: that command installs the
    OLD settings, which is the one outcome an admin must not be able to miss. */
+/** @returns {void} */
 function _enrollInvalidateCmd() {
   if (!_enrollConfigToken) return;
   _enrollConfigToken = null;
@@ -123,13 +147,14 @@ function _enrollInvalidateCmd() {
   if (block) block.hidden = true;
   const note = document.getElementById('enroll-stale');
   if (note) {
-    note.textContent = 'Settings changed — create the command again.';
+    note.textContent = t('Settings changed — create the command again.');
     note.hidden = false;
   }
-  const next = document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]');
+  const next = /** @type {HTMLButtonElement} */ (document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]'));
   if (next) next.disabled = true;
 }
 
+/** @param {string} os @returns {void} */
 function enrollSetOs(os) {
   _enrollOs = os;
   document.getElementById('enroll-os-unix').classList.toggle('active', os === 'unix');
@@ -137,6 +162,7 @@ function enrollSetOs(os) {
   _enrollRenderCmd();
 }
 
+/** @returns {Promise<void>} */
 async function openEnrollWizard() {
   _enrollToken = _uuidv4();
   _enrollDetectedHost = null;
@@ -146,7 +172,7 @@ async function openEnrollWizard() {
 
   const stale = document.getElementById('enroll-stale');
   if (stale) stale.hidden = true;
-  const next = document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]');
+  const next = /** @type {HTMLButtonElement} */ (document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]'));
   if (next) next.disabled = true;
   _enrollRenderCmd();
   _enrollSetStep(1);
@@ -172,10 +198,10 @@ async function openEnrollWizard() {
     _enrollProfiles = Array.isArray(profiles) ? profiles : [];
     _enrollFillProfiles();
     if (!_enrollProfile(_enrollProfileId)) {
-      const monitor = _enrollProfiles.find(p => p.name === 'Monitor only') || _enrollProfiles[0];
+      const monitor = _enrollProfiles.find((/** @type {any} */ p) => p.name === 'Monitor only') || _enrollProfiles[0];
       _enrollProfileId = monitor ? String(monitor.id) : '';
     }
-    const sel = document.getElementById('enroll-profile');
+    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('enroll-profile'));
     if (sel) sel.value = _enrollProfileId;
     apfRender(form, _enrollProfile(_enrollProfileId), ctx);
     _enrollWatchForm(form);
@@ -189,6 +215,7 @@ async function openEnrollWizard() {
 
 /* Any edit after a command exists makes that command install the old
    settings, so it is withdrawn. Bound once: the mount outlives re-renders. */
+/** @param {HTMLElement & {_enrollWatched?: boolean}} form @returns {void} */
 function _enrollWatchForm(form) {
   if (form._enrollWatched) return;
   form._enrollWatched = true;
@@ -197,6 +224,7 @@ function _enrollWatchForm(form) {
   }
 }
 
+/** @returns {void} */
 function _enrollFillProfiles() {
   const sel = document.getElementById('enroll-profile');
   if (!sel) return;
@@ -211,8 +239,9 @@ function _enrollFillProfiles() {
   }
 }
 
+/** @returns {Promise<void>} */
 async function enrollUseProfile() {
-  const sel = document.getElementById('enroll-profile');
+  const sel = /** @type {HTMLSelectElement} */ (document.getElementById('enroll-profile'));
   const form = _enrollForm();
   if (!sel || !form) return;
   _enrollProfileId = sel.value;
@@ -224,6 +253,7 @@ async function enrollUseProfile() {
   _enrollInvalidateCmd();
 }
 
+/** @returns {Promise<void>} */
 async function enrollCreateCommand() {
   const form = _enrollForm();
   if (!form) return;
@@ -232,7 +262,7 @@ async function enrollCreateCommand() {
   if (note) note.hidden = true;
   apfShowErrors(form, null);
 
-  const btn = document.querySelector('#enroll-s1 [data-act="enrollCreateCommand"]');
+  const btn = /** @type {HTMLButtonElement} */ (document.querySelector('#enroll-s1 [data-act="enrollCreateCommand"]'));
   if (btn) btn.disabled = true;
   try {
     const res = await apiJson('/api/v1/agent-profiles/enroll-config/', {
@@ -253,11 +283,11 @@ async function enrollCreateCommand() {
       notes.hidden = !(res.notes || []).length;
     }
     _enrollRenderCmd();
-    const next = document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]');
+    const next = /** @type {HTMLButtonElement} */ (document.querySelector('#enroll-s1 [data-act="enrollGoStep2"]'));
     if (next) next.disabled = false;
   } catch (e) {
     apfShowErrors(form, _enrollErrorFields(e));
-    showToast(e.message || 'Could not create the install command', 'error');
+    showToast(e.message || t('Could not create the install command'), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -265,11 +295,13 @@ async function enrollCreateCommand() {
 
 /* QA-62 answers a bad setting with {errors: {field: message}} and no detail,
    so apiJson's message alone would say "Request failed" over eight fields. */
+/** @param {any} err @returns {Record<string, string>|null} */
 function _enrollErrorFields(err) {
   const body = err && err.body;
   return (body && typeof body.errors === 'object' && body.errors) || null;
 }
 
+/** @returns {Promise<void>} */
 async function enrollSaveProfile() {
   const form = _enrollForm();
   if (!form) return;
@@ -277,6 +309,7 @@ async function enrollSaveProfile() {
   if (!name) return;
   const site = await sitePickChoose('Site for this profile');
   if (site === false) return;
+  /** @type {{name: any, site_id?: string|number|null}} */
   const body = { ...apfRead(form), name };
   if (site !== undefined) body.site_id = site;
   apfShowErrors(form, null);
@@ -288,27 +321,30 @@ async function enrollSaveProfile() {
     _enrollProfiles = await apiJson('/api/v1/agent-profiles/');
     _enrollFillProfiles();
     _enrollProfileId = String(created.id);
-    const sel = document.getElementById('enroll-profile');
+    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('enroll-profile'));
     if (sel) sel.value = _enrollProfileId;
-    showToast(`Saved profile ${created.name}`, 'success');
+    showToast(t('Saved profile {name}', { name: created.name }), 'success');
   } catch (e) {
     apfShowErrors(form, _enrollErrorFields(e));
-    showToast(e.message || 'Could not save the profile', 'error');
+    showToast(e.message || t('Could not save the profile'), 'error');
   }
 }
 
+/** @returns {void} */
 function closeEnrollWizard() {
   _stopEnrollPoll();
   document.getElementById('enroll-overlay').classList.remove('open');
   document.getElementById('enroll-modal').classList.remove('open');
 }
 
+/** @returns {void} */
 function copyEnrollCmd() {
   const cmd = document.getElementById('enroll-cmd').textContent;
   copyText(cmd).then((ok) => showToast(
-    ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'));
+    ok ? t('Copied to clipboard') : t('Copy failed'), ok ? 'success' : 'error'));
 }
 
+/** @returns {void} */
 function enrollGoStep2() {
   _enrollSetStep(2);
   _startEnrollPoll();
@@ -319,6 +355,7 @@ function _startEnrollPoll() {
   _enrollPollTimer = pollingInterval(_pollForHost, 3000);
 }
 
+/** @returns {void} */
 function _stopEnrollPoll() {
   if (_enrollPollTimer) {
     clearPollingInterval(_enrollPollTimer);
@@ -326,6 +363,7 @@ function _stopEnrollPoll() {
   }
 }
 
+/** @returns {Promise<void>} */
 async function _pollForHost() {
   if (!_enrollToken) return;
   try {
@@ -338,45 +376,46 @@ async function _pollForHost() {
       _enrollDetectedHost = data.host;
       _enrollSetStep(3);
       const hostname = data.host.hostname || '—';
-      const os = data.host.os || 'Unknown OS';
-      const ip = data.host.ip_address || 'Unknown IP';
+      const os = data.host.os || t('Unknown OS');
+      const ip = data.host.ip_address || t('Unknown IP');
       document.getElementById('enroll-detected-hostname').textContent = hostname;
-      document.getElementById('enroll-detected-meta').textContent = `${os} · ${ip}`;
+      document.getElementById('enroll-detected-meta').textContent = t('{os} · {ip}', { os, ip });
       const rep = document.getElementById('enroll-replaces');
       if (rep) {
         if (data.replaces) {
-          rep.textContent = `Replaces ${data.replaces.hostname} — its history, tags and site are kept.`;
+          rep.textContent = t('Replaces {hostname} — its history, tags and site are kept.', { hostname: data.replaces.hostname });
           rep.style.display = '';
         } else {
           rep.style.display = 'none';
         }
       }
       if (data.status === 'approved') {
-        document.getElementById('enroll-approve-btn').disabled = true;
-        document.getElementById('enroll-approve-btn').textContent = 'Already approved';
+        /** @type {HTMLButtonElement} */ (document.getElementById('enroll-approve-btn')).disabled = true;
+        document.getElementById('enroll-approve-btn').textContent = t('Already approved');
       }
     }
-  } catch (_) { /* silently retry */ }
+  } catch (_) { /* state-ok: the wizard keeps polling until the agent reports in */ }
 }
 
+/** @returns {Promise<void>} */
 async function enrollApproveHost() {
   if (!_enrollDetectedHost) return;
   const totp = await totpPrompt(`Approving ${_enrollDetectedHost.hostname || 'this host'} lets it receive signed tasks.`,
-    { title: 'Approve host', confirmText: 'Approve' });
+    { title: t('Approve host'), confirmText: t('Approve') });
   if (!totp) return;
-  const btn = document.getElementById('enroll-approve-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('enroll-approve-btn'));
   btn.disabled = true;
   try {
     await apiJson(`/api/v1/hosts/${_enrollDetectedHost.id}/approve/`, {
       method: 'POST',
       body: JSON.stringify({ totp }),
     });
-    const hostname = _enrollDetectedHost.hostname || 'Host';
-    document.getElementById('enroll-done-msg').textContent = `${hostname} is now online and monitoring.`;
+    const hostname = _enrollDetectedHost.hostname || t('Host');
+    document.getElementById('enroll-done-msg').textContent = t('{hostname} is now online and monitoring.', { hostname });
     _enrollSetStep(4);
   } catch (e) {
     btn.disabled = false;
-    showToast('Approval failed: ' + e.message, 'error');
+    showToast(t('Approval failed: {reason}', { reason: e.message }), 'error');
   }
 }
 

@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-runhistory.js
 // Owns: Playbooks → History sub-tab. Lists TaskRuns produced by playbook and
 // automation dispatch, newest first, with the outcome the run settled into.
@@ -21,7 +22,9 @@ const _RUN_STATE_ACCENT = {
 // each row can say what happened in words next to its outputs.
 const _STEP_LINE = /^\[(OK|ERROR|FAILED|SKIPPED|PROBE|NOT APPLICABLE)\]\s+([^:(]+?)(?:\s+\(([^)]+)\))?:\s*(.*)$/;
 
+/** @param {string} output @returns {{byId: Record<string, {tag: string, action: string, text: string}>, notes: string[]}} */
 function _stepLines(output) {
+  /** @type {Record<string, {tag: string, action: string, text: string}>} */
   const byId = {};
   const notes = [];
   String(output || '').split('\n').forEach((line) => {
@@ -33,6 +36,7 @@ function _stepLines(output) {
 }
 
 // A hunt's line is its JSON result; say it as a count instead.
+/** @param {string} text @returns {string} */
 function _stepMessage(text) {
   const t = String(text || '').trim();
   if (t.startsWith('{')) {
@@ -42,11 +46,12 @@ function _stepMessage(text) {
         const n = body.matches.length;
         return `${n} match${n === 1 ? '' : 'es'}${body.truncated ? ' (cut off at the limit)' : ''}${body.timed_out ? ' — timed out' : ''}`;
       }
-    } catch (e) { /* not JSON after all: show it as text */ }
+    } catch (e) { /* state-ok: not JSON after all: the line is shown as text */ }
   }
   return t.length > 240 ? t.slice(0, 240) + '…' : t;
 }
 
+/** @param {any} resultData @param {string|null|undefined} output @returns {string} */
 function _stepResultsHtml(resultData, output) {
   // One row per step: what happened, in words, next to what it reported.
   // Everything here is agent-reported, so every value goes through escHtml.
@@ -55,6 +60,7 @@ function _stepResultsHtml(resultData, output) {
   const { byId, notes } = _stepLines(output);
   const rows = steps.map((s) => {
     const id = String((s && s.id) || '');
+    /** @type {{tag?: string, action?: string, text?: string}} */
     const line = byId[id] || {};
     let status = String((s && s.status) || '');
     if (line.tag === 'ERROR' || line.tag === 'FAILED') status = 'error';
@@ -78,6 +84,12 @@ function _stepResultsHtml(resultData, output) {
   return `<div class="run-step-results">${rows}${noteHtml}</div>`;
 }
 
+/** One playbook/automation TaskRun row from /api/v1/tasks/history/. */
+/** @typedef {{id: any, source?: string, state?: string, created_at?: string, finished_at?: string|null,
+ *  name_snapshot?: string, automation_name?: string, playbook_name?: string, host_count?: number,
+ *  step_count?: number, [k: string]: any}} RunRow */
+
+/** @param {string} iso @returns {string} */
 function _runWhen(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -88,14 +100,16 @@ function _runWhen(iso) {
   return d.toLocaleDateString();
 }
 
+/** @param {RunRow} row @returns {string} */
 function _runDuration(row) {
   if (!row.finished_at) return '';
-  const ms = new Date(row.finished_at) - new Date(row.created_at);
+  const ms = new Date(row.finished_at).getTime() - new Date(row.created_at).getTime();
   if (ms < 1000) return '<1s';
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   return `${Math.round(ms / 60000)}m`;
 }
 
+/** @param {RunRow} row @returns {HTMLElement} */
 function _buildRunRow(row) {
   const el = document.createElement('div');
   el.className = 'run-row';
@@ -118,69 +132,86 @@ function _buildRunRow(row) {
   return el;
 }
 
+/** @param {any} runId @returns {Promise<void>} */
 async function _openRunDetail(runId) {
   let run;
   try { run = await apiJson(`/api/v1/tasks/runs/${runId}/`); }
-  catch (e) { showToast('Could not load that run', 'error'); return; }
+  catch (e) { showToast(t('Could not load that run'), 'error'); return; }
 
   const m = mountModal('run-detail', { wide: true });
   const tasks = run.tasks || [];
+  // Named outside the map below, whose `t` is a task row and shadows the
+  // translate helper.
+  const fullOutputLabel = escHtml(t('Full output'));
   const rows = tasks.length
-    ? tasks.map((t) => `
+    ? tasks.map((/** @type {any} */ t) => `
         <div class="run-task" data-host="${escAttr(String(t.host))}">
           <button type="button" class="run-task-host host-run-link" data-host-run="${escAttr(String(t.host))}">${escHtml(t.host_hostname || t.hostname || t.host || '')}</button>
           <span class="run-state t-${_RUN_STATE_ACCENT[t.state] || 'lav'}">${escHtml(t.state)}</span>
           ${_stepResultsHtml(t.result_data, t.result_output)
-            ? `${_stepResultsHtml(t.result_data, t.result_output)}<details class="step-output-more"><summary>Full output</summary><pre class="run-task-out term term-wrap">${termHtml(t.result_output || '')}</pre></details>`
+            ? `${_stepResultsHtml(t.result_data, t.result_output)}<details class="step-output-more"><summary>${fullOutputLabel}</summary><pre class="run-task-out term term-wrap">${termHtml(t.result_output || '')}</pre></details>`
             : `<pre class="run-task-out term term-wrap">${termHtml(t.result_output || '')}</pre>`}
         </div>`).join('')
-    : '<p class="muted">No task rows for this run.</p>';
+    : `<p class="muted">${escHtml(t('No task rows for this run.'))}</p>`;
   const huntBtn = _runHasHuntSteps(run)
-    ? `<button class="btn btn-sky btn-sm" id="rd-hunt" type="button">Open hunt results</button>`
+    ? `<button class="btn btn-sky btn-sm" id="rd-hunt" type="button">${escHtml(t('Open hunt results'))}</button>`
     : '';
   m.setBody(`
-    <div class="modal-title"><span>${escHtml(run.name_snapshot || 'Run')}</span>
+    <div class="modal-title"><span>${escHtml(run.name_snapshot || t('Run'))}</span>
       <button class="modal-close" id="rd-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <p class="muted" style="margin-bottom:12px;">${escHtml(run.state)} · ${escHtml(String(run.host_count))} host(s) · ${escHtml(String(run.step_count))} step(s)</p>
+    <p class="muted run-detail-intro">${escHtml(run.state)} · ${escHtml(String(run.host_count))} host(s) · ${escHtml(String(run.step_count))} step(s)</p>
     ${typeof runSummaryHtml === 'function' ? runSummaryHtml(run.summary) : ''}
     ${typeof flowRunHtml === 'function' ? flowRunHtml(run) : ''}
     <div class="run-task-list">${rows}</div>
-    <div class="confirm-actions">${huntBtn}<button class="btn btn-outline btn-sm" id="rd-close">Close</button></div>`);
+    <div class="confirm-actions">${huntBtn}<button class="btn btn-outline btn-sm" id="rd-close">${escHtml(t('Close'))}</button></div>`);
   const close = () => m.close();
-  m.modal.querySelector('#rd-x').onclick = close;
-  m.modal.querySelector('#rd-close').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rd-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rd-close')).onclick = close;
   if (typeof wireRunSummary === 'function') wireRunSummary(m.modal, run.summary, run);
   // A playbook run draws its flow: give it the room the lanes need.
   if (run.flow_snapshot) m.modal.classList.add('modal-flow');
-  const huntBtnEl = m.modal.querySelector('#rd-hunt');
+  const huntBtnEl = /** @type {HTMLElement} */ (m.modal.querySelector('#rd-hunt'));
   if (huntBtnEl) huntBtnEl.onclick = () => { m.close(); openHuntResults(run.id); };
   requestAnimationFrame(m.open);
 }
 
+/** @returns {void} */
 function _renderRunPager() {
   const el = document.getElementById('run-history-pager');
   if (!el) return;
   const { page, pages } = runHistoryState;
   if (pages <= 1) { el.replaceChildren(); return; }
+  const prevLabel = t('Previous');
+  const pageInfo = t('Page {page} of {pages}', { page, pages });
+  const nextLabel = t('Next');
+  const prevOff = page <= 1 ? 'disabled' : '';
+  const nextOff = page >= pages ? 'disabled' : '';
   el.innerHTML =
-    `<button class="btn btn-outline btn-sm" ${page <= 1 ? 'disabled' : ''} id="rh-prev">Previous</button>` +
-    `<span class="muted">Page ${page} of ${pages}</span>` +
-    `<button class="btn btn-sky btn-sm" ${page >= pages ? 'disabled' : ''} id="rh-next">Next</button>`;
+    `<button class="btn btn-outline btn-sm" ${prevOff} id="rh-prev">${escHtml(prevLabel)}</button>` +
+    `<span class="muted">${escHtml(pageInfo)}</span>` +
+    `<button class="btn btn-sky btn-sm" ${nextOff} id="rh-next">${escHtml(nextLabel)}</button>`;
   el.querySelector('#rh-prev')?.addEventListener('click', () => loadRunHistory(page - 1));
   el.querySelector('#rh-next')?.addEventListener('click', () => loadRunHistory(page + 1));
 }
 
+/** @param {number=} page @returns {Promise<void>} */
 async function loadRunHistory(page) {
   const list = document.getElementById('run-history-list');
   if (!list) return;
   const p = page || runHistoryState.page || 1;
+  // The panel starts empty, so "nothing on screen yet" is the loading test: a
+  // poll over rows already drawn keeps them, and a failed list's own retry
+  // redraws the failure rather than flashing Loading under it.
+  const fromScratch = !list.firstChild;
+  if (fromScratch) showLoading(list);
   let body;
   try {
     body = await apiJson(
       `/api/v1/tasks/runs/?page=${p}&source=${encodeURIComponent(runHistoryState.source)}`);
   } catch (e) {
-    // Silent on poll failure — keep the last good list on screen.
+    if (!fromScratch) return;   // a poll failure keeps the last good list on screen
+    showLoadFailure(list, t('the run history'), e, () => loadRunHistory(p));
     return;
   }
   runHistoryState.page = body.page;
@@ -200,15 +231,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Client-side filter over the page already fetched. Deliberately not a
   // server round-trip: history is paged, and re-querying on every keystroke
   // would fight the pager.
-  document.getElementById('hist-search')?.addEventListener('input', (e) => {
-    const q = (e.target.value || '').trim().toLowerCase();
-    document.querySelectorAll('#hist-list .bl-card, #hist-list tr').forEach(row => {
+  document.getElementById('hist-search')?.addEventListener('input', (/** @type {Event} */ e) => {
+    const q = (/** @type {HTMLInputElement} */ (e.target).value || '').trim().toLowerCase();
+    document.querySelectorAll('#hist-list .bl-card, #hist-list tr').forEach((/** @type {HTMLElement} */ row) => {
       row.style.display = !q || (row.textContent || '').toLowerCase().includes(q) ? '' : 'none';
     });
   });
 
-  document.getElementById('hist-filters')?.addEventListener('click', (e) => {
-    const b = e.target.closest('.sa-chip');
+  document.getElementById('hist-filters')?.addEventListener('click', (/** @type {MouseEvent} */ e) => {
+    const b = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (e.target).closest('.sa-chip'));
     if (!b) return;
     document.querySelectorAll('#hist-filters .sa-chip')
       .forEach((c) => c.classList.toggle('on', c === b));
@@ -216,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRunHistory(1);
   });
 
-  document.querySelectorAll('#page-playbooks .sub-tab').forEach((tab) => {
+  document.querySelectorAll('#page-playbooks .sub-tab').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.subtab === 'hist-panel') loadRunHistory(1);
     });

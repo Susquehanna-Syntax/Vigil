@@ -4,6 +4,8 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -11,7 +13,7 @@ class SidebarLabelTests(SimpleTestCase):
     def test_toggle_state_and_labels(self):
         base = (ROOT / "templates/base.html").read_text(encoding="utf-8")
         utils = (ROOT / "static/js/vigil-utils.js").read_text(encoding="utf-8")
-        css = (ROOT / "static/css/vigil.css").read_text(encoding="utf-8")
+        css = design_css()
         self.assertIn('data-act="toggleSidebar"', base)
         # Applied in the head script, before the layout first paints.
         head = base[:base.index("</head>")]

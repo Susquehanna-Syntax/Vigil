@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-settings.js
 // Owns: Settings page — TOTP enrollment / disable, agent binary upload.
 //   (AD config lives in vigil-inventory.js since it imports Hosts.)
@@ -8,95 +9,102 @@
 
 /* ── TOTP enrollment ── */
 async function refreshTotpStatus() {
-  const status = document.getElementById('totp-status-line');
+  const status = /** @type {HTMLElement} */ (document.getElementById('totp-status-line'));
   if (!status) return;
   // The security keys card sits right under this one and opens with it.
   loadSecurityKeys();
   try {
     const data = await apiJson('/api/v1/accounts/totp/');
+    /** @type {HTMLElement} */
     const sub = document.getElementById('totp-sub-line');
+    /** @type {HTMLElement} */
     const startBtn = document.getElementById('totp-start-btn');
+    /** @type {HTMLElement} */
     const disableBtn = document.getElementById('totp-disable-btn');
+    /** @type {HTMLElement} */
     const enrollView = document.getElementById('totp-enroll-view');
     if (data.enrolled) {
-      status.textContent = 'TOTP enabled';
+      status.textContent = t('TOTP enabled');
       status.className = 'totp-status enabled';
-      sub.textContent = 'Your account is protected. Task deploys require a 6-digit code.';
+      sub.textContent = t('Your account is protected. Task deploys require a 6-digit code.');
       startBtn.style.display = 'none';
       disableBtn.style.display = '';
       enrollView.style.display = 'none';
     } else if (data.pending) {
-      status.textContent = 'Enrollment pending';
+      status.textContent = t('Enrollment pending');
       status.className = 'totp-status pending';
-      sub.textContent = 'Scan the secret into an authenticator app, then enter a code to finish.';
+      sub.textContent = t('Scan the secret into an authenticator app, then enter a code to finish.');
       startBtn.style.display = 'none';
       disableBtn.style.display = 'none';
     } else {
-      status.textContent = 'TOTP not enabled';
+      status.textContent = t('TOTP not enabled');
       status.className = 'totp-status disabled';
-      sub.textContent = 'Password fallback is test-only and will be removed. Enroll TOTP to execute tasks.';
+      sub.textContent = t('Password fallback is test-only and will be removed. Enroll TOTP to execute tasks.');
       startBtn.style.display = '';
       disableBtn.style.display = 'none';
       enrollView.style.display = 'none';
     }
-  } catch (e) { /* settings may not be open */ }
+  } catch (e) { /* state-ok: a status line on the settings card, not a list; it keeps what it showed */ }
 }
 
 async function totpStart() {
   try {
     const data = await apiJson('/api/v1/accounts/totp/enroll/', { method: 'POST' });
-    document.getElementById('totp-secret-text').textContent = data.secret;
-    document.getElementById('totp-uri-text').textContent = data.otpauth_uri;
-    document.getElementById('totp-enroll-view').style.display = 'block';
-    document.getElementById('totp-verify-code').value = '';
-    document.getElementById('totp-verify-code').focus();
+    /** @type {HTMLElement} */ (document.getElementById('totp-secret-text')).textContent = data.secret;
+    /** @type {HTMLElement} */ (document.getElementById('totp-uri-text')).textContent = data.otpauth_uri;
+    /** @type {HTMLElement} */ (document.getElementById('totp-enroll-view')).style.display = 'block';
+    /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).focus();
     refreshTotpStatus();
   } catch (e) {
-    showToast('TOTP enroll failed: ' + e.message, 'error');
+    showToast(t('TOTP enroll failed: {message}', { message: e.message }), 'error');
   }
 }
 
 async function totpConfirm() {
-  const code = document.getElementById('totp-verify-code').value.trim();
+  const code = /** @type {HTMLInputElement} */ (document.getElementById('totp-verify-code')).value.trim();
   if (!/^\d{6}$/.test(code)) {
-    showToast('Enter a 6-digit code', 'error');
+    showToast(t('Enter a 6-digit code'), 'error');
     return;
   }
   try {
     await apiJson('/api/v1/accounts/totp/enroll/confirm/', {
       method: 'POST', body: JSON.stringify({ code }),
     });
-    showToast('TOTP enabled', 'success');
+    showToast(t('TOTP enabled'), 'success');
     refreshTotpStatus();
   } catch (e) {
-    showToast('Verify failed: ' + e.message, 'error');
+    showToast(t('Verify failed: {message}', { message: e.message }), 'error');
   }
 }
 
 async function totpDisablePrompt() {
-  const code = await totpPrompt('Turning off two-factor authentication. Enter a current code to confirm.',
-    { title: 'Disable TOTP', confirmText: 'Disable' });
+  const code = await totpPrompt(t('Turning off two-factor authentication. Enter a current code to confirm.'),
+    { title: t('Disable TOTP'), confirmText: t('Disable') });
   if (!code) return;
   try {
     await apiJson('/api/v1/accounts/totp/disable/', {
       method: 'POST', body: JSON.stringify({ code: code.trim() }),
     });
-    showToast('TOTP disabled', 'success');
+    showToast(t('TOTP disabled'), 'success');
     refreshTotpStatus();
   } catch (e) {
-    showToast('Disable failed: ' + e.message, 'error');
+    showToast(t('Disable failed: {message}', { message: e.message }), 'error');
   }
 }
 
 /* ── Agent binary distribution ── */
 
+/* A row of GET /agent/info/. */
+/** @typedef {{platform_label: string, version?: string, sha256: string}} AgentBinary */
 async function loadAgentInfo() {
-  const el = document.getElementById('agent-versions');
+  const el = /** @type {HTMLElement} */ (document.getElementById('agent-versions'));
   if (!el) return;
   try {
     const data = await apiJson('/agent/info/');
     el.textContent = '';
-    if (!data.length) { el.textContent = 'No binaries uploaded yet.'; return; }
+    if (!data.length) { el.textContent = t('No binaries uploaded yet.'); return; }
+    /** @param {AgentBinary} b @param {number} i @returns {void} */
     data.forEach((b, i) => {
       if (i > 0) el.appendChild(document.createTextNode('  ·  '));
       const label = document.createElement('span');
@@ -107,15 +115,15 @@ async function loadAgentInfo() {
       const ver = document.createElement('span');
       ver.className = 'mono';
       ver.style.cssText = 'color:var(--sky-ink);font-size:11px;';
-      ver.textContent = `v${b.version || '?'}`;
+      ver.textContent = `v${b.version || '?'}`; // i18n-ignore
       el.appendChild(ver);
       el.appendChild(document.createTextNode(' '));
       const hash = document.createElement('span');
       hash.style.cssText = 'color:var(--text-3);font-size:11px;';
-      hash.textContent = `(sha256: ${b.sha256.slice(0, 12)}…)`;
+      hash.textContent = t('(sha256: {digest}…)', { digest: b.sha256.slice(0, 12) });
       el.appendChild(hash);
     });
-  } catch (_) {}
+  } catch (e) { showLoadFailure(el, t('the agent binaries'), e, loadAgentInfo); return; }
 }
 
 function fleetVersionLabel(version) {
@@ -226,23 +234,23 @@ async function loadFleetVersions() {
 }
 
 function copyInstallCmd() {
-  const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
-  copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
+  const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`; // i18n-ignore
+  copyText(cmd).then((ok) => showToast(ok ? t('Copied') : t('Copy failed'),
                                        ok ? 'success' : 'error'));
 }
 
 function copyInstallCmdPs1() {
-  const cmd = `irm ${window.location.origin}/agent/install.ps1 | iex`;
-  copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
+  const cmd = `irm ${window.location.origin}/agent/install.ps1 | iex`; // i18n-ignore
+  copyText(cmd).then((ok) => showToast(ok ? t('Copied') : t('Copy failed'),
                                        ok ? 'success' : 'error'));
 }
 
 async function uploadAgentBinary() {
-  const platform = document.getElementById('upload-platform').value;
-  const version = (document.getElementById('upload-version').value || '').trim();
-  const fileInput = document.getElementById('upload-binary');
+  const platform = /** @type {HTMLSelectElement} */ (document.getElementById('upload-platform')).value;
+  const version = (/** @type {HTMLInputElement} */ (document.getElementById('upload-version')).value || '').trim();
+  const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('upload-binary'));
   const file = fileInput.files[0];
-  if (!file) { showToast('Select a binary file first', 'error'); return; }
+  if (!file) { showToast(t('Select a binary file first'), 'error'); return; }
 
   const formData = new FormData();
   formData.append('binary', file);
@@ -255,53 +263,53 @@ async function uploadAgentBinary() {
       body: formData,
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Upload failed');
-    showToast(`Uploaded ${platform}${version ? ' v' + version : ''}`, 'success');
+    if (!resp.ok) throw new Error(data.error || t('Upload failed'));
+    showToast(t('Uploaded {platform}{version}', { platform, version: version ? ' v' + version : '' }), 'success');
     fileInput.value = '';
     loadAgentInfo();
     loadFleetVersions();
   } catch (e) {
-    showToast('Upload failed: ' + e.message, 'error');
+    showToast(t('Upload failed: {message}', { message: e.message }), 'error');
   }
 }
 
 
-
 /* ── Civil SSO settings ──────────────────────────────────────────────── */
 async function loadCivilSettings() {
-  const card = document.getElementById('civil-settings-card');
+  const card = /** @type {HTMLElement} */ (document.getElementById('civil-settings-card'));
   if (!card) return;
   try {
     const d = await apiJson('/api/v1/civil/settings/');
-    document.getElementById('civil-url').value = d.url || '';
-    document.getElementById('civil-slug').value = d.app_slug || '';
-    document.getElementById('civil-enabled').checked = !!d.enabled;
+    /** @type {HTMLInputElement} */ (document.getElementById('civil-url')).value = d.url || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('civil-slug')).value = d.app_slug || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('civil-enabled')).checked = !!d.enabled;
     document.getElementById('civil-env-note').hidden = !d.env_override;
     _renderCivilState(d);
-  } catch (e) { /* leave blank */ }
+  } catch (e) { /* state-ok: a settings form with its own inputs, not a list; it stays blank and save still works */ }
 }
 
 function _renderCivilState(d) {
   const el = document.getElementById('civil-state');
   if (!el) return;
-  if (!d.active) { el.textContent = 'Civil sign-in is off — using local accounts only.'; return; }
-  el.textContent = `Active against ${d.effective_url} · verification key ${d.key_cached ? 'cached' : 'not yet fetched'}.`;
+  if (!d.active) { el.textContent = t('Civil sign-in is off — using local accounts only.'); return; }
+  el.textContent = t('Active against {url} · verification key {state}.',
+    { url: d.effective_url, state: d.key_cached ? t('cached') : t('not yet fetched') });
 }
 
 async function saveCivilSettings(opts) {
   const body = {
-    url: document.getElementById('civil-url').value.trim(),
-    app_slug: document.getElementById('civil-slug').value.trim(),
-    enabled: document.getElementById('civil-enabled').checked,
+    url: /** @type {HTMLInputElement} */ (document.getElementById('civil-url')).value.trim(),
+    app_slug: /** @type {HTMLInputElement} */ (document.getElementById('civil-slug')).value.trim(),
+    enabled: /** @type {HTMLInputElement} */ (document.getElementById('civil-enabled')).checked,
     ...(opts || {}),
   };
   try {
     const d = await apiJson('/api/v1/civil/settings/', { method: 'POST', body: JSON.stringify(body) });
     _renderCivilState(d);
     document.getElementById('civil-env-note').hidden = !d.env_override;
-    if (opts && opts.test) showToast(d.test_ok ? 'Reached Civil and fetched its key' : 'Could not reach Civil', d.test_ok ? 'success' : 'error');
-    else showToast('Civil settings saved', 'success');
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+    if (opts && opts.test) showToast(d.test_ok ? t('Reached Civil and fetched its key') : t('Could not reach Civil'), d.test_ok ? 'success' : 'error');
+    else showToast(t('Civil settings saved'), 'success');
+  } catch (e) { showToast(t('Save failed: {message}', { message: e.message }), 'error'); }
 }
 
 
@@ -319,36 +327,33 @@ async function refreshTransportAck() {
     const data = await apiJson('/api/v1/hosts/transport-ack/');
     const secure = data.request_is_secure;
     if (secure) {
-      status.textContent = 'Served over HTTPS';
+      status.textContent = t('Served over HTTPS');
       status.className = 'totp-status enabled';
-      sub.textContent = 'Secrets are encrypted in transit. No acknowledgement is needed.';
+      sub.textContent = t('Secrets are encrypted in transit. No acknowledgement is needed.');
       ackBtn.style.display = 'none';
       // Still offer to withdraw a stale one — an instance that moved to TLS
       // should not keep an acknowledgement that would apply if it moved back.
       revokeBtn.style.display = data.acknowledged ? '' : 'none';
       if (data.acknowledged) {
-        sub.textContent += ' A plain-text acknowledgement is still on record'
-          + (data.acknowledged_by ? ` from ${data.acknowledged_by}` : '') + '.';
+        sub.textContent += ' ' + t('A plain-text acknowledgement is still on record{from}.',
+          { from: data.acknowledged_by ? ' ' + t('from {who}', { who: data.acknowledged_by }) : '' });
       }
       return;
     }
     if (data.acknowledged) {
-      status.textContent = 'Plain-text transport acknowledged';
+      status.textContent = t('Plain-text transport acknowledged');
       status.className = 'totp-status pending';
-      sub.textContent = 'Rebuilds proceed without asking again. Acknowledged'
-        + (data.acknowledged_by ? ` by ${data.acknowledged_by}` : '')
-        + (data.acknowledged_at
-            ? ` on ${new Date(data.acknowledged_at).toLocaleString()}` : '')
-        + '. Put Vigil behind TLS and withdraw this.';
+      sub.textContent = t('Rebuilds proceed without asking again. Acknowledged{by}{on}. Put Vigil behind TLS and withdraw this.', {
+        by: data.acknowledged_by ? ' ' + t('by {who}', { who: data.acknowledged_by }) : '',
+        on: data.acknowledged_at
+          ? ' ' + t('on {when}', { when: new Date(data.acknowledged_at).toLocaleString() }) : '',
+      });
       ackBtn.style.display = 'none';
       revokeBtn.style.display = '';
     } else {
-      status.textContent = 'Served over plain HTTP';
+      status.textContent = t('Served over plain HTTP');
       status.className = 'totp-status disabled';
-      sub.textContent = 'A rebuild answer file carries an admin password hash, '
-        + 'SSH keys and an enrolment token, and they cross the network in the '
-        + 'clear. Rebuilds ask for an acknowledgement every time until one is '
-        + 'recorded here.';
+      sub.textContent = t('A rebuild answer file carries an admin password hash, SSH keys and an enrolment token, and they cross the network in the clear. Rebuilds ask for an acknowledgement every time until one is recorded here.');
       ackBtn.style.display = '';
       revokeBtn.style.display = 'none';
     }
@@ -364,12 +369,9 @@ async function refreshTransportAck() {
 async function transportAckSet(acknowledged) {
   if (acknowledged && typeof confirmModal === 'function') {
     const ok = await confirmModal(
-      'Vigil will stop asking during rebuilds. The answer file\u2019s admin '
-      + 'password hash, SSH keys and enrolment token will keep crossing the '
-      + 'network unencrypted until Vigil is served over HTTPS. This is '
-      + 'recorded against your account.',
-      { title: 'Acknowledge plain-text transport',
-        confirmText: 'I understand', danger: true });
+      t('Vigil will stop asking during rebuilds. The answer file\u2019s admin password hash, SSH keys and enrolment token will keep crossing the network unencrypted until Vigil is served over HTTPS. This is recorded against your account.'),
+      { title: t('Acknowledge plain-text transport'),
+        confirmText: t('I understand'), danger: true });
     if (!ok) return;
   }
   try {
@@ -377,10 +379,10 @@ async function transportAckSet(acknowledged) {
       method: 'POST',
       body: JSON.stringify({ acknowledged: !!acknowledged }),
     });
-    showToast(acknowledged ? 'Plain-text transport acknowledged'
-                           : 'Acknowledgement withdrawn', 'success');
+    showToast(acknowledged ? t('Plain-text transport acknowledged')
+                           : t('Acknowledgement withdrawn'), 'success');
   } catch (e) {
-    showToast(e.message || 'Could not save that', 'error');
+    showToast(e.message || t('Could not save that'), 'error');
   }
   refreshTransportAck();
 }
@@ -392,10 +394,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (ct) ct.addEventListener('click', () => saveCivilSettings({ test: true, refresh_key: true }));
 
   // Settings sub-nav: switch which pane is visible.
-  document.querySelectorAll('#settings-nav .settings-nav-item').forEach(item => {
+  document.querySelectorAll('#settings-nav .settings-nav-item').forEach((/** @type {HTMLElement} */ item) => {
     item.addEventListener('click', () => {
-      document.querySelectorAll('#settings-nav .settings-nav-item').forEach(i => i.classList.remove('active'));
-      document.querySelectorAll('#page-settings .settings-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('#settings-nav .settings-nav-item').forEach((/** @type {HTMLElement} */ i) => i.classList.remove('active'));
+      document.querySelectorAll('#page-settings .settings-pane').forEach((/** @type {HTMLElement} */ p) => p.classList.remove('active'));
       item.classList.add('active');
       const pane = document.querySelector(`#page-settings .settings-pane[data-pane="${item.dataset.pane}"]`);
       if (pane) pane.classList.add('active');
@@ -443,7 +445,9 @@ document.addEventListener('DOMContentLoaded', () => {
          allowance answers 402 with an upgrade body rather than data.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** @type {ReturnType<typeof pollingInterval>|null} */
 let _relayPoll = null;
+/** @type {Record<string, {id: string|number, name?: string, location?: string, url?: string, priority?: number|null}>} */
 let _relaysById = {};
 
 /* The installer URLs, as text with braces rather than a template literal: the
@@ -453,8 +457,9 @@ let _relaysById = {};
 // one; {config} is the one-time config token, whose agent.yml names this relay
 // as the place to check in. Keep them apart: the config token is redeemed once
 // and is never an agent credential.
-const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} VIGIL_CONFIG_TOKEN={config} bash';
-const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; $env:VIGIL_CONFIG_TOKEN = "{config}"; irm {origin}/agent/install.ps1 | iex';
+const _RELAY_URL_SAMPLE = 'https://relay.example.com'; // i18n-ignore
+const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} VIGIL_CONFIG_TOKEN={config} bash'; // i18n-ignore
+const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; $env:VIGIL_CONFIG_TOKEN = "{config}"; irm {origin}/agent/install.ps1 | iex'; // i18n-ignore
 
 function _relayLinuxCmd(origin, token, config) {
   return _RELAY_LINUX_CMD.replace('{origin}', origin).replace('{token}', token)
@@ -468,7 +473,7 @@ function _relayWindowsCmd(origin, token, config) {
 
 function _relayField(id) {
   const el = document.getElementById(id);
-  return el ? el.value.trim() : '';
+  return el ? /** @type {HTMLInputElement} */ (el).value.trim() : '';
 }
 
 function _relayIsBuiltin(r) {
@@ -486,53 +491,52 @@ function _remoteRelays(relays) {
 
 function _relayStatusPill(r) {
   if (_relayIsBuiltin(r)) {
-    return r.enabled ? '<span class="relay-status ok">Direct</span>'
-                     : '<span class="relay-status off">Off</span>';
+    return r.enabled ? `<span class="relay-status ok">${escHtml(t('Direct'))}</span>`
+                     : `<span class="relay-status off">${escHtml(t('Off'))}</span>`;
   }
-  if (!r.enabled) return '<span class="relay-status off">Off</span>';
+  if (!r.enabled) return `<span class="relay-status off">${escHtml(t('Off'))}</span>`;
   // Enabled, but past what the license covers: the dashboard neither links to
   // it nor accepts its traffic, whatever it reported last.
   if (r.over_limit) {
-    const pill = r.connected ? 'Linked, not in use' : 'Over your limit';
-    return `<div class="relay-status-col"><span class="relay-status off">${pill}</span>`
-      + '<div class="relay-err">Past your relay limit, so agents cannot use it. Turn the built-in relay or another relay off, or add seats.</div></div>';
+    const pill = r.connected ? t('Linked, not in use') : t('Over your limit');
+    return `<div class="relay-status-col"><span class="relay-status off">${escHtml(pill)}</span>`
+      + `<div class="relay-err">${escHtml(t('Past your relay limit, so agents cannot use it. Turn the built-in relay or another relay off, or add seats.'))}</div></div>`;
   }
-  if (r.connected) return '<span class="relay-status ok">Connected</span>';
+  if (r.connected) return `<span class="relay-status ok">${escHtml(t('Connected'))}</span>`;
   // The last failure is the whole reason the row exists — a relay that has
   // never linked is otherwise indistinguishable from one still booting.
   const err = r.last_error ? `<div class="relay-err">${escHtml(r.last_error)}</div>` : '';
-  return `<div class="relay-status-col"><span class="relay-status bad">Not connected</span>${err}</div>`;
+  return `<div class="relay-status-col"><span class="relay-status bad">${escHtml(t('Not connected'))}</span>${err}</div>`;
 }
 
 function _relayRowHtml(r) {
   const builtin = _relayIsBuiltin(r);
-  const url = builtin ? 'This dashboard' : (r.url ? escHtml(r.url) : '—');
+  const url = builtin ? t('This dashboard') : (r.url ? escHtml(r.url) : '—');
   const seen = timeAgo(r.last_seen_at);
   const meta = [];
-  if (seen) meta.push(`<div class="relay-meta">Last seen ${escHtml(seen)}</div>`);
+  if (seen) meta.push(`<div class="relay-meta">${escHtml(t('Last seen {when}', { when: seen }))}</div>`);
   if (!builtin) {
-    meta.push(`<div class="relay-meta">Fallback order `
-      + `${escHtml(String(r.priority == null ? 100 : r.priority))}</div>`);
+    meta.push(`<div class="relay-meta">${escHtml(t('Fallback order {order}', { order: String(r.priority == null ? 100 : r.priority) }))}</div>`);
   }
   const actions = [`<button class="btn btn-sm ${r.enabled ? 'btn-outline' : 'btn-mint'}"`
     + ` data-act="toggleRelay" data-a1="${escAttr(r.id)}" data-a2="${r.enabled ? 'off' : 'on'}">`
-    + `${r.enabled ? 'Turn off' : 'Turn on'}</button>`];
+    + `${r.enabled ? escHtml(t('Turn off')) : escHtml(t('Turn on'))}</button>`];
   if (!builtin) {
     actions.push('<button class="btn btn-sm btn-outline" data-act="editRelay"'
-      + ` data-a1="${escAttr(r.id)}">Edit</button>`);
+      + ` data-a1="${escAttr(r.id)}">${escHtml(t('Edit'))}</button>`);
     if (r.url) {
       actions.push('<button class="btn btn-sm btn-sky" data-act="relayInstall"'
-        + ` data-a1="${escAttr(r.id)}">Install commands</button>`);
+        + ` data-a1="${escAttr(r.id)}">${escHtml(t('Install commands'))}</button>`);
     }
     actions.push('<button class="btn btn-sm btn-outline" data-act="rotateRelayKey"'
-      + ` data-a1="${escAttr(r.id)}">New key</button>`);
+      + ` data-a1="${escAttr(r.id)}">${escHtml(t('New key'))}</button>`);
     actions.push('<button class="btn btn-sm btn-rose" data-act="deleteRelay"'
-      + ` data-a1="${escAttr(r.id)}">Delete</button>`);
+      + ` data-a1="${escAttr(r.id)}">${escHtml(t('Delete'))}</button>`);
   }
   return '<div class="relay-row">'
     + '<div class="relay-main">'
       + `<div class="relay-name">${escHtml(r.name)}`
-        + (builtin ? '<span class="relay-badge">Built-in</span>' : '') + '</div>'
+        + (builtin ? `<span class="relay-badge">${escHtml(t('Built-in'))}</span>` : '') + '</div>'
       + (r.location ? `<div class="relay-meta">${escHtml(r.location)}</div>` : '')
       + `<div class="relay-url mono">${url}</div>`
       + meta.join('')
@@ -560,7 +564,7 @@ async function loadRelays() {
     data = await apiJson('/api/v1/relays/');
   } catch (e) {
     _relayStopPolling();
-    list.innerHTML = `<p class="muted">Could not load relays: ${escHtml(e.message)}</p>`;
+    list.innerHTML = `<p class="muted">${escHtml(t('Could not load relays: {message}', { message: e.message }))}</p>`;
     return;
   }
   const pane = document.querySelector('#page-settings .settings-pane[data-pane="relays"]');
@@ -573,11 +577,12 @@ async function loadRelays() {
 
   const usage = document.getElementById('relays-usage');
   if (usage) {
-    const line = `${data.used} of ${data.allowed} relays in use.`;
+    const line = t('{used} of {allowed} relays in use.', { used: data.used, allowed: data.allowed });
     if (data.used >= data.allowed) {
-      usage.innerHTML = escHtml(line)
-        + ' Business allows your seat count plus two.'
-        + ' <a href="#license-card">See Settings \u2192 License</a>.';
+      usage.innerHTML = escHtml(line) + ' '
+        + t('Business allows your seat count plus two. {link}.', {
+            link: `<a href="#license-card">${escHtml(t('See Settings → License'))}</a>`,
+          });
     } else {
       usage.textContent = line;
     }
@@ -585,19 +590,19 @@ async function loadRelays() {
 
   const rows = relays.filter(_relayIsBuiltin).map(_relayRowHtml)
     .concat(_remoteRelays(relays).map(_relayRowHtml));
-  list.innerHTML = rows.length ? rows.join('') : '<p class="muted">No relays yet.</p>';
+  list.innerHTML = rows.length ? rows.join('') : `<p class="muted">${escHtml(t('No relays yet.'))}</p>`;
 }
 
 async function addRelay() {
   const name = _relayField('relay-name');
   const url = _relayField('relay-url');
-  if (!name) { showToast('Give the relay a name', 'error'); return; }
+  if (!name) { showToast(t('Give the relay a name'), 'error'); return; }
   if (!url.startsWith('https://')) {
-    showToast('The address must start with https://', 'error');
+    showToast(t('The address must start with https://'), 'error');
     return;
   }
-  const code = await totpPrompt('Adding a relay creates a key that lets it carry agent traffic.',
-    { title: 'Add relay', confirmText: 'Add' });
+  const code = await totpPrompt(t('Adding a relay creates a key that lets it carry agent traffic.'),
+    { title: t('Add relay'), confirmText: t('Add') });
   if (!code) return;
   const body = {
     name, url,
@@ -609,14 +614,14 @@ async function addRelay() {
     const created = await apiJson('/api/v1/relays/', { method: 'POST', body: JSON.stringify(body) });
     ['relay-name', 'relay-location', 'relay-url'].forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.value = '';
+      if (el) /** @type {HTMLInputElement} */ (el).value = '';
     });
     const prio = document.getElementById('relay-priority');
-    if (prio) prio.value = '100';
+    if (prio) /** @type {HTMLInputElement} */ (prio).value = '100';
     _openRelayKeyDialog(created.name, created.key, created.key_sha256);
     loadRelays();
   } catch (e) {
-    showToast(e.status === 402 ? `${e.message} See Settings \u2192 License to allow more relays.`
+    showToast(e.status === 402 ? t('{message} See Settings → License to allow more relays.', { message: e.message })
                                : e.message, 'error');
   }
 }
@@ -644,13 +649,13 @@ function _relayComposeSnippet(keySha) {
 }
 
 function _relayCopyBtn(id) {
-  return `<button class="btn btn-sm btn-outline" id="${id}">Copy</button>`;
+  return `<button class="btn btn-sm btn-outline" id="${id}">${escHtml(t('Copy'))}</button>`;
 }
 
 function _wireRelayCopy(m, id, text) {
-  const btn = m.modal.querySelector('#' + id);
+  const btn = /** @type {HTMLElement} */ (m.modal.querySelector('#' + id));
   if (btn) btn.onclick = () => copyText(text).then((ok) => showToast(
-    ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'));
+    ok ? t('Copied to clipboard') : t('Copy failed'), ok ? 'success' : 'error'));
 }
 
 /* The key exists in this response and nowhere else, and the relay is
@@ -660,28 +665,28 @@ function _openRelayKeyDialog(name, key, keySha) {
   const snippet = _relayComposeSnippet(keySha || '');
   m.setBody(`
     <div class="modal-title"><span></span>
-      <button class="modal-close" id="rk-x" aria-label="Close">
+      <button class="modal-close" id="rk-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="muted">This key is shown once. The relay only needs its hash; keep the key itself only if you'll set up the link by hand.</p>
+    <p class="muted">${escHtml(t("This key is shown once. The relay only needs its hash; keep the key itself only if you'll set up the link by hand."))}</p>
     <div class="deploy-input-label" id="rk-compose-label"></div>
     <div class="relay-code mono" id="rk-compose"></div>
     ${_relayCopyBtn('rk-copy-compose')}
-    <div class="deploy-input-label relay-key-sub">Key</div>
+    <div class="deploy-input-label relay-key-sub">${escHtml(t('Key'))}</div>
     <div class="relay-code mono" id="rk-key"></div>
     ${_relayCopyBtn('rk-copy-key')}
-    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="rk-done">Done</button></div>`);
-  m.modal.querySelector('.modal-title span').textContent = 'Relay added \u2014 copy this now';
+    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="rk-done">${escHtml(t('Done'))}</button></div>`);
+  m.modal.querySelector('.modal-title span').textContent = t('Relay added \u2014 copy this now');
   m.modal.querySelector('#rk-compose-label').textContent =
-    `Compose snippet for ${name || 'the relay'}`;
+    t('Compose snippet for {name}', { name: name || t('the relay') });
   m.modal.querySelector('#rk-compose').textContent = snippet;
   m.modal.querySelector('#rk-key').textContent = key || '';
   _wireRelayCopy(m, 'rk-copy-compose', snippet);
   _wireRelayCopy(m, 'rk-copy-key', key || '');
   const close = () => m.close();
-  m.modal.querySelector('#rk-x').onclick = close;
-  m.modal.querySelector('#rk-done').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rk-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rk-done')).onclick = close;
   requestAnimationFrame(m.open);
 }
 
@@ -690,15 +695,16 @@ async function toggleRelay(id, onoff) {
   if (!relay) return;
   const want = onoff !== 'off';
   const code = await totpPrompt(
-    want ? `Turning on ${relay.name} lets agents reach this dashboard through it.`
-         : `Turning off ${relay.name} moves its agents to another connection point.`,
-    { title: want ? 'Turn on relay' : 'Turn off relay', confirmText: want ? 'Turn on' : 'Turn off' });
+    want ? t('Turning on {name} lets agents reach this dashboard through it.', { name: relay.name })
+         : t('Turning off {name} moves its agents to another connection point.', { name: relay.name }),
+    { title: want ? t('Turn on relay') : t('Turn off relay'),
+      confirmText: want ? t('Turn on') : t('Turn off') });
   if (!code) return;
   try {
     await apiJson(`/api/v1/relays/${id}/`, {
       method: 'PATCH', body: JSON.stringify({ enabled: want, totp: code }),
     });
-    showToast(`${relay.name} ${want ? 'enabled' : 'disabled'}`, 'success');
+    showToast(t('{relayName} {state}', { relayName: relay.name, state: want ? t('enabled') : t('disabled') }), 'success');
   } catch (e) {
     // "Enable a remote relay that has connected at least once before turning
     // off direct connections." surfaces here, as its own toast.
@@ -712,52 +718,52 @@ function editRelay(id) {
   if (!relay || _relayIsBuiltin(relay)) return;
   const m = mountModal('relay-edit');
   m.setBody(`
-    <div class="modal-title"><span>Edit relay</span>
-      <button class="modal-close" id="re-x" aria-label="Close">
+    <div class="modal-title"><span>${escHtml(t('Edit relay'))}</span>
+      <button class="modal-close" id="re-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="re-name" maxlength="80" autocomplete="off"></div>
-    <div class="setting-row"><label>Location</label><input type="text" class="form-control" id="re-location" maxlength="120" autocomplete="off"></div>
-    <div class="setting-row"><label>Address agents use</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="https://relay.example.com"></div>
-    <div class="setting-row"><label>Order</label>
-      <input type="number" class="form-control" id="re-priority" min="0" max="1000" style="max-width:120px;">
-      <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
+    <div class="setting-row"><label>${escHtml(t('Name'))}</label><input type="text" class="form-control" id="re-name" maxlength="80" autocomplete="off"></div>
+    <div class="setting-row"><label>${escHtml(t('Location'))}</label><input type="text" class="form-control" id="re-location" maxlength="120" autocomplete="off"></div>
+    <div class="setting-row"><label>${escHtml(t('Address agents use'))}</label><input type="url" class="form-control" id="re-url" autocomplete="off" placeholder="${_RELAY_URL_SAMPLE}"></div>
+    <div class="setting-row"><label>${escHtml(t('Order'))}</label>
+      <input type="number" class="form-control relay-order-field" id="re-priority" min="0" max="1000">
+      <div class="totp-sub">${escHtml(t('Agents try lower numbers first when their own address stops answering.'))}</div>
     </div>
     <p class="muted" id="re-note"></p>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" id="re-cancel">Cancel</button>
-      <button class="btn btn-mint btn-sm" id="re-save">Save</button>
+      <button class="btn btn-outline btn-sm" id="re-cancel">${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint btn-sm" id="re-save">${escHtml(t('Save'))}</button>
     </div>`);
-  m.modal.querySelector('#re-name').value = relay.name || '';
-  m.modal.querySelector('#re-location').value = relay.location || '';
-  m.modal.querySelector('#re-url').value = relay.url || '';
-  m.modal.querySelector('#re-priority').value = String(relay.priority == null ? 100 : relay.priority);
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-name')).value = relay.name || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-location')).value = relay.location || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-url')).value = relay.url || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-priority')).value = String(relay.priority == null ? 100 : relay.priority);
   const note = () => m.modal.querySelector('#re-note');
 
-  m.modal.querySelector('#re-save').onclick = async () => {
-    const name = m.modal.querySelector('#re-name').value.trim();
-    const location = m.modal.querySelector('#re-location').value.trim();
-    const url = m.modal.querySelector('#re-url').value.trim();
-    const priority = Number(m.modal.querySelector('#re-priority').value || 0);
-    if (!name) { note().textContent = 'Name is required.'; return; }
+  /** @type {HTMLElement} */ (m.modal.querySelector('#re-save')).onclick = async () => {
+    const name = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-name')).value.trim();
+    const location = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-location')).value.trim();
+    const url = /** @type {HTMLInputElement} */ (m.modal.querySelector('#re-url')).value.trim();
+    const priority = Number(/** @type {HTMLInputElement} */ (m.modal.querySelector('#re-priority')).value || 0);
+    if (!name) { note().textContent = t('Name is required.'); return; }
     if (!url.startsWith('https://')) {
-      note().textContent = 'The address must start with https://';
+      note().textContent = t('The address must start with https://');
       return;
     }
     const body = { name, location, priority };
     // A new address moves every agent that falls back to this relay \u2014 the same
     // weight as creating it, so a second factor for that field alone.
     if (url !== (relay.url || '')) {
-      const code = await totpPrompt('Changing the address sends agents to a different machine.',
-        { title: 'Change relay address', confirmText: 'Change' });
+      const code = await totpPrompt(t('Changing the address sends agents to a different machine.'),
+        { title: t('Change relay address'), confirmText: t('Change') });
       if (!code) return;
       body.url = url;
       body.totp = code;
     }
     try {
       await apiJson(`/api/v1/relays/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });
-      showToast('Relay updated', 'success');
+      showToast(t('Relay updated'), 'success');
       m.close();
       loadRelays();
     } catch (e) {
@@ -765,8 +771,8 @@ function editRelay(id) {
     }
   };
   const close = () => m.close();
-  m.modal.querySelector('#re-x').onclick = close;
-  m.modal.querySelector('#re-cancel').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#re-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#re-cancel')).onclick = close;
   requestAnimationFrame(m.open);
 }
 
@@ -774,11 +780,11 @@ async function rotateRelayKey(id) {
   const relay = _relaysById[id];
   if (!relay || _relayIsBuiltin(relay)) return;
   const ok = await confirmModal(
-    'Agents keep working, but this relay disconnects until you update its RELAY_KEY_SHA256.',
-    { title: 'Generate a new key', confirmText: 'Generate', danger: true });
+    t('Agents keep working, but this relay disconnects until you update its RELAY_KEY_SHA256.'),
+    { title: t('Generate a new key'), confirmText: t('Generate'), danger: true });
   if (!ok) return;
-  const code = await totpPrompt('A new key replaces the one this relay connects with.',
-    { title: 'New relay key', confirmText: 'New key' });
+  const code = await totpPrompt(t('A new key replaces the one this relay connects with.'),
+    { title: t('New relay key'), confirmText: t('New key') });
   if (!code) return;
   try {
     const res = await apiJson(`/api/v1/relays/${id}/rotate-key/`, {
@@ -795,15 +801,15 @@ async function deleteRelay(id) {
   const relay = _relaysById[id];
   if (!relay || _relayIsBuiltin(relay)) return;
   const ok = await confirmModal(
-    `Delete ${relay.name}? Agents using it stop checking in until you add another.`,
-    { title: 'Delete relay', confirmText: 'Delete', danger: true });
+    t('Delete {name}? Agents using it stop checking in until you add another.', { name: relay.name }),
+    { title: t('Delete relay'), confirmText: t('Delete'), danger: true });
   if (!ok) return;
-  const code = await totpPrompt('Deleting a relay takes away a connection point agents may be using.',
-    { title: 'Delete relay', confirmText: 'Delete' });
+  const code = await totpPrompt(t('Deleting a relay takes away a connection point agents may be using.'),
+    { title: t('Delete relay'), confirmText: t('Delete') });
   if (!code) return;
   try {
     await apiJson(`/api/v1/relays/${id}/`, { method: 'DELETE', body: JSON.stringify({ totp: code }) });
-    showToast(`Deleted ${relay.name}`, 'success');
+    showToast(t('Deleted {name}', { name: relay.name }), 'success');
     loadRelays();
   } catch (e) {
     showToast(e.message, 'error');
@@ -818,10 +824,10 @@ async function relayInstall(id) {
   const relay = _relaysById[id];
   if (!relay || !relay.url || _relayIsBuiltin(relay)) return;
   const m = mountModal('relay-install', { wide: true });
-  const title = `Install through ${relay.name}`;
+  const title = t('Install through {relayName}', { relayName: relay.name });
   m.setBody(`
     <div class="modal-title"><span></span>
-      <button class="modal-close" id="ri-x" aria-label="Close">
+      <button class="modal-close" id="ri-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -830,7 +836,7 @@ async function relayInstall(id) {
       <div class="sk-line"></div><div class="sk-line"></div><div class="sk-line sk-w80"></div>
     </div>`);
   m.modal.querySelector('.modal-title span').textContent = title;
-  m.modal.querySelector('#ri-x').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ri-x')).onclick = () => m.close();
   requestAnimationFrame(m.open);
 
   let config;
@@ -854,26 +860,26 @@ async function relayInstall(id) {
   const windows = _relayWindowsCmd(origin, token, config);
   m.setBody(`
     <div class="modal-title"><span></span>
-      <button class="modal-close" id="ri-x" aria-label="Close">
+      <button class="modal-close" id="ri-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="deploy-input-label">Linux / macOS</div>
+    <div class="deploy-input-label">${escHtml(t('Linux / macOS'))}</div>
     <div class="relay-code mono" id="ri-linux"></div>
     ${_relayCopyBtn('ri-copy-linux')}
-    <div class="deploy-input-label relay-key-sub">Windows (PowerShell, run as Administrator)</div>
+    <div class="deploy-input-label relay-key-sub">${escHtml(t('Windows (PowerShell, run as Administrator)'))}</div>
     <div class="relay-code mono" id="ri-windows"></div>
     ${_relayCopyBtn('ri-copy-windows')}
-    <p class="muted relay-key-sub">New hosts installed with these commands check in through this relay and appear under Pending for approval. The commands work once, for 24 hours.</p>
-    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="ri-close">Done</button></div>`);
+    <p class="muted relay-key-sub">${escHtml(t('New hosts installed with these commands check in through this relay and appear under Pending for approval. The commands work once, for 24 hours.'))}</p>
+    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="ri-close">${escHtml(t('Done'))}</button></div>`);
   m.modal.querySelector('.modal-title span').textContent = title;
   m.modal.querySelector('#ri-linux').textContent = linux;
   m.modal.querySelector('#ri-windows').textContent = windows;
   _wireRelayCopy(m, 'ri-copy-linux', linux);
   _wireRelayCopy(m, 'ri-copy-windows', windows);
   const close = () => m.close();
-  m.modal.querySelector('#ri-x').onclick = close;
-  m.modal.querySelector('#ri-close').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ri-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ri-close')).onclick = close;
 }
 
 /* Choosing any other pane means the relays list is off-screen. */
@@ -902,14 +908,14 @@ async function loadSecurityKeys() {
   try {
     [status, keys] = await Promise.all([apiJson('/api/v1/accounts/totp/'), apiJson(KEYS_API)]);
   } catch (e) {
-    list.textContent = 'Could not load your security keys.';
+    list.textContent = t('Could not load your security keys.');
     return;
   }
   const note = document.getElementById('security-keys-note');
-  const addBtn = document.getElementById('security-keys-add-btn');
+  const addBtn = /** @type {HTMLButtonElement} */ (document.getElementById('security-keys-add-btn'));
   const insecure = !!status && !status.keys_possible;
   if (note) {
-    note.textContent = insecure ? (status.keys_reason || 'Security keys need HTTPS.') : '';
+    note.textContent = insecure ? (status.keys_reason || t('Security keys need HTTPS.')) : '';
     note.style.display = insecure ? '' : 'none';
   }
   if (addBtn) addBtn.disabled = insecure;
@@ -918,7 +924,7 @@ async function loadSecurityKeys() {
   if (!keys.length) {
     const empty = document.createElement('div');
     empty.className = 'totp-sub';
-    empty.textContent = 'No security keys enrolled yet.';
+    empty.textContent = t('No security keys enrolled yet.');
     list.appendChild(empty);
     return;
   }
@@ -931,44 +937,45 @@ async function loadSecurityKeys() {
 //: escaped here because it lands in markup (data-a2 too).
 function _securityKeyRow(key) {
   const added = key.created_at ? new Date(key.created_at).toLocaleDateString() : '?';
-  const lastUsed = key.last_used_at ? `last used ${timeAgo(key.last_used_at)}` : 'never used';
+  const lastUsed = key.last_used_at ? t('last used {ago}', { ago: timeAgo(key.last_used_at) }) : t('never used');
   const row = document.createElement('div');
   row.className = 'user-row';
   row.innerHTML = `<div>
       <div class="user-name">${escHtml(key.name)}</div>
-      <div class="user-meta">added ${escHtml(added)} &middot; ${escHtml(lastUsed)}</div>
+      <div class="user-meta">${escHtml(t('added {date}', { date: added }))} · ${escHtml(lastUsed)}</div>
     </div>
-    <div style="display:flex;gap:6px;">
+    <div class="key-row-actions">
       <button class="btn btn-outline btn-sm" data-act="renameSecurityKey" data-a1="${key.id}"
-              data-a2="${escAttr(key.name)}">Rename</button>
+              data-a2="${escAttr(key.name)}">${escHtml(t('Rename'))}</button>
       <button class="btn btn-rose btn-sm" data-act="removeSecurityKey" data-a1="${key.id}"
-              data-a2="${escAttr(key.name)}">Remove</button>
+              data-a2="${escAttr(key.name)}">${escHtml(t('Remove'))}</button>
     </div>`;
   return row;
 }
 async function renameSecurityKey(id, current) {
-  const name = await promptModal('Rename this key', { title: 'Rename key', value: current });
+  const name = await promptModal(t('Rename this key'), { title: t('Rename key'), value: current });
   if (name === null || !name.trim() || name.trim() === current) return;
   try {
     await apiJson(`${KEYS_API}${id}/`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
-    showToast('Key renamed', 'success');
+    showToast(t('Key renamed'), 'success');
     loadSecurityKeys();
   } catch (e) {
-    showToast(`Rename failed: ${e.message}`, 'error');
+    showToast(t('Rename failed: {message}', { message: e.message }), 'error');
   }
 }
 async function removeSecurityKey(id, name) {
-  if (!await confirmModal(`Remove the security key "${name}"? You will not be able to tap it at a confirmation prompt any more.`,
-                          { title: 'Remove security key', confirmText: 'Remove', danger: true })) return;
-  const totp = await totpPrompt('Removing a second factor needs the one you still have.',
-                                { title: 'Confirm removal', confirmText: 'Remove' });
+  if (!await confirmModal(
+        t('Remove the security key "{name}"? You will not be able to tap it at a confirmation prompt any more.', { name }),
+        { title: t('Remove security key'), confirmText: t('Remove'), danger: true })) return;
+  const totp = await totpPrompt(t('Removing a second factor needs the one you still have.'),
+                                { title: t('Confirm removal'), confirmText: t('Remove') });
   if (!totp) return;
   try {
     await apiJson(`${KEYS_API}${id}/`, { method: 'DELETE', body: JSON.stringify({ totp }) });
-    showToast('Security key removed', 'success');
+    showToast(t('Security key removed'), 'success');
     loadSecurityKeys();
   } catch (e) {
-    showToast(`Remove failed: ${e.message}`, 'error');
+    showToast(t('Remove failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -981,7 +988,7 @@ async function _createSecurityKey(name, totp) {
   const publicKey = {
     challenge: b64urlToBytes(opts.challenge).buffer,
     timeout: opts.timeout || 60000,
-    rp: { name: (opts.rp && opts.rp.name) || 'Vigil', id: opts.rpId },
+    rp: { name: (opts.rp && opts.rp.name) || 'Vigil', id: opts.rpId }, // i18n-ignore — the product name
     user: {
       id: b64urlToBytes(opts.user.id).buffer,
       name: opts.user.name,
@@ -994,8 +1001,8 @@ async function _createSecurityKey(name, totp) {
     authenticatorSelection: opts.authenticatorSelection || { userVerification: 'preferred' },
     attestation: opts.attestation || 'none',
   };
-  const cred = await navigator.credentials.create({ publicKey });
-  const r = cred.response;
+  const cred = /** @type {PublicKeyCredential} */ (await navigator.credentials.create({ publicKey }));
+  const r = /** @type {AuthenticatorAttestationResponse} */ (cred.response);
   const credential = {
     id: cred.id || bytesToB64url(cred.rawId),
     rawId: bytesToB64url(cred.rawId),
@@ -1016,27 +1023,29 @@ async function addSecurityKey() {
   let status = {};
   try {
     status = await apiJson('/api/v1/accounts/totp/');   // current, not cached
-  } catch (e) { /* the server still checks both rules */ }
+  } catch (e) { /* state-ok: a pre-flight check, not a list; the server still enforces both rules */ }
   if (status.keys_possible === false) {
-    showToast(status.keys_reason || 'Security keys need HTTPS.', 'error');
+    showToast(status.keys_reason || t('Security keys need HTTPS.'), 'error');
     return;
   }
   // The server enforces this gate too; the prompt is here so the user has a
   // way to answer it at all.
   let totp = '';
   if (status.enrolled || (status.keys || 0) > 0) {
-    totp = await totpPrompt('Confirm to add a security key',
-                            { title: 'Add a security key', confirmText: 'Confirm' });
+    totp = await totpPrompt(t('Confirm to add a security key'),
+                            { title: t('Add a security key'), confirmText: t('Confirm') });
     if (!totp) return;
   }
-  const name = await promptModal('Name this key', { title: 'Add a security key', placeholder: 'YubiKey 5' });
+  const name = await promptModal(t('Name this key'), { title: t('Add a security key'), placeholder: t('YubiKey 5') });
   if (name === null || !name.trim()) return;
   try {
     await _createSecurityKey(name.trim(), totp);
-    showToast('Security key added', 'success');
+    showToast(t('Security key added'), 'success');
     loadSecurityKeys();
   } catch (e) {
     // A cancelled ceremony, or a browser that refused the origin, is ordinary.
-    showToast(`Add failed: ${(e && e.name === 'NotAllowedError') ? 'cancelled' : e.message}`, 'error');
+    showToast(t('Add failed: {message}', {
+      message: (e && e.name === 'NotAllowedError') ? t('cancelled') : e.message,
+    }), 'error');
   }
 }

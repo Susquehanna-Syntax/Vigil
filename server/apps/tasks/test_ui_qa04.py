@@ -3,15 +3,16 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 FLOW_JS = ROOT / "static/js/vigil-playbook-flow.js"
-CSS = ROOT / "static/css/vigil.css"
 
 
 class FlowPanSelectionTests(SimpleTestCase):
     def test_flow_pan_does_not_select_text(self):
         js = FLOW_JS.read_text()
-        css = CSS.read_text()
+        css = design_css()
 
         pointerdown = js[js.index("pointerdown"):js.index("pointermove")]
         self.assertIn("e.preventDefault()", pointerdown)
@@ -28,7 +29,7 @@ class FlowPanSelectionTests(SimpleTestCase):
 
 class FixGroupHoverTests(SimpleTestCase):
     def test_fix_hover_only_tints_the_line(self):
-        css = CSS.read_text()
+        css = design_css()
 
         self.assertIn(".vfix-row:hover > .vfix-line", css)
         self.assertIsNone(re.search(r"\.vfix-row:hover\s*\{", css))

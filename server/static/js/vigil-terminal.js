@@ -1,3 +1,4 @@
+// @ts-check
 /* ── The web terminal (QA-58) ────────────────────────────────────────────────
    A shell on a managed host, in the browser. Not loaded by base.html:
    loadTerminalAssets() in vigil-host-cards.js appends this file (and xterm)
@@ -21,8 +22,8 @@ const termSession = { ws: null, term: null, fit: null, observer: null,
 async function openSession(hostId, kind, container) {
   const isContainer = kind === 'container';
   const code = await totpPrompt(
-    isContainer ? `Open a shell in container ${container}` : 'Open a web shell on this host',
-    { title: 'Start a session', confirmText: 'Connect' });
+    isContainer ? t('Open a shell in container {container}', { container }) : t('Open a web shell on this host'),
+    { title: t('Start a session'), confirmText: t('Connect') });
   if (!code) return;
 
   let started;
@@ -47,20 +48,20 @@ function _mountTermDialog(started, kind, container) {
   const m = mountModal('term', { xwide: true });
   m.modal.classList.add('term-modal');
   m.setBody(`<div class="modal-title"><span id="term-title"></span>
-      <button class="modal-close" type="button" id="term-x" aria-label="Close">
+      <button class="modal-close" type="button" id="term-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
     <div class="term-bar">
-      <span class="run-state t-lemon" id="term-state">Waiting for the agent…</span>
-      ${started.recorded ? '<span class="chip chip-muted" title="What you type here is written to the session recording">Recorded</span>' : ''}
-      <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="term-end">End session</button>
+      <span class="run-state t-lemon" id="term-state">${escHtml(t('Waiting for the agent…'))}</span>
+      ${started.recorded ? `<span class="chip chip-muted" title="${escAttr(t('What you type here is written to the session recording'))}">${escHtml(t('Recorded'))}</span>` : ''}
+      <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="term-end">${escHtml(t('End session'))}</button>
     </div>
     <div class="term-host" id="term-host" data-keeps-tab></div>`);
   m.modal.querySelector('#term-title').textContent =
     _termTitle(kind, started.host, container);
 
-  const stateEl = m.modal.querySelector('#term-state');
-  const hostEl = m.modal.querySelector('#term-host');
+  const stateEl = /** @type {HTMLElement} */ (m.modal.querySelector('#term-state'));
+  const hostEl = /** @type {HTMLElement} */ (m.modal.querySelector('#term-host'));
   const setState = (text, cls) => {
     stateEl.textContent = text;
     stateEl.className = 'run-state ' + cls;
@@ -68,7 +69,7 @@ function _mountTermDialog(started, kind, container) {
 
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: 'IBM Plex Mono, ui-monospace, monospace',
+    fontFamily: 'IBM Plex Mono, ui-monospace, monospace', // i18n-ignore — a font stack
     fontSize: 13,
     theme: {
       background: cssVar('--bg') || '#15161b',
@@ -102,7 +103,7 @@ function _mountTermDialog(started, kind, container) {
 
   ws.onmessage = (ev) => {
     let msg;
-    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    try { msg = JSON.parse(ev.data); } catch (e) { return; /* state-ok: a frame we cannot read is not output; the next one still arrives */ }
     if (msg.t === 'status') _termStatus(msg, stateEl, term, setState);
     else if (msg.t === 'out') term.write(_bytesFromB64(msg.d || ''));
     else if (msg.t === 'mode' && msg.pty === false) {
@@ -114,9 +115,9 @@ function _mountTermDialog(started, kind, container) {
     // The dialog stays up with the reason on it: closing it out from under a
     // read would take the last screenful of output with it.
     termSession.closed = true;
-    setState('Closed', 't-rose');
+    setState(t('Closed'), 't-rose');
   };
-  ws.onerror = () => setState('The connection failed', 't-rose');
+  ws.onerror = () => setState(t('The connection failed'), 't-rose');
 
   term.onData((s) => {
     if (termSession.closed || ws.readyState !== WebSocket.OPEN) return;
@@ -164,8 +165,8 @@ function _mountTermDialog(started, kind, container) {
     clearTimeout(termSession.debounce);
     observer.disconnect();
     termSession.observer = null;
-    try { ws.close(); } catch (e) {}
-    try { term.dispose(); } catch (e) {}
+    try { ws.close(); } catch (e) { /* state-ok: a cleanup on a socket already gone; the next line disposes the terminal */ }
+    try { term.dispose(); } catch (e) { /* state-ok: a cleanup after a cleanup — nothing left to do about it */ }
     termSession.term = null;
     termSession.ws = null;
   };
@@ -185,11 +186,11 @@ function _mountTermDialog(started, kind, container) {
 
 function _termStatus(msg, stateEl, term, setState) {
   if (msg.state === 'waiting') {
-    setState('Waiting for the agent…', 't-lemon');
+    setState(t('Waiting for the agent…'), 't-lemon');
   } else if (msg.state === 'open') {
-    setState('Connected', 't-mint');
+    setState(t('Connected'), 't-mint');
   } else if (msg.state === 'closed') {
-    setState(`Closed: ${msg.reason || 'the session ended'}`, 't-rose');
+    setState(t('Closed: {reason}', { reason: msg.reason || t('the session ended') }), 't-rose');
     term.write(`\r\n\x1b[2m[session closed: ${_plain(msg.reason || 'the session ended')}]\x1b[0m`);
   }
 }
@@ -209,10 +210,7 @@ function _sendInput(ws, s) {
 async function _endSession(sessionId) {
   try {
     await apiJson(`/api/v1/sessions/${sessionId}/close/`, { method: 'POST' });
-  } catch (e) {
-    // The socket we just closed is the authoritative end; a 404 here means it
-    // had already finished, which is what the operator asked for.
-  }
+  } catch (e) { /* state-ok: the socket we just closed is the authoritative end; a 404 means it had already finished */ }
 }
 
 //: Encode to UTF-8 bytes before encoding them, because the base64 step throws

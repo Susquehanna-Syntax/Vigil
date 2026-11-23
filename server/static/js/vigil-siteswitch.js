@@ -1,3 +1,4 @@
+// @ts-check
 /* Header site switcher (S1 04g).
  *
  * Someone in more than one site ticks the sites they want to look at; every
@@ -7,21 +8,29 @@
  * what they may do does not change. Hidden for anyone with one site, and on
  * Community. */
 
+/** One row of /api/v1/scope/selection/'s `sites`. */
+/** @typedef {{id: string, name: string, is_global: boolean}} SiteSwitchSite */
+/** What /api/v1/scope/selection/ returns: whether the switcher applies to
+ *  this account, which sites it may show, and which are ticked. */
+/** @typedef {{enabled: boolean, all: boolean, sites: SiteSwitchSite[], selected: string[]}} SiteSwitchState */
+
+/** @type {SiteSwitchState|null} */
 let _siteSwitch = null;
 
 async function siteSwitchInit() {
-  const btn = document.getElementById('site-switch');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('site-switch'));
   if (!btn) return;
   try {
     _siteSwitch = await apiJson('/api/v1/scope/selection/');
   } catch (e) {
-    return; // hidden: Community, or an account the switcher does not apply to
+    return; // state-ok: not a list — the switcher stays hidden for Community, or an account it does not apply to
   }
   if (!_siteSwitch.enabled) return;
   _siteSwitchLabel();
   btn.hidden = false;
 }
 
+/** @returns {Set<string>} */
 function _siteSwitchTicked() {
   const sel = _siteSwitch.selected;
   return sel.length ? new Set(sel) : new Set(_siteSwitch.sites.map((s) => s.id));
@@ -31,12 +40,12 @@ function _siteSwitchLabel() {
   const ticked = _siteSwitchTicked();
   const all = ticked.size === _siteSwitch.sites.length;
   const one = ticked.size === 1 ? _siteSwitch.sites.find((s) => ticked.has(s.id)) : null;
-  const text = all ? 'All my sites' : one ? one.name : `${ticked.size} sites`;
-  const btn = document.getElementById('site-switch');
-  btn.dataset.tip = all ? 'Sites: all of yours' : `Sites: ${text}`;
+  const text = all ? t('All my sites') : one ? one.name : tn('{n} site', '{n} sites', ticked.size);
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('site-switch'));
+  btn.dataset.tip = all ? t('Sites: all of yours') : t('Sites: {list}', { list: text });
   btn.classList.toggle('site-switch-narrowed', !all);
   document.getElementById('site-switch-label').textContent = text;
-  const count = document.getElementById('site-switch-count');
+  const count = /** @type {HTMLElement} */ (document.getElementById('site-switch-count'));
   count.textContent = all ? '' : String(ticked.size);
   count.hidden = all;
 }
@@ -46,25 +55,25 @@ function openSiteSwitch() {
   const ticked = _siteSwitchTicked();
   const m = mountModal('siteswitch', { variant: 'm-pop' });
   m.setBody(`
-    <div class="modal-title"><span>Sites to show</span>
-      <button class="modal-close" id="ss-x" aria-label="Close">
+    <div class="modal-title"><span>${escHtml(t('Sites to show'))}</span>
+      <button class="modal-close" id="ss-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="muted ss-note">Every page lists only the ticked sites. What you may do does not change.</p>
+    <p class="muted ss-note">${escHtml(t('Every page lists only the ticked sites. What you may do does not change.'))}</p>
     ${_siteSwitch.sites.length > 6 ? `<input class="form-control ss-search" id="ss-search" type="search"
-      placeholder="Find a site" autocomplete="off" aria-label="Find a site">` : ''}
+      placeholder="${escAttr(t('Find a site'))}" autocomplete="off" aria-label="${escAttr(t('Find a site'))}">` : ''}
     <div class="ss-list" id="ss-list">${_siteSwitch.sites.map((s) => `
       <label class="ss-site" data-name="${escAttr(s.name.toLowerCase())}">
         <input type="checkbox" value="${escAttr(s.id)}"${ticked.has(s.id) ? ' checked' : ''}>
-        <span>${escHtml(s.is_global ? 'Global (unassigned hosts)' : s.name)}</span>
+        <span>${escHtml(s.is_global ? t('Global (unassigned hosts)') : s.name)}</span>
       </label>`).join('')}</div>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" id="ss-all">All my sites</button>
-      <button class="btn btn-mint btn-sm" id="ss-apply">Show these</button>
+      <button class="btn btn-outline btn-sm" id="ss-all">${escHtml(t('All my sites'))}</button>
+      <button class="btn btn-mint btn-sm" id="ss-apply">${escHtml(t('Show these'))}</button>
     </div>`);
 
-  const boxes = () => [...m.modal.querySelectorAll('#ss-list input[type=checkbox]')];
+  const boxes = () => /** @type {HTMLInputElement[]} */ ([...m.modal.querySelectorAll('#ss-list input[type=checkbox]')]);
   // The last ticked box cannot be cleared: an empty view would show nothing.
   const guard = () => {
     const on = boxes().filter((b) => b.checked);
@@ -73,12 +82,12 @@ function openSiteSwitch() {
   boxes().forEach((b) => b.addEventListener('change', guard));
   guard();
 
-  const search = m.modal.querySelector('#ss-search');
+  const search = /** @type {HTMLInputElement|null} */ (m.modal.querySelector('#ss-search'));
   if (search) {
     search.addEventListener('input', () => {
       const q = search.value.trim().toLowerCase();
       m.modal.querySelectorAll('.ss-site').forEach((row) => {
-        row.hidden = q !== '' && !row.dataset.name.includes(q);
+        /** @type {HTMLElement} */ (row).hidden = q !== '' && !/** @type {HTMLElement} */ (row).dataset.name.includes(q);
       });
     });
   }
@@ -87,18 +96,18 @@ function openSiteSwitch() {
     try {
       _siteSwitch = await apiJson('/api/v1/scope/selection/', { method: 'PUT', body: JSON.stringify(body) });
     } catch (e) {
-      showToast(e.message || 'Could not change the sites shown', 'error');
+      showToast(e.message || t('Could not change the sites shown'), 'error');
       return;
     }
     m.close();
     // Every list on the page was drawn for the old selection.
     window.location.reload();
   };
-  m.modal.querySelector('#ss-x').onclick = () => m.close();
-  m.modal.querySelector('#ss-all').onclick = () => save({ all: true });
-  m.modal.querySelector('#ss-apply').onclick = () =>
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ss-x')).onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ss-all')).onclick = () => save({ all: true });
+  /** @type {HTMLElement} */ (m.modal.querySelector('#ss-apply')).onclick = () =>
     save({ selected: boxes().filter((b) => b.checked).map((b) => b.value) });
-  requestAnimationFrame(() => { m.open(); (search || m.modal.querySelector('#ss-apply')).focus(); });
+  requestAnimationFrame(() => { m.open(); /** @type {HTMLElement} */ (search || m.modal.querySelector('#ss-apply')).focus(); });
 }
 
 document.addEventListener('DOMContentLoaded', siteSwitchInit);

@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-host-cards.js
 // Owns: Dashboard host cards, host detail drawer, host CRUD actions,
 //   pin bar (Monitor page), and the host dropdown selector.
@@ -9,14 +10,21 @@
 // API: GET/PATCH /api/v1/hosts/{id}/, GET /api/v1/metrics/{id}/...,
 //   POST /api/v1/hosts/{id}/{approve,reject}/, DELETE /api/v1/hosts/{id}/
 
+/** @typedef {{id: string, hostname: string, os: string, ip: string, kernel: string, status: string,
+ *  mode: string, modeDisplay: string, lastCheckin: string, agentVersion: string, tags: string,
+ *  siteName: string, siteId: string}} HostCardDataset */
+
 /* ── Host detail panel ───────────────────────────────────────────────── */
+/** @type {HTMLElement} */
 const overlay = document.getElementById('detail-overlay');
+/** @type {HTMLElement} */
 const panel = document.getElementById('detail-panel');
 
+/** @param {HTMLElement & {dataset: HostCardDataset}} card @returns {void} */
 function openHostDetail(card) {
   const d = card.dataset;
-  document.getElementById('detail-hostname').textContent = d.hostname;
-  document.getElementById('detail-meta').textContent =
+  /** @type {HTMLElement} */ (document.getElementById('detail-hostname')).textContent = d.hostname;
+  /** @type {HTMLElement} */ (document.getElementById('detail-meta')).textContent =
     d.os + ' · ' + d.ip + (d.kernel ? ' · ' + d.kernel : '');
 
   const logoEl = document.getElementById('detail-os-logo');
@@ -25,18 +33,18 @@ function openHostDetail(card) {
     logoEl.appendChild(osLogoNode(d.os));
   }
 
-  const dot = document.getElementById('detail-status-dot');
+  const dot = /** @type {HTMLElement} */ (document.getElementById('detail-status-dot'));
   dot.className = 'status-dot ' + d.status;
 
-  const statusNames = {online: 'Online', offline: 'Offline', pending: 'Pending Enrollment'};
-  document.getElementById('detail-status-text').textContent = statusNames[d.status] || d.status;
+  const statusNames = {online: t('Online'), offline: t('Offline'), pending: t('Pending Enrollment')};
+  /** @type {HTMLElement} */ (document.getElementById('detail-status-text')).textContent = statusNames[d.status] || d.status;
 
-  const badge = document.getElementById('detail-mode-badge');
+  const badge = /** @type {HTMLElement} */ (document.getElementById('detail-mode-badge'));
   badge.textContent = d.modeDisplay;
   badge.className = 'mode-badge mode-' + d.mode;
 
-  document.getElementById('detail-last-checkin').textContent =
-    d.lastCheckin ? 'Recent' : 'Never';
+  /** @type {HTMLElement} */ (document.getElementById('detail-last-checkin')).textContent =
+    d.lastCheckin ? t('Recent') : t('Never');
 
   // Agent version — colour mint when it matches the server's expected
   // version, peach when it's behind (the same signal the "Agent
@@ -51,23 +59,23 @@ function openHostDetail(card) {
 
   // Force-update control: only meaningful when the host actually runs
   // tasks (monitor-mode agents never will).
-  const updateBtn = document.getElementById('detail-update-agent-btn');
+  const updateBtn = /** @type {HTMLElement} */ (document.getElementById('detail-update-agent-btn'));
   if (updateBtn) updateBtn.style.display = (d.mode === 'monitor') ? 'none' : '';
 
   // Quick actions based on mode
-  const actions = document.getElementById('detail-actions');
+  const actions = /** @type {HTMLElement} */ (document.getElementById('detail-actions'));
   if (d.mode === 'monitor') {
-    actions.innerHTML = '<div style="color: var(--text-3); font-size: 13px;">This host is in monitor mode — no task execution.</div>';
+    actions.innerHTML = `<div class="detail-actions-note">${escHtml(t('This host is in monitor mode — no task execution.'))}</div>`;
   } else {
     actions.innerHTML = `
       <button class="btn btn-sm btn-sky" disabled>
         <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        Restart Service
+        ${escHtml(t('Restart Service'))}
       </button>
-      <button class="btn btn-sm btn-outline" disabled>Clear Temp Files</button>
-      <button class="btn btn-sm btn-outline" disabled>Run Updates</button>
-      ${d.mode === 'full_control' ? '<button class="btn btn-sm btn-rose" disabled>Reboot</button>' : ''}
-      <button class="btn btn-sm btn-rose" id="detail-rebuild-btn">Rebuild OS…</button>
+      <button class="btn btn-sm btn-outline" disabled>${escHtml(t('Clear Temp Files'))}</button>
+      <button class="btn btn-sm btn-outline" disabled>${escHtml(t('Run Updates'))}</button>
+      ${d.mode === 'full_control' ? `<button class="btn btn-sm btn-rose" disabled>${escHtml(t('Reboot'))}</button>` : ''}
+      <button class="btn btn-sm btn-rose" id="detail-rebuild-btn">${escHtml(t('Rebuild OS…'))}</button>
     `;
     // Rebuild is offered wherever tasks run. Whether this particular agent
     // will accept it depends on allow_reprovision in its own agent.yml, and
@@ -117,34 +125,33 @@ async function renderJackilRelated(section, body, kind, id, stillCurrent) {
     const resp = await fetch(`/api/v1/jackil/related/?type=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`,
       { credentials: 'same-origin' });
     if (resp.ok) data = await resp.json();
-  } catch { /* unreachable Vigil — same as no answer at all */ }
+  } catch { /* state-ok: no answer at all is the same as an unreachable Jackil — the section hides itself */ }
 
   if (!stillCurrent()) return;
   if (!data || data.configured === false) { section.style.display = 'none'; return; }
 
   section.style.display = '';
   if (!data.available) {
-    body.innerHTML = `<div style="color: var(--text-3);">${escHtml(data.message || '')}</div>`;
+    body.innerHTML = `<div class="muted-span">${escHtml(data.message || '')}</div>`;
     return;
   }
 
   const links = data.links || [];
   const items = data.items || [];
   if (!links.length && !items.length) {
-    body.innerHTML = `<div style="color: var(--text-3);">Nothing in Jackil is linked to this ${escHtml(kind)} yet.</div>`;
+    body.innerHTML = `<div class="muted-span">${escHtml(t('Nothing in Jackil is linked to this {kind} yet.', { kind }))}</div>`;
     return;
   }
 
   let html = '';
   for (const link of links) {
     const status = link.status
-      ? `<div style="font-size: 11px; color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
+      ? `<div class="jackil-link-status" data-css="color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
       : '';
     html += `<div>${escHtml(link.relation)} · ${_jackilLink(link.url, link.label)}</div>${status}`;
   }
   if (items.length) {
-    html += '<div style="color: var(--text-3); font-size: 11px; text-transform: uppercase;'
-          + ' letter-spacing: .08em; margin-top: 8px;">Jackil Items</div>';
+    html += `<div class="jackil-related-label">${escHtml(t('Jackil Items'))}</div>`;
     for (const item of items) {
       html += `<div>${_jackilLink(item.url, item.name)}</div>`;
     }
@@ -172,14 +179,14 @@ function _jackilToneColor(tone) {
 function _jackilLink(url, label) {
   const text = escHtml(label || '');
   return url
-    ? `<a href="${escAttr(url)}" target="_blank" rel="noopener" style="color: var(--text-1); text-decoration: none; font-weight: 500;">${text}</a>`
+    ? `<a class="jackil-link" href="${escAttr(url)}" target="_blank" rel="noopener">${text}</a>`
     : text;
 }
 
 async function forceUpdateAgent() {
   const hostId = panel.dataset.hostId;
   if (!hostId) return;
-  const totp = await totpPrompt('Force the agent to self-update on this host. It applies on the next check-in.');
+  const totp = await totpPrompt(t('Force the agent to self-update on this host. It applies on the next check-in.'));
   if (!totp) return;
   try {
     const resp = await fetch(`/api/v1/hosts/${hostId}/update-agent/`, {
@@ -190,14 +197,14 @@ async function forceUpdateAgent() {
     });
     const body = await resp.json().catch(() => ({}));
     if (resp.status === 201) {
-      showToast('Agent update queued — applies on the next check-in', 'success');
+      showToast(t('Agent update queued — applies on the next check-in'), 'success');
     } else if (resp.status === 409) {
-      showToast('An agent update is already queued for this host', 'info');
+      showToast(t('An agent update is already queued for this host'), 'info');
     } else {
       throw new Error(body.error || `HTTP ${resp.status}`);
     }
   } catch (e) {
-    showToast('Update failed: ' + e.message, 'error');
+    showToast(t('Update failed: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -223,21 +230,21 @@ async function _refreshDetailAgentVersion(hostId) {
     if (panel.dataset.hostId !== hostId) return;
     _renderDetailAgentVersion(data.agent_version || '');
     _renderDetailAgentUpdate(data.agent_update || null);
-  } catch { /* keep the value painted from card data */ }
+  } catch { /* state-ok: the version line keeps the value painted from card data */ }
 }
 
 async function _renderDetailAgentVersion(reported) {
   const el = document.getElementById('detail-agent-version');
   if (!el) return;
   if (!reported) {
-    el.textContent = 'Unknown';
+    el.textContent = t('Unknown');
     el.style.color = 'var(--text-3)';
     return;
   }
   el.textContent = 'v' + reported;
   const expected = await _getExpectedAgentVersion();
   if (expected && isOlderVersion(reported, expected)) {
-    el.textContent = `v${reported} (outdated → v${expected})`;
+    el.textContent = t('v{reported} (outdated → v{expected})', { reported, expected });
     el.style.color = 'var(--peach-ink)';
   } else if (expected) {
     el.style.color = 'var(--mint-ink)';
@@ -314,9 +321,7 @@ async function _loadDetailScore(hostId) {
     if (scanEl) scanEl.textContent = s.last_scan_at
       ? new Date(s.last_scan_at).toLocaleString()
       : 'never';
-  } catch {
-    section.style.display = 'none';
-  }
+  } catch { /* state-ok: a score is an optional extra on the drawer; with no answer it stays hidden */ }
 }
 
 // Shared with vigil-vulns.js — same color tiers as the SVG face.
@@ -338,22 +343,22 @@ function _renderDetailTags(hostId, tags) {
   if (!_detailTagState.tags.length) {
     const empty = document.createElement('div');
     empty.className = 'confirm-hint';
-    empty.textContent = 'No tags yet.';
+    empty.textContent = t('No tags yet.');
     wrap.appendChild(empty);
     return;
   }
-  for (const t of _detailTagState.tags) {
-    const isAuto = /^(os|os_family|pkg|arch):/.test(t);
+  for (const tag of _detailTagState.tags) {
+    const isAuto = /^(os|os_family|pkg|arch):/.test(tag);
     const chip = document.createElement('span');
     chip.className = 'host-tag-chip' + (isAuto ? ' host-tag-auto' : '');
     if (isAuto) {
-      chip.title = 'Auto-classified from inventory — recomputed on every check-in.';
-      chip.textContent = t;
+      chip.title = t('Auto-classified from inventory — recomputed on every check-in.');
+      chip.textContent = tag;
     } else {
       chip.style.cursor = 'pointer';
-      chip.title = 'Click to remove';
-      chip.textContent = t + '  ✕';
-      chip.addEventListener('click', () => _removeDetailTag(t));
+      chip.title = t('Click to remove');
+      chip.textContent = tag + '  ✕';
+      chip.addEventListener('click', () => _removeDetailTag(tag));
     }
     wrap.appendChild(chip);
   }
@@ -363,7 +368,7 @@ async function _refreshDetailTags(hostId) {
   try {
     const host = await apiJson(`/api/v1/hosts/${hostId}/`);
     _renderDetailTags(hostId, host.tags || []);
-  } catch (e) { /* keep card-derived tags as fallback */ }
+  } catch (e) { /* state-ok: the card's own tags are already drawn in the drawer */ }
 }
 
 /* ── Depends on (the drawer) ──────────────────────────────────────────── */
@@ -450,9 +455,9 @@ async function _saveDetailTags(tags) {
       body: JSON.stringify({ tags }),
     });
     _renderDetailTags(_detailTagState.hostId, host.tags || []);
-    showToast('Tags updated', 'success');
+    showToast(t('Tags updated'), 'success');
   } catch (e) {
-    showToast('Failed to update tags: ' + e.message, 'error');
+    showToast(t('Failed to update tags: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -511,11 +516,11 @@ async function loadDetailMetrics(hostId) {
         return true;
       });
     }
-    const card = metricCards[i];
-    const valueEl = card.querySelector('.metric-card-value');
-    const fillEl = card.querySelector('.metric-card-fill');
+    const card = /** @type {HTMLElement} */ (metricCards[i]);
+    const valueEl = /** @type {HTMLElement} */ (card.querySelector('.metric-card-value'));
+    const fillEl = /** @type {HTMLElement} */ (card.querySelector('.metric-card-fill'));
     if (pts.length) {
-      const latest = pts.sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+      const latest = pts.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0];
       const pct = Math.round(latest.value);
       valueEl.textContent = pct + '%';
       fillEl.style.width = pct + '%';
@@ -526,7 +531,7 @@ async function loadDetailMetrics(hostId) {
   });
 
   // CPU History chart
-  const cpuCanvas = document.getElementById('detail-chart-cpu');
+  const cpuCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById('detail-chart-cpu'));
   if (detailChartCpu) detailChartCpu.destroy();
   const cpuFiltered = cpuData
     .filter(p => (p.labels || {}).core === 'total')
@@ -536,7 +541,7 @@ async function loadDetailMetrics(hostId) {
     type: 'line',
     data: {
       datasets: [{
-        label: 'CPU',
+        label: t('CPU'),
         data: cpuFiltered,
         borderColor: '#82c4ee',
         backgroundColor: '#82c4ee18',
@@ -555,10 +560,10 @@ async function loadDetailMetrics(hostId) {
   });
 
   // Network I/O chart
-  const netCanvas = document.getElementById('detail-chart-net');
+  const netCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById('detail-chart-net'));
   if (detailChartNet) detailChartNet.destroy();
-  const recvSorted = netRecv.sort((a, b) => new Date(a.time) - new Date(b.time));
-  const sentSorted = netSent.sort((a, b) => new Date(a.time) - new Date(b.time));
+  const recvSorted = netRecv.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  const sentSorted = netSent.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   const recvByIface = groupByLabel(recvSorted, 'interface');
   const sentByIface = groupByLabel(sentSorted, 'interface');
   const iface = Object.keys(recvByIface)[0] || Object.keys(sentByIface)[0];
@@ -568,8 +573,8 @@ async function loadDetailMetrics(hostId) {
     type: 'line',
     data: {
       datasets: [
-        { label: 'Received', data: recvRates, borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
-        { label: 'Sent', data: sentRates, borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
+        { label: t('Received'), data: recvRates, borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
+        { label: t('Sent'), data: sentRates, borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
       ]
     },
     options: {
@@ -598,7 +603,7 @@ document.addEventListener('keydown', e => {
 
 /* ── Approve / reject / delete actions ───────────────────────────────── */
 async function approveHost(hostId, btn) {
-  const totp = await totpPrompt('Approve this host.');
+  const totp = await totpPrompt(t('Approve this host.'));
   if (!totp) return;
   try {
     btn.disabled = true;
@@ -606,11 +611,11 @@ async function approveHost(hostId, btn) {
       method: 'POST',
       body: JSON.stringify({ totp }),
     });
-    showToast('Host approved', 'success');
+    showToast(t('Host approved'), 'success');
     btn.closest('.enroll-card').style.opacity = '0.4';
     setTimeout(() => location.reload(), 800);
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
     btn.disabled = false;
   }
 }
@@ -619,11 +624,11 @@ async function rejectHost(hostId, btn) {
   try {
     btn.disabled = true;
     await apiPost(`/api/v1/hosts/${hostId}/reject/`);
-    showToast('Host rejected', 'success');
+    showToast(t('Host rejected'), 'success');
     btn.closest('.enroll-card').style.opacity = '0.4';
     setTimeout(() => location.reload(), 800);
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
     btn.disabled = false;
   }
 }
@@ -650,8 +655,8 @@ async function deleteHost(hostId, hostname, btn) {
       headers: { 'X-CSRFToken': getCsrf() },
       credentials: 'same-origin',
     });
-    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Delete failed');
-    showToast(`${hostname} removed`, 'success');
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || t('Delete failed'));
+    showToast(t('{hostname} removed', { hostname }), 'success');
     closeHostDetail();
     // Remove the card from the DOM immediately.
     const card = document.querySelector(`.host-card[data-id="${hostId}"]`);
@@ -659,7 +664,7 @@ async function deleteHost(hostId, hostname, btn) {
     // Invalidate fleet cache so the deploy modal won't show the deleted host.
     _deployHostCache = null;
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
     btn.disabled = false;
   }
 }
@@ -669,7 +674,7 @@ const PIN_KEY = 'vigil-pinned-hosts';
 
 function getPins() {
   try { return JSON.parse(localStorage.getItem(PIN_KEY)) || []; }
-  catch { return []; }
+  catch { return []; /* state-ok: a blocked storage area simply leaves nothing pinned */ }
 }
 
 function savePins(pins) {
@@ -701,11 +706,12 @@ function togglePin(hostId, hostname, status, btnEl) {
    rather than preventing it. The button now carries no handler at all and the
    values come from the dropdown item's existing data-* attributes, which is
    the pattern base.html already uses for the detail-panel delete button. */
-document.addEventListener('click', (ev) => {
-  const btn = ev.target.closest && ev.target.closest('.hdi-pin');
+document.addEventListener('click', (/** @type {MouseEvent} */ ev) => {
+  const target = /** @type {HTMLElement} */ (ev.target);
+  const btn = /** @type {HTMLElement} */ (target.closest && target.closest('.hdi-pin'));
   if (!btn) return;
   ev.stopPropagation();
-  const item = btn.closest('.host-dropdown-item');
+  const item = /** @type {HTMLElement} */ (btn.closest('.host-dropdown-item'));
   if (!item) return;
   const { hostId, hostname, status } = item.dataset;
   togglePin(hostId, hostname, status, btn);
@@ -753,7 +759,7 @@ function renderPinBar() {
   });
   // Sync pin buttons in dropdown
   document.querySelectorAll('.hdi-pin').forEach(btn => {
-    const item = btn.closest('.host-dropdown-item');
+    const item = /** @type {HTMLElement} */ (btn.closest('.host-dropdown-item'));
     if (item && isPinned(item.dataset.hostId)) btn.classList.add('pinned');
     else btn.classList.remove('pinned');
   });
@@ -767,12 +773,12 @@ function toggleHostDropdown(e) {
 
 document.addEventListener('click', e => {
   const dd = document.getElementById('host-dropdown');
-  if (dd && !dd.contains(e.target) && e.target.id !== 'host-selector-btn') {
+  if (dd && !dd.contains(/** @type {Node} */ (e.target)) && /** @type {HTMLElement} */ (e.target).id !== 'host-selector-btn') {
     dd.classList.remove('open');
   }
 });
 
-document.querySelectorAll('.host-dropdown-item').forEach(item => {
+document.querySelectorAll('.host-dropdown-item').forEach((/** @type {HTMLElement} */ item) => {
   item.addEventListener('click', () => {
     selectMonitorHost(item.dataset.hostId);
     document.getElementById('host-dropdown').classList.remove('open');
@@ -806,15 +812,15 @@ async function _fetchCardMetrics(ids) {
   return all;
 }
 
-async function refreshHostCards(root) {
+async function refreshHostCards(/** @type {HTMLElement=} */ root) {
   // Skip cards inside the collapsed inactive section — no live data needed.
-  const cards = [...(root || document).querySelectorAll('.host-card:not([data-inactive="1"])')];
+  const cards = [.../** @type {NodeListOf<HTMLElement & {dataset: HostCardDataset}>} */ ((root || document).querySelectorAll('.host-card:not([data-inactive="1"])'))];
   const ids = cards.filter(c => c.dataset.id && c.dataset.status === 'online').map(c => c.dataset.id);
   if (!ids.length) return;
   let all = {};
   try {
     all = await _fetchCardMetrics(ids);
-  } catch { return; }
+  } catch (e) { /* state-ok: a card keeps the dashes it renders with; there is no list to draw over */ }
 
   for (const card of cards) {
     const hostId = card.dataset.id;
@@ -834,20 +840,20 @@ async function refreshHostCards(root) {
     const cpuPts = cpuData.filter(p => (p.labels || {}).core === 'total');
     if (cpuPts.length && cpuEl) {
       const v = Math.round(cpuPts[0].value);
-      cpuEl.querySelector('.host-metric-value').textContent = v + '%';
-      cpuEl.querySelector('.host-metric-fill').style.width = v + '%';
+      /** @type {HTMLElement} */ (cpuEl.querySelector('.host-metric-value')).textContent = v + '%';
+      /** @type {HTMLElement} */ (cpuEl.querySelector('.host-metric-fill')).style.width = v + '%';
     }
     if (memData.length && memEl) {
       const v = Math.round(memData[0].value);
-      memEl.querySelector('.host-metric-value').textContent = v + '%';
-      memEl.querySelector('.host-metric-fill').style.width = v + '%';
+      /** @type {HTMLElement} */ (memEl.querySelector('.host-metric-value')).textContent = v + '%';
+      /** @type {HTMLElement} */ (memEl.querySelector('.host-metric-fill')).style.width = v + '%';
     }
     if (diskData.length && diskEl) {
       // Aggregate latest disk usage across mounts — show the highest %.
       const max = diskData.reduce((m, p) => Math.max(m, p.value || 0), 0);
       const v = Math.round(max);
-      diskEl.querySelector('.host-metric-value').textContent = v + '%';
-      diskEl.querySelector('.host-metric-fill').style.width = v + '%';
+      /** @type {HTMLElement} */ (diskEl.querySelector('.host-metric-value')).textContent = v + '%';
+      /** @type {HTMLElement} */ (diskEl.querySelector('.host-metric-fill')).style.width = v + '%';
     }
 
     // Network rates require two adjacent samples. Sum across interfaces
@@ -862,11 +868,11 @@ async function refreshHostCards(root) {
       }
       let total = 0;
       for (const samples of Object.values(byIface)) {
-        samples.sort((a,b) => new Date(a.time) - new Date(b.time));
+        samples.sort((a,b) => new Date(a.time).getTime() - new Date(b.time).getTime());
         if (samples.length < 2) continue;
         const a = samples[samples.length - 2];
         const b = samples[samples.length - 1];
-        const dt = (new Date(b.time) - new Date(a.time)) / 1000;
+        const dt = (new Date(b.time).getTime() - new Date(a.time).getTime()) / 1000;
         if (dt > 0) total += Math.max(0, (b.value - a.value) / dt);
       }
       return total;
@@ -874,14 +880,14 @@ async function refreshHostCards(root) {
     const inRate = _rate(netInData);
     const outRate = _rate(netOutData);
     if (netInEl) {
-      netInEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(inRate);
+      /** @type {HTMLElement} */ (netInEl.querySelector('.host-metric-value')).textContent = _formatBytesPerSec(inRate);
       const pct = Math.min(100, Math.round((inRate / (1024*1024)) * 100));
-      netInEl.querySelector('.host-metric-fill').style.width = pct + '%';
+      /** @type {HTMLElement} */ (netInEl.querySelector('.host-metric-fill')).style.width = pct + '%';
     }
     if (netOutEl) {
-      netOutEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(outRate);
+      /** @type {HTMLElement} */ (netOutEl.querySelector('.host-metric-value')).textContent = _formatBytesPerSec(outRate);
       const pct = Math.min(100, Math.round((outRate / (1024*1024)) * 100));
-      netOutEl.querySelector('.host-metric-fill').style.width = pct + '%';
+      /** @type {HTMLElement} */ (netOutEl.querySelector('.host-metric-fill')).style.width = pct + '%';
     }
   }
 }
@@ -902,7 +908,7 @@ refreshHostCards();
 
 function filterHostCards(query) {
   const q = (query || '').trim().toLowerCase();
-  for (const card of document.querySelectorAll('.host-card')) {
+  for (const card of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.host-card'))) {
     if (!q) {
       card.classList.remove('hidden');
       continue;
@@ -918,7 +924,7 @@ function filterHostCards(query) {
   }
   // Auto-expand the inactive section when a search is active so matches
   // there don't stay hidden behind a collapsed details element.
-  const inactive = document.getElementById('inactive-hosts-section');
+  const inactive = /** @type {HTMLDetailsElement} */ (document.getElementById('inactive-hosts-section'));
   if (inactive) inactive.open = !!q;
 }
 
@@ -958,7 +964,7 @@ function loadTerminalAssets() {
   _termAssets = (async () => {
     const src = document.getElementById('vigil-term-assets');
     if (!src) throw new Error('terminal assets not found');
-    _appendStylesheet(src.dataset.css);
+    _appendStylesheet(src.dataset.xtermCss);
     await _appendScript(src.dataset.xterm);
     await _appendScript(src.dataset.fit);
     await _appendScript(src.dataset.js);
@@ -1042,14 +1048,14 @@ async function openConnectMenu(hostId, hostname, anchorEl) {
     menu.appendChild(row);
   };
 
-  addRow('Web shell', opts.shell, () => {
+  addRow(t('Web shell'), opts.shell, () => {
     loadTerminalAssets()
       .then(() => openSession(hostId, 'shell'))
       .catch((err) => showToast(err.message, 'error'));
   });
   // Windows serves RDP itself, Linux through xrdp, and a Mac's desktop is its
   // own Screen Sharing (VNC): the same session either way, named for what it is.
-  addRow(opts.os_family === 'macos' ? 'Screen sharing' : 'Web RDP', opts.rdp, () => {
+  addRow(opts.os_family === 'macos' ? t('Screen sharing') : t('Web RDP'), opts.rdp, () => {
     // vigil-host-cards.js is loaded by base.html; guacamole-common.js and
     // vigil-rdp.js only when a desktop is first opened, so the reference to
     // openRdpSession has to stay dynamic. The item is offered only when
@@ -1060,16 +1066,16 @@ async function openConnectMenu(hostId, hostname, anchorEl) {
       .catch((err) => showToast(err.message, 'error'));
   });
   if (opts.is_windows) {
-    addRow('Download .rdp file', always,
+    addRow(t('Download .rdp file'), always,
       () => downloadHostRdp(hostId, hostname || opts.host));
   } else {
-    addRow('SSH command', always,
+    addRow(t('SSH command'), always,
       () => openSshFor(hostname || opts.host, opts.ssh_target));
   }
   if (opts.recorded) {
     const note = document.createElement('div');
     note.className = 'connect-note';
-    note.textContent = 'Sessions on this install are recorded.';
+    note.textContent = t('Sessions on this install are recorded.');
     menu.appendChild(note);
   }
 

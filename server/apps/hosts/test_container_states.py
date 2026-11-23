@@ -44,7 +44,13 @@ class ContainerStateTests(SimpleTestCase):
     def test_badges_tell_a_clean_stop_from_a_crash(self):
         """Run the real functions from the file, not a copy of them."""
         code = "\n".join([
-            "function escHtml(s){return String(s);} function escAttr(s){return String(s);}",
+            ("function escHtml(s){return String(s);} function escAttr(s){return String(s);}\n"
+             # The script builds its text through t() / tn() now (S6 M6); the
+             # pass-through forms keep this checking the English, as before.
+             "function _f(x,p){return !p?x:String(x).replace(/\\{(\\w+)\\}/g,"
+             "(m,k)=>Object.prototype.hasOwnProperty.call(p,k)?String(p[k]):m);}\n"
+             "function t(x,p){return _f(x,p);}\n"
+             "function tn(a,b,n,p){return _f(n===1?a:b,Object.assign({n},p||{}));}"),
             re.search(r"const CTR_STATES = \[[^\]]*\];", self.src).group(0),
             _function(self.src, "_ctrExitCode"),
             _function(self.src, "_ctrStateBadge"),

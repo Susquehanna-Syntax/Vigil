@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-agentprofiles.js
 // Owns: Reprovision → Agent profiles — the list, and the editor for one.
 // HTML: templates/pages/_reprovision.html #agent-profiles-list
@@ -10,8 +11,12 @@
 // admin may delete their own profiles freely but not the builtins — those are
 // the wizard's starting points, and it has nothing to copy from without them.
 
-const APF_LABELS = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full control' };
+const APF_LABELS = { monitor: t('Monitor'), managed: t('Managed'), full_control: t('Full control') };
 
+/** One agent-profile row from /api/v1/agent-profiles/. */
+/** @typedef {{id?: string|number, name?: string, mode?: string, builtin?: boolean, site_id?: string|number|null, description?: string, primary_relay?: string|number|null, allow_remote_shell?: boolean, allow_remote_desktop?: boolean, install_profiles?: Array<string|{name?: string}>, [k: string]: any}} AgentProfile */
+
+/** @returns {Promise<void>} */
 async function loadAgentProfiles() {
   const list = document.getElementById('agent-profiles-list');
   if (!list) return;
@@ -22,7 +27,7 @@ async function loadAgentProfiles() {
     list.replaceChildren();
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'Agent profiles require an admin account.';
+    p.textContent = t('Agent profiles require an admin account.');
     list.appendChild(p);
     return;
   }
@@ -30,7 +35,7 @@ async function loadAgentProfiles() {
   if (!Array.isArray(profiles) || !profiles.length) {
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = 'No agent profiles yet.';
+    p.textContent = t('No agent profiles yet.');
     list.appendChild(p);
     return;
   }
@@ -65,6 +70,7 @@ function _apRelayName(id) {
   return _apRelaysById[String(id)] || `relay ${String(id).slice(0, 8)}`;
 }
 
+/** @param {AgentProfile|null=} profile @returns {HTMLElement} */
 function _apCard(profile) {
   const card = document.createElement('div');
   card.className = 'site-row';
@@ -80,7 +86,7 @@ function _apCard(profile) {
   if (profile.builtin) {
     const badge = document.createElement('span');
     badge.className = 'chip chip-muted';
-    badge.textContent = 'built-in';
+    badge.textContent = t('built-in');
     main.appendChild(badge);
   }
 
@@ -92,7 +98,7 @@ function _apCard(profile) {
   const used = document.createElement('span');
   used.className = 'site-row-desc muted';
   const by = profile.install_profiles || [];
-  used.textContent = by.length ? `Used by: ${by.join(', ')}` : 'Used by: no install profiles';
+  used.textContent = by.length ? t('Used by: {profiles}', { profiles: by.join(', ') }) : t('Used by: no install profiles');
   main.appendChild(used);
 
   card.appendChild(main);
@@ -103,7 +109,7 @@ function _apCard(profile) {
   const edit = document.createElement('button');
   edit.className = 'btn btn-outline btn-sm';
   edit.type = 'button';
-  edit.textContent = 'Edit';
+  edit.textContent = t('Edit');
   edit.addEventListener('click', () => openAgentProfileEditor(profile));
   meta.appendChild(edit);
 
@@ -112,7 +118,7 @@ function _apCard(profile) {
     const del = document.createElement('button');
     del.className = 'btn btn-outline btn-sm img-del';
     del.type = 'button';
-    del.textContent = 'Delete';
+    del.textContent = t('Delete');
     del.addEventListener('click', () => deleteAgentProfile(profile));
     meta.appendChild(del);
   }
@@ -121,36 +127,39 @@ function _apCard(profile) {
   return card;
 }
 
+/** @param {AgentProfile|null=} profile @returns {Promise<void>} */
 async function openAgentProfileEditor(profile) {
   const m = mountModal('agentprofile', { wide: true });
   const editing = profile && profile.id ? String(profile.id) : '';
   m.setBody(`
-    <div class="modal-title"><span>${editing ? 'Edit agent profile' : 'New agent profile'}</span>
-      <button class="modal-close" id="ap-x" aria-label="Close">
+    <div class="modal-title"><span>${escHtml(editing ? t('Edit agent profile') : t('New agent profile'))}</span>
+      <button class="modal-close" id="ap-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="setting-row"><label>Name</label>
+    <div class="setting-row"><label>${escHtml(t('Name'))}</label>
       <input type="text" class="form-control" id="ap-name" maxlength="80" value=""></div>
-    <div class="setting-row" id="ap-site-field" hidden><label for="ap-site">Site</label>
+    <div class="setting-row" id="ap-site-field" hidden><label for="ap-site">${escHtml(t('Site'))}</label>
       <select class="form-control" id="ap-site"></select></div>
-    <div class="setting-row"><label>Description</label>
+    <div class="setting-row"><label>${escHtml(t('Description'))}</label>
       <input type="text" class="form-control" id="ap-description" maxlength="300" value=""></div>
     <div class="apf-error" id="ap-name-error" hidden></div>
     <div id="ap-form"></div>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" id="ap-cancel">Cancel</button>
-      <button class="btn btn-mint btn-sm" id="ap-save">Save</button>
+      <button class="btn btn-outline btn-sm" id="ap-cancel">${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint btn-sm" id="ap-save">${escHtml(t('Save'))}</button>
     </div>`);
 
+  /** @type {HTMLElement} */
   const form = m.modal.querySelector('#ap-form');
   // Mount and open first: apfLoadContext is a request, and a dialog that
   // appears only once it settles reads as lag (see commit 57470af).
   form.innerHTML = '<div class="modal-skeleton"><div class="sk-line sk-w60"></div>'
     + '<div class="sk-line"></div><div class="sk-line sk-w80"></div></div>';
-  m.modal.querySelector('#ap-name').value = (profile && profile.name) || '';
-  m.modal.querySelector('#ap-description').value = (profile && profile.description) || '';
-  sitePickFill(m.modal.querySelector('#ap-site'), m.modal.querySelector('#ap-site-field'),
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-name')).value = (profile && profile.name) || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-description')).value = (profile && profile.description) || '';
+  sitePickFill(/** @type {HTMLSelectElement} */ (m.modal.querySelector('#ap-site')),
+    /** @type {HTMLElement} */ (m.modal.querySelector('#ap-site-field')),
     profile ? profile.site_id : null, { editing: !!editing });
   requestAnimationFrame(m.open);
 
@@ -161,34 +170,38 @@ async function openAgentProfileEditor(profile) {
     form.innerHTML = '';
     const p = document.createElement('p');
     p.className = 'muted-note';
-    p.textContent = e.message || 'Could not load the agent actions.'; // throws — textContent
+    p.textContent = e.message || t('Could not load the agent actions.'); // throws — textContent
     form.appendChild(p);
     return;
   }
-  apfRender(form, profile, ctx);
+  apfRender(form, profile, /** @type {any} */ (ctx));
 
+  /** @type {HTMLElement} */
   const nameError = m.modal.querySelector('#ap-name-error');
   const close = () => m.close();
-  m.modal.querySelector('#ap-x').addEventListener('click', close);
-  m.modal.querySelector('#ap-cancel').addEventListener('click', close);
-  m.modal.querySelector('#ap-save').addEventListener('click', async () => {
-    const name = m.modal.querySelector('#ap-name').value.trim();
+  /** @type {HTMLButtonElement} */ (m.modal.querySelector('#ap-x')).addEventListener('click', close);
+  /** @type {HTMLButtonElement} */ (m.modal.querySelector('#ap-cancel')).addEventListener('click', close);
+  /** @type {HTMLButtonElement} */ (m.modal.querySelector('#ap-save')).addEventListener('click', async () => {
+    const name = /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-name')).value.trim();
     // The form holds the agent settings; the two fields above are the profile's
     // own identity, which is why apfShowErrors cannot place a complaint here.
     if (!name) {
-      nameError.textContent = 'Give the profile a name';
+      nameError.textContent = t('Give the profile a name');
       nameError.hidden = false;
       return;
     }
     nameError.hidden = true;
     apfShowErrors(form, null);
+    /** @type {{name: string, description: string, site_id?: string|number|null}} */
     const body = {
       name,
-      description: m.modal.querySelector('#ap-description').value.trim(),
+      description: /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-description')).value.trim(),
       ...apfRead(form),
     };
-    const siteId = sitePickValue(m.modal.querySelector('#ap-site'), m.modal.querySelector('#ap-site-field'));
+    const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (m.modal.querySelector('#ap-site')),
+      /** @type {HTMLElement} */ (m.modal.querySelector('#ap-site-field')));
     if (siteId !== undefined) body.site_id = siteId;
+    /** @type {HTMLButtonElement} */
     const btn = m.modal.querySelector('#ap-save');
     btn.disabled = true;
     try {
@@ -197,17 +210,17 @@ async function openAgentProfileEditor(profile) {
       } else {
         await apiJson('/api/v1/agent-profiles/', { method: 'POST', body: JSON.stringify(body) });
       }
-      showToast(editing ? 'Agent profile saved' : `Created ${name}`, 'success');
+      showToast(editing ? t('Agent profile saved') : t('Created {name}', { name }), 'success');
       close();
       loadAgentProfiles();
     } catch (e) {
       const errors = _apErrorFields(e);
       apfShowErrors(form, errors);
       if (errors && errors.name) {
-        nameError.textContent = `Name ${errors.name}`;
+        nameError.textContent = t('Name {reason}', { reason: errors.name });
         nameError.hidden = false;
       } else {
-        showToast(e.message || 'Could not save the profile', 'error');
+        showToast(e.message || t('Could not save the profile'), 'error');
       }
     } finally {
       btn.disabled = false;
@@ -226,14 +239,15 @@ function _apErrorFields(err) {
 async function deleteAgentProfile(profile) {
   if (!profile || !profile.id || profile.builtin) return;
   const ok = await confirmModal(
-    `Delete agent profile “${profile.name || profile.id}”? Hosts already installed keep their settings.`,
-    { confirmText: 'Delete', danger: true });
+    t('Delete agent profile “{name}”? Hosts already installed keep their settings.',
+      { name: profile.name || profile.id }), // i18n-ignore — the checker cuts a literal at its apostrophe, so this wrapped sentence still reads as bare; re-wrap in double quotes once it learns not to.
+    { confirmText: t('Delete'), danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/agent-profiles/${profile.id}/`, { method: 'DELETE' });
-    showToast('Agent profile deleted', 'success');
+    showToast(t('Agent profile deleted'), 'success');
     loadAgentProfiles();
   } catch (e) {
-    showToast(e.message || 'Could not delete the profile', 'error');
+    showToast(e.message || t('Could not delete the profile'), 'error');
   }
 }

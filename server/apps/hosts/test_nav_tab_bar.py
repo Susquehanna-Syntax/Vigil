@@ -17,7 +17,7 @@ from django.test import SimpleTestCase
 class TabBarOutsidePage(SimpleTestCase):
     def test_tab_bar_outside_a_page_does_not_throw(self):
         js = (Path(settings.BASE_DIR) / "static" / "js" / "vigil-nav.js").read_text()
-        const_group = "const group = bar.closest('.page');"
+        const_group = "const group = list.closest('.page');"
         guard = "if (!group) return;"
         query = "group.querySelectorAll('.tab-content')"
         self.assertIn(const_group, js)

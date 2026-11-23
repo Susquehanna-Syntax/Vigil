@@ -59,7 +59,7 @@ class PreviewBranchTests(SimpleTestCase):
         self.assertIn("its current steps are copied in when you deploy", tasks)
         # The branch header escapes the condition and the use node escapes
         # the referenced task name.
-        self.assertIn("if <code>${escHtml(node.if)}</code>", tasks)
+        self.assertIn("escHtml(t('if'))} <code>${escHtml(node.if)}</code>", tasks)
         self.assertIn("code>${escHtml(node.use)}</code>", tasks)
 
 
@@ -77,7 +77,7 @@ class TaskDetailStateTests(SimpleTestCase):
 
     def test_task_detail_uses_state_labels(self):
         tasks = _src()
-        self.assertIn("not_applicable: 'Not applicable'", tasks,
+        self.assertIn("not_applicable: t('Not applicable')", tasks,
                       "the state label map must name not_applicable")
         self.assertIn("TASK_STATE_LABELS[task.state] || task.state", tasks,
                       "the task-detail card header must label the state")

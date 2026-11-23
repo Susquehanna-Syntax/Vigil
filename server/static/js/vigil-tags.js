@@ -1,3 +1,4 @@
+// @ts-check
 /* Tags — the fleet-wide list, and the picker every tag field uses.
  *
  * A tag is a row now, not a string typed in four different places. That makes
@@ -10,43 +11,55 @@
  * operator editing one would just be overwritten by the next check-in.
  */
 
+/** A row of /api/v1/tags/ — apps/hosts/views/_common.py _tag_payload. */
+/** @typedef {{id: number, name: string, key?: string, kind?: string, description?: string, host_count: number, editable: boolean, can_change?: boolean, site_id: string|null}} TagRow */
+/** One openPicker row — what vigil-pickers.js renders and hands back to
+ *  `onSelect`. A picked tag's ✓ goes in `name`, not `key`: the picker matches
+ *  on `key`, and "west  ✓" would match no tag. The same shape is typed in
+ *  vigil-pickers.js, which declares that name for the checker now. */
+
+/** @type {TagRow[]} */
 let _allTags = [];
 
 /* ── The Tags tab ─────────────────────────────────────────────────────── */
 
 function _filterTags() {
-  const q = (document.getElementById('tag-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('tag-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allTags;
-  return _allTags.filter(t =>
-    (t.name || '').toLowerCase().includes(q) ||
-    (t.description || '').toLowerCase().includes(q));
+  return _allTags.filter(tag =>
+    (tag.name || '').toLowerCase().includes(q) ||
+    (tag.description || '').toLowerCase().includes(q));
 }
 
 function _tagKindBadge(kind) {
-  if (kind === 'auto') return '<span class="bl-badge off">from inventory</span>';
-  if (kind === 'agent') return '<span class="bl-badge off">reported by agent</span>';
+  if (kind === 'auto') return `<span class="bl-badge off">${escHtml(t('from inventory'))}</span>`;
+  if (kind === 'agent') return `<span class="bl-badge off">${escHtml(t('reported by agent'))}</span>`;
   return '';
 }
 
-function _tagCard(t) {
-  const used = t.host_count === 0
-    ? '<span style="color:var(--text-3);">on no machines</span>'
-    : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
-  const actions = t.editable && t.can_change !== false
-    ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(t.id)}">Rename</button>
-       <button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-tag-del="${escAttr(t.id)}">Delete</button>`
-    : '<span class="confirm-hint" style="margin:0;">' +
-      (!t.editable ? 'maintained by Vigil' : t.site_id ? 'you can use it, not change it' : 'global: changed by an administrator of the whole install') + '</span>';
+/**
+ * @param {TagRow} tagRow
+ * @returns {string}
+ */
+function _tagCard(tagRow) {
+  const used = tagRow.host_count === 0
+    ? `<span class="muted-span">${escHtml(t('on no machines'))}</span>`
+    : escHtml(tn('on {n} machine', 'on {n} machines', tagRow.host_count));
+  const actions = tagRow.editable && tagRow.can_change !== false
+    ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(tagRow.id)}">${escHtml(t('Rename'))}</button>
+       <button class="btn btn-ghost btn-sm delete-btn" data-tag-del="${escAttr(tagRow.id)}">${escHtml(t('Delete'))}</button>`
+    : '<span class="confirm-hint hint-flush">' +
+      (!tagRow.editable ? escHtml(t('maintained by Vigil')) : tagRow.site_id ? escHtml(t('you can use it, not change it')) : escHtml(t('global: changed by an administrator of the whole install'))) + '</span>';
   return `<div class="bl-card">
     <div class="bl-card-head">
       <div>
-        <span class="bl-name">${escHtml(t.name)}</span>
-        ${_tagKindBadge(t.kind)}
+        <span class="bl-name">${escHtml(tagRow.name)}</span>
+        ${_tagKindBadge(tagRow.kind)}
       </div>
-      <div style="display:flex;gap:6px;align-items:center;">${actions}</div>
+      <div class="tag-card-actions">${actions}</div>
     </div>
-    <div class="bl-card-body" style="color:var(--text-2);font-size:12px;">
-      ${used}${t.description ? ' · ' + escHtml(t.description) : ''}
+    <div class="bl-card-body card-body-quiet">
+      ${used}${tagRow.description ? ' · ' + escHtml(tagRow.description) : ''}
     </div>
   </div>`;
 }
@@ -58,9 +71,9 @@ function _renderTags() {
   if (!items.length) {
     const searching = _allTags.length > 0;
     box.innerHTML = `<div class="empty-block">
-      <h4>${searching ? 'No tags match that search' : 'No tags yet'}</h4>
-      <p>${searching ? 'Clear the search to see them all.'
-        : 'Tags are how waves, playbooks and automations pick machines. Create one here, then put it on a machine from its host card.'}</p>
+      <h4>${searching ? escHtml(t('No tags match that search')) : escHtml(t('No tags yet'))}</h4>
+      <p>${searching ? escHtml(t('Clear the search to see them all.'))
+        : escHtml(t('Tags are how waves, playbooks and automations pick machines. Create one here, then put it on a machine from its host card.'))}</p>
     </div>`;
     return;
   }
@@ -70,12 +83,13 @@ function _renderTags() {
 async function loadTags() {
   const box = document.getElementById('tags-list');
   if (!box) return;
-  box.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
+  box.innerHTML = loadingHtml();
   try {
     _allTags = await apiJson('/api/v1/tags/');
     _renderTags();
   } catch (e) {
-    box.innerHTML = `<div class="empty-block"><h4>Couldn't load tags</h4><p>${escHtml(e.message)}</p></div>`;
+    showLoadFailure(box, t('tags'), e, loadTags);
+    return;
   }
 }
 
@@ -91,10 +105,10 @@ async function createTag() {
     await apiJson('/api/v1/tags/', {
       method: 'POST', body: JSON.stringify(body),
     });
-    showToast('Tag created', 'success');
+    showToast(t('Tag created'), 'success');
     await loadTags();
   } catch (e) {
-    showToast(e.message || 'Could not create the tag', 'error');
+    showToast(e.message || t('Could not create the tag'), 'error');
   }
 }
 
@@ -109,10 +123,10 @@ async function renameTag(tagId) {
     await apiJson(`/api/v1/tags/${tagId}/`, {
       method: 'PATCH', body: JSON.stringify({ name: name.trim() }),
     });
-    showToast('Tag renamed everywhere', 'success');
+    showToast(t('Tag renamed everywhere'), 'success');
     await loadTags();
   } catch (e) {
-    showToast(e.message || 'Could not rename the tag', 'error');
+    showToast(e.message || t('Could not rename the tag'), 'error');
   }
 }
 
@@ -122,12 +136,12 @@ async function deleteTag(tagId) {
   if (!confirm(`Delete the tag "${tag.name}"?`)) return;
   try {
     await apiJson(`/api/v1/tags/${tagId}/`, { method: 'DELETE' });
-    showToast('Tag deleted', 'success');
+    showToast(t('Tag deleted'), 'success');
     await loadTags();
   } catch (e) {
     // A 409 here is the API refusing to empty a wave behind your back; its
     // message names what is still using the tag.
-    showToast(e.message || 'Could not delete the tag', 'error');
+    showToast(e.message || t('Could not delete the tag'), 'error');
   }
 }
 
@@ -144,17 +158,17 @@ function openTagPicker(opts) {
   const chosen = new Set((opts.selected || []).map(n => String(n).toLowerCase()));
   openPicker({
     type: 'tag',
-    title: opts.title || 'Pick a tag',
+    title: opts.title || t('Pick a tag'),
     allowAdd: false,
     items: _allTags
-      .filter(t => opts.includeReserved ? true : t.editable)
-      .map(t => ({
-        key: t.name,
-        name: t.name + (chosen.has(t.key) ? '  ✓' : ''),
-        meta: (t.host_count === 1 ? '1 machine' : `${t.host_count} machines`)
-              + (t.kind !== 'manual' ? ' · from inventory' : ''),
+      .filter(tag => opts.includeReserved ? true : tag.editable)
+      .map(tag => ({
+        key: tag.name,
+        name: tag.name + (chosen.has(tag.key) ? '  ✓' : ''),
+        meta: tn('{n} machine', '{n} machines', tag.host_count)
+              + (tag.kind !== 'manual' ? ' · ' + t('from inventory') : ''),
         editable: false,
-        raw: t,
+        raw: tag,
       })),
     onSelect: (item) => opts.onSelect(item.raw || { name: item.key }),
   });
@@ -163,7 +177,7 @@ function openTagPicker(opts) {
 /** Ensure `_allTags` is loaded before a picker opens. */
 async function ensureTagsLoaded() {
   if (_allTags.length) return;
-  try { _allTags = await apiJson('/api/v1/tags/'); } catch { _allTags = []; }
+  try { _allTags = await apiJson('/api/v1/tags/'); } catch { /* state-ok: a picker is a convenience; typing a tag name still works */ }
 }
 
 /**
@@ -175,22 +189,23 @@ async function ensureTagsLoaded() {
  * exist yet has to be typeable somewhere — but the list is now one click away,
  * so a misspelling is a choice rather than an accident.
  */
+/** @param {string} inputId @param {{title?: string, includeReserved?: boolean}=} opts @returns {void} */
 function attachTagPicker(inputId, opts = {}) {
-  const input = document.getElementById(inputId);
+  const input = /** @type {HTMLInputElement} */ (document.getElementById(inputId));
   if (!input || input.dataset.tagPicker) return;
   input.dataset.tagPicker = '1';
 
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'btn btn-outline btn-sm tag-pick-btn';
-  btn.textContent = 'Pick…';
+  btn.textContent = t('Pick…');
   input.insertAdjacentElement('afterend', btn);
 
   btn.addEventListener('click', async () => {
     await ensureTagsLoaded();
     const current = (input.value || '').split(',').map(t => t.trim()).filter(Boolean);
     openTagPicker({
-      title: opts.title || 'Add a tag',
+      title: opts.title || t('Add a tag'),
       selected: current,
       // Reprovision and host tagging can legitimately reference an
       // inventory-derived tag; a wave selector normally should not.
@@ -219,8 +234,12 @@ const _RESERVED_TAG = /^(os|os_family|pkg|arch|agent):/i;
  *   opts.current()  → the tags already on the thing, left out of the list
  *   opts.onAdd(name) → add it (may be async)
  */
+/** @typedef {{name: string, meta: string, disabled?: boolean, create?: boolean}} ComboOption */
+/** @typedef {{current: () => string[], onAdd: (name: string) => any}} ComboOpts */
+
+/** @param {string} inputId @param {ComboOpts} opts @returns {void} */
 function attachTagCombobox(inputId, opts) {
-  const input = document.getElementById(inputId);
+  const input = /** @type {HTMLInputElement} */ (document.getElementById(inputId));
   if (!input || input.dataset.tagCombo) return;
   input.dataset.tagCombo = '1';
   input.setAttribute('role', 'combobox');
@@ -240,6 +259,7 @@ function attachTagCombobox(inputId, opts) {
   wrap.appendChild(input);
   wrap.appendChild(list);
 
+  /** @type {ComboOption[]} */
   let options = [];   // [{name, meta, create}]
   let active = -1;
 
@@ -247,27 +267,28 @@ function attachTagCombobox(inputId, opts) {
 
   function render() {
     const q = input.value.trim().toLowerCase();
-    const have = new Set((opts.current() || []).map(t => String(t).toLowerCase()));
+    const have = new Set((opts.current() || []).map(tag => String(tag).toLowerCase()));
     const matches = _allTags
-      .filter(t => t.editable && !have.has(t.name.toLowerCase())
-        && (!q || t.name.toLowerCase().includes(q)))
-      .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q))
+      .filter(tag => tag.editable && !have.has(tag.name.toLowerCase())
+        && (!q || tag.name.toLowerCase().includes(q)))
+      // Boolean ranks must be numbers before they are subtracted (TS2362/TS2363).
+      .sort((/** @type {TagRow} */ a, /** @type {TagRow} */ b) => (Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)))
         || (b.host_count - a.host_count) || a.name.localeCompare(b.name))
       .slice(0, 8)
-      .map(t => ({ name: t.name,
-                   meta: t.host_count === 1 ? '1 machine' : `${t.host_count} machines` }));
+      .map(tag => ({ name: tag.name,
+                     meta: tn('{n} machine', '{n} machines', tag.host_count) }));
     options = matches;
-    if (q && !have.has(q) && !_allTags.some(t => t.name.toLowerCase() === q)) {
+    if (q && !have.has(q) && !_allTags.some(tag => tag.name.toLowerCase() === q)) {
       options.push(_RESERVED_TAG.test(q)
-        ? { name: q, meta: 'set by Vigil from inventory — cannot be added by hand', disabled: true }
-        : { name: q, meta: 'new tag', create: true });
+        ? { name: q, meta: t('set by Vigil from inventory — cannot be added by hand'), disabled: true }
+        : { name: q, meta: t('new tag'), create: true });
     }
     if (!options.length) {
-      list.innerHTML = `<div class="tag-combo-empty">${q ? 'Already on this machine.' : 'No other tags yet — type one to create it.'}</div>`;
+      list.innerHTML = `<div class="tag-combo-empty">${q ? escHtml(t('Already on this machine.')) : escHtml(t('No other tags yet — type one to create it.'))}</div>`;
     } else {
-      list.innerHTML = options.map((o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
+      list.innerHTML = options.map((/** @type {ComboOption} */ o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
           role="option" id="${escAttr(list.id)}-${i}" data-combo-idx="${i}" aria-selected="${i === active}"${o.disabled ? ' aria-disabled="true"' : ''}>
-          <span class="tag-combo-name">${o.create ? 'Create tag ' : ''}<b>${escHtml(o.name)}</b></span>
+          <span class="tag-combo-name">${o.create ? t('Create tag {name}', { name: `<b>${escHtml(o.name)}</b>` }) : `<b>${escHtml(o.name)}</b>`}</span>
           <span class="tag-combo-meta">${escHtml(o.meta)}</span></div>`).join('');
     }
     input.setAttribute('aria-activedescendant', active >= 0 ? `${list.id}-${active}` : '');
@@ -311,7 +332,7 @@ function attachTagCombobox(inputId, opts) {
   });
   // mousedown, not click: a click lands after the input's blur closed the list.
   list.addEventListener('mousedown', (e) => {
-    const row = e.target.closest('[data-combo-idx]');
+    const row = /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (e.target).closest('[data-combo-idx]'));
     if (!row) return;
     e.preventDefault();
     choose(Number(row.dataset.comboIdx));
@@ -323,7 +344,7 @@ function attachTagCombobox(inputId, opts) {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('tag-search')?.addEventListener('input', _renderTags);
   document.getElementById('tag-new-btn')?.addEventListener('click', createTag);
-  document.querySelectorAll('.tab[data-tab]').forEach(tab => {
+  document.querySelectorAll('.tab[data-tab]').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.tab === 'tasks-tags') loadTags();
     });
@@ -332,14 +353,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Every tag field in the app, in one place so none gets forgotten.
   // (The rollout start dialog picks wave groups from chips in vigil-rollout.js,
   // so it has no tag field to wire.)
-  attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
-  attachTagPicker('wave-group-tags', { title: 'Ladders this wave belongs to' });
-  attachTagPicker('bl-tags', { title: 'Machines this playbook targets' });
-  attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
-  attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
-  attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',
+  attachTagPicker('wave-tags', { title: t('Machines in this wave are tagged') });
+  attachTagPicker('wave-group-tags', { title: t('Ladders this wave belongs to') });
+  attachTagPicker('bl-tags', { title: t('Machines this playbook targets') });
+  attachTagPicker('auto-event-tags', { title: t('Only fire for hosts tagged') });
+  attachTagPicker('auto-target-tags', { title: t('Run on hosts tagged') });
+  attachTagPicker('repro-prof-tags', { title: t('Tag the rebuilt host with'),
                                        includeReserved: true });
-  attachTagPicker('pol-tags', { title: 'Hosts this policy applies to are tagged',
+  attachTagPicker('pol-tags', { title: t('Hosts this policy applies to are tagged'),
                                includeReserved: true });
   // The host drawer adds one tag at a time and saves it at once: a combobox,
   // not a comma field (vigil-host-cards.js).

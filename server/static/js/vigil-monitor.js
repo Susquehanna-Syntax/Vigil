@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-monitor.js
 // Owns: Monitor page — gauges, time-series charts, top processes, network I/O,
 //   disk bars, auto-refresh, and the navigateTo wrapper that auto-selects
@@ -8,6 +9,13 @@
 //   getPins for auto-select), vigil-vulns.js (refreshVulns called on nav),
 //   vigil-settings.js (refreshTotpStatus called on nav).
 // API: GET /api/v1/metrics/{host}/{category}/{metric}/
+
+/** One sample from a metrics endpoint, as this page reads it. `time` is the API's
+ *  timestamp — epoch ms — but it reaches a Date constructor below, so it is the
+ *  same TimeLike vigil-utils.js types its metric helpers with. */
+/** @typedef {{labels?: Record<string, string>, time: number|string, value: number}} MonitorMetricPoint */
+/** A pinned host (vigil-host-cards.js, localStorage). */
+/** @typedef {{id: string, hostname: string, status: string}} Pin */
 
 /* ── Chart.js global config ──────────────────────────────────────────── */
 Chart.defaults.color = cssVar('--text-3') || '#6e6b76';
@@ -30,7 +38,7 @@ Chart.defaults.elements.point.hitRadius = 8;
 // chart so they pick the new ones up, and the default text colour with them.
 document.addEventListener('vigil:theme', () => {
   Chart.defaults.color = cssVar('--text-3');
-  Object.values(Chart.instances).forEach(c => c.update('none'));
+  Object.values(/** @type {Record<string, any>} */ (Chart.instances)).forEach((/** @type {{update: (mode: string) => void}} */ c) => c.update('none'));
 });
 
 // `chart.update('none')` skips animation outright — which is what a routine
@@ -55,14 +63,17 @@ let monitorHostId = null;
 let monitorHostIp = '';
 let monitorHostName = '';
 let monitorTimeRange = 60; // minutes
-let chartCpu = null, chartMem = null, chartNet = null, chartSwap = null;
+/** @type {any} */
+let chartCpu = null, /** @type {any} */ chartMem = null, /** @type {any} */ chartNet = null, /** @type {any} */ chartSwap = null;
+/** @type {number|null} */
 let monitorInterval = null;
 
 /* ── Host selection / time range / metric fetch ─────────────────────── */
+/** @param {string} hostId @returns {void} */
 function selectMonitorHost(hostId) {
   monitorHostId = hostId;
   // Find host data from dropdown items
-  const item = document.querySelector(`.host-dropdown-item[data-host-id="${hostId}"]`);
+  const item = /** @type {HTMLElement|null} */ (document.querySelector(`.host-dropdown-item[data-host-id="${hostId}"]`));
   if (!item) return;
 
   const d = item.dataset;
@@ -91,7 +102,7 @@ function selectMonitorHost(hostId) {
 
 // ── RDP launch ──
 function launchRdpForCurrentMonitor() {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  if (!monitorHostId) { showToast(t('No host selected'), 'error'); return; }
   // Stream a .rdp file download. The server returns it with
   // Content-Disposition: attachment so the OS hands it off to mstsc /
   // Microsoft Remote Desktop / Remmina depending on platform.
@@ -103,16 +114,16 @@ function openSshFor(hostname, ip) {
   monitorHostName = hostname || monitorHostName;
   monitorHostIp = ip || '';
   const target = _sshTarget();
-  if (!target) { showToast('No address known for this host', 'error'); return; }
-  document.getElementById('ssh-modal-title').textContent = `SSH to ${monitorHostName || target}`;
-  document.getElementById('ssh-user').value = '';
+  if (!target) { showToast(t('No address known for this host'), 'error'); return; }
+  document.getElementById('ssh-modal-title').textContent = t('SSH to {host}', { host: monitorHostName || target });
+  /** @type {HTMLInputElement} */ (document.getElementById('ssh-user')).value = '';
   updateSshCommand();
   document.getElementById('ssh-overlay').classList.add('open');
   document.getElementById('ssh-modal').classList.add('open');
 }
 
 function openSshForCurrentMonitor() {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  if (!monitorHostId) { showToast(t('No host selected'), 'error'); return; }
   openSshFor(monitorHostName, monitorHostIp);
 }
 
@@ -126,20 +137,20 @@ function _sshTarget() {
 }
 
 function updateSshCommand() {
-  const user = document.getElementById('ssh-user').value.trim();
+  const user = /** @type {HTMLInputElement} */ (document.getElementById('ssh-user')).value.trim();
   const host = _sshTarget();
   const dest = user ? `${user}@${host}` : host;
-  document.getElementById('ssh-cmd').textContent = `ssh ${dest}`;
+  document.getElementById('ssh-cmd').textContent = `ssh ${dest}`; // i18n-ignore
   // Encode userinfo and host separately so the "@" stays structural while a
   // stray character in either part can't reshape the URI or the href attribute.
   const uri = 'ssh://' + (user ? encodeURIComponent(user) + '@' : '') + encodeURIComponent(host);
-  document.getElementById('ssh-uri-link').href = uri;
+  /** @type {HTMLAnchorElement} */ (document.getElementById('ssh-uri-link')).href = uri;
 }
 
 function copySshCommand() {
   const cmd = document.getElementById('ssh-cmd').textContent;
   copyText(cmd).then((ok) => showToast(
-    ok ? 'Copied — paste into your terminal' : 'Copy failed',
+    ok ? t('Copied — paste into your terminal') : t('Copy failed'),
     ok ? 'success' : 'error'));
 }
 
@@ -172,6 +183,7 @@ function setTimeRange(minutes, btn) {
 }
 
 // ── Fetch metrics ──
+/** @param {string} hostId @param {string} category @param {string} metric @param {number=} limit @returns {Promise<MonitorMetricPoint[]>} */
 async function fetchMetric(hostId, category, metric, limit) {
   const from = new Date(Date.now() - monitorTimeRange * 60000).toISOString();
   const url = `/api/v1/metrics/${hostId}/${category}/${metric}/?from=${from}&limit=${limit || 500}`;
@@ -183,22 +195,25 @@ async function fetchMetric(hostId, category, metric, limit) {
 }
 
 // ── Gauge helpers ──
+/** @param {string} fillId @param {string} textId @param {number|null|undefined} pct @returns {void} */
 function setGauge(fillId, textId, pct) {
-  const fill = document.getElementById(fillId);
+  // getElementById is typed HTMLElement; the gauge fill is an SVG <circle>.
+  const fill = /** @type {SVGElement} */ (/** @type {unknown} */ (document.getElementById(fillId)));
   const text = document.getElementById(textId);
   if (pct === null || pct === undefined) {
-    fill.style.strokeDashoffset = CIRCUMFERENCE;
+    fill.style.strokeDashoffset = String(CIRCUMFERENCE);
     text.textContent = '—';
     return;
   }
   const offset = CIRCUMFERENCE * (1 - Math.min(pct, 100) / 100);
-  fill.style.strokeDashoffset = offset;
+  fill.style.strokeDashoffset = String(offset);
   text.textContent = Math.round(pct) + '%';
 }
 
 // ── Chart factory ──
+/** @param {string} canvasId @param {string} color @param {string} label @returns {any} */
 function makeTimeChart(canvasId, color, label) {
-  const ctx = document.getElementById(canvasId).getContext('2d');
+  const ctx = /** @type {HTMLCanvasElement} */ (document.getElementById(canvasId)).getContext('2d');
   return new Chart(ctx, {
     type: 'line',
     data: {
@@ -270,13 +285,13 @@ function makeTimeChart(canvasId, color, label) {
 }
 
 function makeNetChart(canvasId) {
-  const ctx = document.getElementById(canvasId).getContext('2d');
+  const ctx = /** @type {HTMLCanvasElement} */ (document.getElementById(canvasId)).getContext('2d');
   return new Chart(ctx, {
     type: 'line',
     data: {
       datasets: [
-        { label: 'Received', data: [], borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
-        { label: 'Sent', data: [], borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
+        { label: t('Received'), data: [], borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
+        { label: t('Sent'), data: [], borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
       ]
     },
     options: {
@@ -340,11 +355,12 @@ function axisUnits(chart) {
 }
 
 // ── Update chart data ──
+/** @param {any} chart @param {MonitorMetricPoint[]} points @param {Record<string, string>=} labelFilter @returns {{x: number, y: number}[]} */
 function updateChart(chart, points, labelFilter) {
   let filtered = points;
   if (labelFilter) {
-    filtered = points.filter(p => {
-      for (const [k, v] of Object.entries(labelFilter)) {
+    filtered = points.filter((/** @type {MonitorMetricPoint} */ p) => {
+      for (const [k, v] of Object.entries(labelFilter || {})) {
         if ((p.labels || {})[k] !== v) return false;
       }
       return true;
@@ -369,7 +385,7 @@ function updateChart(chart, points, labelFilter) {
 // ── Main refresh ──
 async function refreshMonitor() {
   if (!monitorHostId) return;
-  const btn = document.getElementById('monitor-refresh-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('monitor-refresh-btn'));
   btn.disabled = true;
   btn.style.opacity = '0.5';
 
@@ -412,8 +428,11 @@ async function refreshMonitor() {
   renderDiskBars(diskData);
 
   // ── Network I/O (compute deltas for rate) ──
-  const recvSorted = netRecv.sort((a, b) => new Date(a.time) - new Date(b.time));
-  const sentSorted = netSent.sort((a, b) => new Date(a.time) - new Date(b.time));
+  // getTime() on each side of these sorts rather than `new Date(a) - new Date(b)`:
+  // tsc rejects the latter because a metric point's timestamp may arrive as an
+  // ISO string. Same value — vigil-utils.js computeRates() made this change in 03f.
+  const recvSorted = netRecv.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  const sentSorted = netSent.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
   // Group by interface, pick first interface found
   const recvByIface = groupByLabel(recvSorted, 'interface');
   const sentByIface = groupByLabel(sentSorted, 'interface');
@@ -436,8 +455,11 @@ async function refreshMonitor() {
   setGauge('gauge-disk-fill', 'gauge-disk-text', diskLatest);
 
   // ── Load average ──
+  // getTime() on each side rather than `new Date(b) - new Date(a)`: tsc rejects
+  // the latter because a metric point's timestamp may arrive as an ISO string.
+  // Same value — vigil-utils.js computeRates() made the same change in 03f.
   if (loadData.length) {
-    const latest = loadData.sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+    const latest = loadData.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0];
     document.getElementById('gauge-load-text').textContent = latest.value.toFixed(2);
   } else {
     document.getElementById('gauge-load-text').textContent = '—';
@@ -463,7 +485,7 @@ function renderProcTable(tableId, points, metricName) {
   const table = document.getElementById(tableId);
   const tbody = table.querySelector('tbody');
   if (!points.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">No data yet</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="3" class="proc-td-wait">${escHtml(t('No data yet'))}</td></tr>`;
     return;
   }
   // Get the latest snapshot: group by rank, take most recent per rank
@@ -487,10 +509,10 @@ function renderProcTable(tableId, points, metricName) {
     return `<tr>
       <td class="proc-name">${escHtml(name)}</td>
       <td class="proc-pid">${pid}</td>
-      <td class="proc-val" style="color:${accentColor};">
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-          <div style="width:50px;height:4px;background:var(--s3);border-radius:2px;overflow:hidden;">
-            <div style="height:100%;width:${barW}%;background:${accentColor};border-radius:2px;"></div>
+      <td class="proc-val" data-css="color:${accentColor};">
+        <div class="proc-val-row">
+          <div class="proc-bar-track">
+            <div class="proc-bar-fill" data-css="width:${barW}%;background:${accentColor};"></div>
           </div>
           ${val}%
         </div>
@@ -506,21 +528,21 @@ function getLatestDiskPercent(diskData) {
   const byMount = groupByLabel(diskData, 'mount');
   const mount = byMount['/'] ? '/' : Object.keys(byMount)[0];
   if (!mount) return null;
-  const pts = byMount[mount].sort((a, b) => new Date(b.time) - new Date(a.time));
+  const pts = byMount[mount].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
   return pts[0]?.value ?? null;
 }
 
 function renderDiskBars(diskData) {
   const container = document.getElementById('disk-bars');
   if (!diskData.length) {
-    container.innerHTML = '<div style="color:var(--text-3);font-size:13px;text-align:center;padding:20px;">Waiting for data...</div>';
+    container.innerHTML = `<div class="disk-bars-empty">${escHtml(t('Waiting for data...'))}</div>`;
     return;
   }
   // Get latest value per mount
   const byMount = groupByLabel(diskData, 'mount');
   const mounts = {};
   for (const [mount, pts] of Object.entries(byMount)) {
-    const latest = pts.sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+    const latest = pts.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0];
     mounts[mount] = latest.value;
   }
   // Sort by mount name
@@ -529,8 +551,8 @@ function renderDiskBars(diskData) {
     const color = pct > 90 ? 'var(--rose)' : pct > 75 ? 'var(--lemon)' : 'var(--mint)';
     return `<div class="disk-row">
       <div class="disk-mount" title="${mount}">${mount}</div>
-      <div class="disk-bar-track"><div class="disk-bar-fill" style="width:${pct}%;background:${color};"></div></div>
-      <div class="disk-pct" style="color:${color};">${Math.round(pct)}%</div>
+      <div class="disk-bar-track"><div class="disk-bar-fill" data-css="width:${pct}%;background:${color};"></div></div>
+      <div class="disk-pct" data-css="color:${color};">${Math.round(pct)}%</div>
     </div>`;
   }).join('');
 }
@@ -555,7 +577,7 @@ startAutoRefresh();
 /* ── navigateTo wrapper: monitor → auto-select pinned, vulns → refresh,
     settings → refresh TOTP. Each feature file stacks its own wrapper. ── */
 const origNavigate = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   origNavigate(pageName);
   if (pageName === 'monitor' && !monitorHostId) {
     const pins = getPins();
@@ -573,6 +595,6 @@ navigateTo = function(pageName) {
 /* ── The monitor header's Connect button (QA-58) ───────────────────────────
    Same menu the host cards open; only where the host id comes from differs. */
 function openConnectMenuForMonitor(el) {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  if (!monitorHostId) { showToast(t('No host selected'), 'error'); return; }
   openConnectMenu(monitorHostId, monitorHostName, el);
 }

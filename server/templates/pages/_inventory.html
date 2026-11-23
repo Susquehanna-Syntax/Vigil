@@ -1,51 +1,51 @@
-{# Inventory page section — sortable/filterable hardware snapshot table #}
-{# Logic: static/js/vigil-inventory.js | Styles: vigil.css .inv-* | Data: client-side fetch /api/v1/hosts/inventory/ #}
+{% load i18n %}{# Inventory page section — sortable/filterable hardware snapshot table #}
+{# Logic: static/js/vigil-inventory.js | Styles: css/vigil/*.css .inv-* | Data: client-side fetch /api/v1/hosts/inventory/ #}
     <section id="page-inventory" class="page">
       <div class="page-header">
         <div>
-          <div class="page-title">Inventory<span>.</span></div>
-          <div class="page-sub">Hardware snapshot of every enrolled host</div>
+          <div class="page-title">{% translate "Inventory" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Hardware snapshot of every enrolled host" %}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="text" class="form-control" id="inv-search" placeholder="Search inventory…" data-input="renderInventory" style="width:240px;font-size:13px;">
-          <div style="position:relative;display:inline-block;" id="inv-col-editor-wrap">
+        <div class="inv-toolbar">
+          <input type="text" class="form-control inv-search" id="inv-search" placeholder="{% translate "Search inventory…" %}" data-input="renderInventory">
+          <div class="inv-col-editor-wrap" id="inv-col-editor-wrap">
             <button class="btn btn-outline btn-sm" data-act="toggleInvColEditor" id="inv-col-editor-btn">
               <svg viewBox="0 0 24 24" width="14" height="14"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-              Columns
+              {% translate "Columns" %}
             </button>
             <div class="inv-col-editor" id="inv-col-editor" style="display:none;"></div>
           </div>
           <button class="btn btn-outline btn-sm" data-act="exportInventoryCsv">
             <svg viewBox="0 0 24 24" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export CSV
+            {% translate "Export CSV" %}
           </button>
           <button class="btn btn-outline btn-sm" data-act="refreshInventory">
             <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            Refresh
+            {% translate "Refresh" %}
           </button>
         </div>
       </div>
 
       <div id="inv-content">
-        <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="inv-loading">
-          Loading inventory…
+        <div class="inv-loading" id="inv-loading">
+          {% translate "Loading inventory…" %}
         </div>
       </div>
 
       <!-- Unmanaged devices — manual registry of things that don't run an agent -->
-      <div class="section-label" style="margin-top:40px;display:flex;align-items:center;justify-content:space-between;">
-        <span>Unmanaged Devices<span class="section-count" id="dev-count"></span></span>
+      <div class="section-label inv-devices-label">
+        <span>{% translate "Unmanaged Devices" %}<span class="section-count" id="dev-count"></span></span>
         <span class="dev-actions">
           <button class="btn btn-outline btn-sm" data-act="openDiscovery">
             <svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="3" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="21"/></svg>
-            Discover
+            {% translate "Discover" %}
           </button>
           <button class="btn btn-outline btn-sm" data-act="openDeviceModal">
             <svg viewBox="0 0 24 24" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Device
+            {% translate "Add Device" %}
           </button>
         </span>
       </div>
-      <div class="dev-sub">Network gear, printers, NAS and other devices Vigil doesn't manage with an agent.</div>
+      <div class="dev-sub">{% translate "Network gear, printers, NAS and other devices Vigil doesn't manage with an agent." %}</div>
       <div id="dev-content"></div>
     </section>

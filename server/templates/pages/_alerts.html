@@ -1,11 +1,11 @@
-{# Alerts page section #}
-{# Logic: static/js/vigil-alerts.js (client-side rendered — refreshAlerts) | Styles: vigil.css .alert-*, .tab-*, .bulk-bar | Data: fetched from /api/v1/alerts/?state=... #}
+{% load i18n %}{# Alerts page section #}
+{# Logic: static/js/vigil-alerts.js (client-side rendered — refreshAlerts) | Styles: css/vigil/*.css .alert-*, .tab-*, .bulk-bar | Data: fetched from /api/v1/alerts/?state=... #}
     <section id="page-alerts" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Alerts<span>.</span></div>
-          <div class="page-sub">Monitor alert lifecycle across all hosts</div>
+          <div class="page-title">{% translate "Alerts" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Monitor alert lifecycle across all hosts" %}</div>
         </div>
       </div>
 
@@ -16,31 +16,31 @@
       </div>
 
       <div class="tab-bar" data-tab-group="alerts">
-        <div class="tab t-rose active" data-tab="alerts-firing">Firing <span style="opacity:.6" id="alerts-count-firing"></span></div>
-        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged <span style="opacity:.6" id="alerts-count-ack"></span></div>
-        <div class="tab t-mint" data-tab="alerts-resolved">Resolved</div>
+        <div class="tab t-rose active" data-tab="alerts-firing">{% translate "Firing" %} <span class="alerts-tab-count" id="alerts-count-firing"></span></div>
+        <div class="tab t-lemon" data-tab="alerts-ack">{% translate "Acknowledged" %} <span class="alerts-tab-count" id="alerts-count-ack"></span></div>
+        <div class="tab t-mint" data-tab="alerts-resolved">{% translate "Resolved" %}</div>
       </div>
 
       {# Bulk action bar — appears when any alert is checked #}
       <div class="bulk-bar" id="alerts-bulk-bar" hidden>
-        <span class="bulk-bar-count" id="alerts-bulk-count">0 selected</span>
+        <span class="bulk-bar-count" id="alerts-bulk-count">{% translate "0 selected" %}</span>
         <div class="bulk-bar-actions">
           <div class="ack-menu-wrap">
             <button class="btn btn-sm btn-peach" data-act="toggleAckMenu" data-a1="$event" data-a2="bulk">
-              Ack selected
-              <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
+              {% translate "Ack selected" %}
+              <svg class="alerts-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="ack-menu" id="ack-menu-bulk">
-              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="3600">For 1 hour</div>
-              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="28800">For 8 hours</div>
-              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="86400">For 24 hours</div>
-              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="604800">For 7 days</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="3600">{% translate "For 1 hour" %}</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="28800">{% translate "For 8 hours" %}</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="86400">{% translate "For 24 hours" %}</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="604800">{% translate "For 7 days" %}</div>
               <div class="ack-menu-divider"></div>
-              <div class="ack-menu-item" data-act="bulkAlertAcknowledgePermanently">Permanently</div>
+              <div class="ack-menu-item" data-act="bulkAlertAcknowledgePermanently">{% translate "Permanently" %}</div>
             </div>
           </div>
-          <button class="btn btn-sm btn-peach" data-act="bulkAlertAction" data-a1="unacknowledge">Un-ack selected</button>
-          <button class="btn btn-sm btn-ghost" data-act="clearAlertSelection">Clear</button>
+          <button class="btn btn-sm btn-peach" data-act="bulkAlertAction" data-a1="unacknowledge">{% translate "Un-ack selected" %}</button>
+          <button class="btn btn-sm btn-ghost" data-act="clearAlertSelection">{% translate "Clear" %}</button>
         </div>
       </div>
 

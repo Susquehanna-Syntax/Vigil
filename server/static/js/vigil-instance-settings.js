@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-instance-settings.js
 // Owns: the Settings panes backed by /api/v1/instance-settings/ — Scanners,
 //   Email, Retention (including the backup history under it), and the
@@ -23,7 +24,7 @@ async function loadInstanceSettings(force, quiet) {
     // Opening Settings loads this for the Account pane; someone who may not
     // read install settings gets no error for a request they did not make.
     if (quiet) { _isGroups = []; _isRenderAll(); _isGroups = null; return; }
-    showToast(e.message || 'Could not load settings', 'error');
+    showToast(e.message || t('Could not load settings'), 'error');
     return;
   }
   _isRenderAll();
@@ -31,26 +32,26 @@ async function loadInstanceSettings(force, quiet) {
 }
 
 function _isRenderAll() {
-  document.querySelectorAll('.is-group').forEach((host) => {
+  document.querySelectorAll('.is-group').forEach((/** @type {HTMLElement} */ host) => {
     const group = (_isGroups || []).find((g) => g.id === host.dataset.group);
     if (!group) {
       // A group this user may not see is left out by the server; its heading
       // goes with it rather than standing over nothing.
       host.hidden = true;
-      const label = host.previousElementSibling;
+      const label = /** @type {HTMLElement} */ (host.previousElementSibling);
       if (label && label.classList.contains('section-label')) label.hidden = true;
       return;
     }
     host.hidden = false;
-    const label = host.previousElementSibling;
+    const label = /** @type {HTMLElement} */ (host.previousElementSibling);
     if (label && label.classList.contains('section-label')) label.hidden = false;
     host.innerHTML = _isRenderGroup(group);
     // A site admin reads install-wide groups and changes nothing (S1 04h).
     // The Account pane is theirs, so only this group is greyed there.
     if (group.read_only) {
-      host.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = true; });
-      host.querySelector('.is-actions').innerHTML =
-        '<span class="muted">Only an administrator of the whole install can change these.</span>';
+      host.querySelectorAll('input, select, textarea, button').forEach((/** @type {HTMLInputElement} */ el) => { el.disabled = true; });
+      /** @type {HTMLElement} */ (host.querySelector('.is-actions')).innerHTML =
+        '<span class="muted">' + escHtml(t('Only an administrator of the whole install can change these.')) + '</span>';
     }
   });
 }
@@ -59,12 +60,12 @@ function _isRenderGroup(group) {
   const testable = ['greenbone', 'nessus', 'jackil', 'email'].includes(group.id);
   return (
     `<div class="totp-card">` +
-      (group.help ? `<div class="totp-sub" style="margin-bottom:16px;">${escHtml(group.help)}</div>` : '') +
+      (group.help ? `<div class="totp-sub is-help-below">${escHtml(group.help)}</div>` : '') +
       `<div class="is-fields">${group.fields.map(_isRenderField).join('')}</div>` +
       `<div class="is-actions">` +
-        `<button type="button" class="btn btn-mint btn-sm" data-act="saveInstanceSettings" data-a1="${group.id}">Save</button>` +
+        `<button type="button" class="btn btn-mint btn-sm" data-act="saveInstanceSettings" data-a1="${group.id}">${escHtml(t('Save'))}</button>` +
         (testable
-          ? `<button type="button" class="btn btn-outline btn-sm" data-act="testInstanceIntegration" data-a1="${group.id}">Test connection</button>`
+          ? `<button type="button" class="btn btn-outline btn-sm" data-act="testInstanceIntegration" data-a1="${group.id}">${escHtml(t('Test connection'))}</button>`
           : '') +
         `<span class="is-result muted" id="is-result-${group.id}"></span>` +
       `</div>` +
@@ -89,7 +90,7 @@ function _isRenderField(f) {
   } else if (f.kind === 'secret') {
     control =
       `<input type="password" class="form-control" id="${id}" data-name="${f.name}"` +
-      ` autocomplete="new-password" placeholder="${f.is_set ? 'stored — leave blank to keep' : ''}"${disabled}>`;
+      ` autocomplete="new-password" placeholder="${f.is_set ? escAttr(t('stored — leave blank to keep')) : ''}"${disabled}>`;
   } else {
     const type = (f.kind === 'int' || f.kind === 'float') ? 'number' : 'text';
     const step = f.kind === 'float' ? ' step="any"' : '';
@@ -100,10 +101,10 @@ function _isRenderField(f) {
   }
 
   const notes = [];
-  if (locked) notes.push(`Set by <code>${escHtml(f.name)}</code> in the environment — edit it there.`);
+  if (locked) notes.push(t('Set by {name} in the environment — edit it there.', { name: `<code>${escHtml(f.name)}</code>` }));
   else if (f.help) notes.push(escHtml(f.help));
   if (f.kind === 'secret' && f.is_set && !locked) {
-    notes.push(`<button type="button" class="is-clear" data-act="clearInstanceSecret" data-a1="${f.name}">Clear stored value</button>`);
+    notes.push(`<button type="button" class="is-clear" data-act="clearInstanceSecret" data-a1="${f.name}">${escHtml(t('Clear stored value'))}</button>`);
   }
 
   return (
@@ -117,12 +118,12 @@ function _isRenderField(f) {
 
 function clearInstanceSecret(name) {
   _isCleared.add(name);
-  const input = document.getElementById('is-f-' + name);
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('is-f-' + name));
   if (input) {
     input.value = '';
-    input.placeholder = 'will be cleared on save';
+    input.placeholder = t('will be cleared on save');
   }
-  showToast('Cleared on save.');
+  showToast(t('Cleared on save.'));
 }
 
 async function saveInstanceSettings(groupId) {
@@ -138,7 +139,7 @@ async function saveInstanceSettings(groupId) {
   // backend: saving the From address alone would have broken alert email.
   group.fields.forEach((f) => {
     if (f.env_locked) return;
-    const el = document.getElementById('is-f-' + f.name);
+    const el = /** @type {HTMLInputElement} */ (document.getElementById('is-f-' + f.name));
     if (!el) return;
     if (_isCleared.has(f.name)) { clear.push(f.name); return; }
     if (f.kind === 'bool') {
@@ -152,11 +153,11 @@ async function saveInstanceSettings(groupId) {
   });
 
   if (!Object.keys(values).length && !clear.length) {
-    _isSetResult(groupId, 'No changes.', '');
+    _isSetResult(groupId, t('No changes.'), '');
     return;
   }
 
-  _isSetResult(groupId, 'Saving…', '');
+  _isSetResult(groupId, t('Saving…'), '');
   let body;
   try {
     const resp = await fetch('/api/v1/instance-settings/', {
@@ -171,11 +172,11 @@ async function saveInstanceSettings(groupId) {
       // someone hunting through a form of a dozen boxes.
       const named = Object.entries(body.errors || {})
         .map(([name, why]) => `${_isLabelFor(groupId, name)}: ${why}`);
-      _isSetResult(groupId, named.join(' · ') || body.detail || 'Save failed', 'bad');
+      _isSetResult(groupId, named.join(' · ') || body.detail || t('Save failed'), 'bad');
       return;
     }
   } catch (e) {
-    _isSetResult(groupId, e.message || 'Save failed', 'bad');
+    _isSetResult(groupId, e.message || t('Save failed'), 'bad');
     return;
   }
 
@@ -184,8 +185,8 @@ async function saveInstanceSettings(groupId) {
   // message written before the reload would vanish the moment it appeared.
   await loadInstanceSettings(true);
   _isSetResult(groupId, body.changed.length
-    ? `Saved ${body.changed.length} setting${body.changed.length === 1 ? '' : 's'}.`
-    : 'No changes.', 'ok');
+    ? tn('Saved {n} setting.', 'Saved {n} settings.', body.changed.length)
+    : t('No changes.'), 'ok');
 }
 
 function _isSetResult(groupId, text, tone) {
@@ -202,7 +203,7 @@ function _isLabelFor(groupId, name) {
 }
 
 async function testInstanceIntegration(target) {
-  _isSetResult(target, 'Testing…', '');
+  _isSetResult(target, t('Testing…'), '');
   try {
     const body = await apiJson('/api/v1/instance-settings/test/', {
       method: 'POST',
@@ -210,7 +211,7 @@ async function testInstanceIntegration(target) {
     });
     _isSetResult(target, body.detail, body.ok ? 'ok' : 'bad');
   } catch (e) {
-    _isSetResult(target, e.message || 'Test failed', 'bad');
+    _isSetResult(target, e.message || t('Test failed'), 'bad');
   }
 }
 
@@ -221,22 +222,29 @@ async function testInstanceIntegration(target) {
 async function loadBackupRuns() {
   const box = document.getElementById('backup-runs');
   if (!box) return;
+  const list = document.getElementById('backup-runs-list');
   let runs;
   try {
     runs = await apiJson('/api/v1/instance-settings/backups/');
   } catch (e) {
-    return; // not an instance admin: the card stays hidden
+    // A 403 is a site admin looking at an install-wide card: the card hides,
+    // there is nothing to draw a failure into. Anything else failed in front
+    // of someone who can see the card, so say so with a retry rather than
+    // leaving the placeholder text up forever.
+    if (/** @type {{status?: number}} */ (e).status === 403) return;   // a site admin: the card stays hidden
+    box.hidden = false;
+    if (list) showLoadFailure(list, t('the backup history'), e, loadBackupRuns);
+    return;
   }
   box.hidden = false;
-  const list = document.getElementById('backup-runs-list');
-  if (!runs.length) { list.textContent = 'No backup has run yet.'; return; }
+  if (!runs.length) { list.textContent = t('No backup has run yet.'); return; }
   list.innerHTML = runs.map((r) => {
     const when = new Date(r.started_at).toLocaleString();
     const size = r.size_bytes == null ? '' : ` · ${(r.size_bytes / 1048576).toFixed(1)} MB`;
-    const state = { ok: 'Succeeded', failed: 'Failed', running: 'Running' }[r.state] || r.state;
+    const state = { ok: t('Succeeded'), failed: t('Failed'), running: t('Running') }[r.state] || r.state;
     const err = r.error ? `<div class="muted">${escHtml(r.error)}</div>` : '';
-    const off = r.offsite === 'copied' ? ' · copied off-site, encrypted'
-      : r.offsite === 'failed' ? ' · off-site copy failed' : '';
+    const off = r.offsite === 'copied' ? t(' · copied off-site, encrypted')
+      : r.offsite === 'failed' ? t(' · off-site copy failed') : '';
     const offErr = r.offsite_error ? `<div class="muted">${escHtml(r.offsite_error)}</div>` : '';
     return `<div class="backup-run"><strong>${escHtml(state)}</strong> ${escHtml(when)}${escHtml(size)}`
       + `${escHtml(off)} <span class="muted">${escHtml(r.name)}</span>${err}${offErr}</div>`;
@@ -254,32 +262,31 @@ async function loadJackilTickets() {
   try {
     data = await apiJson('/api/v1/jackil/tickets/');
   } catch (e) {
-    host.innerHTML = `<p class="muted">${escHtml(e.message || 'Could not load tickets')}</p>`;
+    host.innerHTML = `<p class="muted">${escHtml(e.message || t('Could not load tickets'))}</p>`;
     return;
   }
   if (!data.tickets.length) {
-    host.innerHTML = '<p class="muted">No tickets yet. Vigil opens one the next '
-      + 'time an alert fires at or above the severity set above.</p>';
+    host.innerHTML = `<p class="muted">${escHtml(t('No tickets yet. Vigil opens one the next time an alert fires at or above the severity set above.'))}</p>`;
     return;
   }
-  const rows = data.tickets.map((t) => {
-    const edge = t.severity === 'critical' ? 'rose' : t.severity === 'warning' ? 'lemon' : 'sky';
-    const title = `#${t.ticket_id} · ${t.host}`;
-    const link = t.url
-      ? `<a href="${escAttr(t.url)}" target="_blank" rel="noopener">Open in Jackil</a>`
+  const rows = data.tickets.map((ticket) => {
+    const edge = ticket.severity === 'critical' ? 'rose' : ticket.severity === 'warning' ? 'lemon' : 'sky';
+    const title = `#${ticket.ticket_id} · ${ticket.host}`;
+    const link = ticket.url
+      ? `<a href="${escAttr(ticket.url)}" target="_blank" rel="noopener">${escHtml(t('Open in Jackil'))}</a>`
       : '';
     return `<div class="dash-card edge-${edge}">`
       + `<div class="dash-card-main">`
         + `<div class="dash-card-title">${escHtml(title)}</div>`
-        + `<div class="dash-card-sub">${escHtml(t.message)}</div>`
+        + `<div class="dash-card-sub">${escHtml(ticket.message)}</div>`
       + `</div>`
       + `<div class="dash-card-right">${link}`
-        + `<div class="dash-card-sub">${t.cleared_at ? 'cleared' : 'open'}</div>`
+        + `<div class="dash-card-sub">${ticket.cleared_at ? escHtml(t('cleared')) : escHtml(t('open'))}</div>`
       + `</div>`
     + `</div>`;
   }).join('');
   host.innerHTML = `<div class="dash-cards">${rows}</div>`
-    + `<p class="muted" style="margin-top:12px;">${data.count} ticket${data.count === 1 ? '' : 's'} opened in total.</p>`;
+    + `<p class="muted is-tickets-count">${tn('{n} ticket opened in total.', '{n} tickets opened in total.', data.count)}</p>`;
 }
 
 /* ── Jackil: integration keys ──────────────────────────────────────────────
@@ -299,45 +306,42 @@ async function loadJackilKeys() {
     // A scoped non-admin reaches the pane and gets 403 from the API. Saying
     // "Only an admin" is truer than echoing the server's machinery words.
     host.innerHTML = /admin/i.test(e.message || '')
-      ? '<p class="muted">Only an admin can manage integration keys.</p>'
-      : `<p class="muted">${escHtml(e.message || 'Could not load keys')}</p>`;
+      ? `<p class="muted">${escHtml(t('Only an admin can manage integration keys.'))}</p>`
+      : `<p class="muted">${escHtml(e.message || t('Could not load keys'))}</p>`;
     return;
   }
-  const form = `<p class="totp-sub" style="margin-bottom:14px;">A key lets Jackil `
-    + `look up hosts, tasks, playbooks, runs, automations and devices as you, and `
-    + `read dashboard widgets. It cannot change anything until you tick a key's `
-    + `box below.</p>`
-    + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">`
-      + `<input type="text" class="form-control" id="jackil-key-name" maxlength="80"`
-        + ` placeholder="Key name, e.g. Helpdesk" style="flex:1;min-width:180px;">`
-      + `<button type="button" class="btn btn-primary btn-sm" data-jk-create>Create key</button>`
+  const intro = t("A key lets Jackil look up hosts, tasks, playbooks, runs, automations and devices as you, and read dashboard widgets. It cannot change anything until you tick a key's box below.");
+  const form = `<p class="totp-sub totp-sub-tight">${escHtml(intro)}</p>`
+    + `<div class="ak-form-row">`
+      + `<input type="text" class="form-control ak-name-field" id="jackil-key-name" maxlength="80"`
+        + ` placeholder="${escAttr(t('Key name, e.g. Helpdesk'))}">`
+      + `<button type="button" class="btn btn-primary btn-sm" data-jk-create>${escHtml(t('Create key'))}</button>`
     + `</div>`;
   const rows = (data.keys || []).map(_jkRow).join('');
   host.innerHTML = form
-    + (rows ? `<div class="dash-cards" style="margin-top:16px;">${rows}</div>`
-            : '<p class="muted" style="margin-top:14px;">No keys yet.</p>');
+    + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
+            : `<p class="muted ak-empty-below">${escHtml(t('No keys yet.'))}</p>`);
 }
 
 function _jkRow(k) {
   const created = k.created_at ? new Date(k.created_at).toLocaleDateString() : '—';
   // "Last used" is the one line that tells an admin a key is load-bearing
   // before they revoke it, so a revoked key keeps showing its last use.
-  const used = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never';
-  const sub = `vjk_${escHtml(k.prefix)}… · created by ${escHtml(k.created_by)}`
-    + ` · ${escHtml(created)} · last used ${escHtml(used)}`;
+  const used = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : t('never');
+  const sub = `vjk_${escHtml(k.prefix)}… · ${escHtml(t('created by {who}', { who: k.created_by }))}`
+    + ` · ${escHtml(created)} · ${escHtml(t('last used {used}', { used }))}`;
   // The write grant is a checkbox rather than a button: it is a state an admin
   // sets, and seeing it ticked is what stops them wondering why Jackil can add
   // a printer. A revoked key shows its last state, disabled.
-  const write = `<label style="display:inline-flex;align-items:center;gap:5px;`
-    + `font-size:11px;white-space:nowrap;">`
+  const write = `<label class="jk-write-check">`
     + `<input type="checkbox" data-jk-write="${escAttr(String(k.id))}"`
       + `${k.can_write_devices ? ' checked' : ''}${k.revoked_at ? ' disabled' : ''}>`
-    + `Can change devices</label>`;
-  const right = k.revoked_at ? '<span class="muted">Revoked</span>'
-    : `<button type="button" class="btn btn-rose btn-sm wh-act" data-jk-revoke="${escAttr(String(k.id))}">Revoke</button>`;
+    + `${escHtml(t('Can change devices'))}</label>`;
+  const right = k.revoked_at ? `<span class="muted">${escHtml(t('Revoked'))}</span>`
+    : `<button type="button" class="btn btn-rose btn-sm wh-act" data-jk-revoke="${escAttr(String(k.id))}">${escHtml(t('Revoke'))}</button>`;
   // Dimmed rather than flagged with a coloured edge: a revoked key is not an
   // alert, it is history.
-  return `<div class="dash-card"${k.revoked_at ? ' style="opacity:.6"' : ''}>`
+  return `<div class="dash-card${k.revoked_at ? ' ak-row-revoked' : ''}">`
     + `<div class="dash-card-main">`
       + `<div class="dash-card-title">${escHtml(k.name)}</div>`
       + `<div class="dash-card-sub">${sub}</div>`
@@ -347,14 +351,14 @@ function _jkRow(k) {
 }
 
 delegateClick('[data-jk-create]', async () => {
-  const input = document.getElementById('jackil-key-name');
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('jackil-key-name'));
   const name = (input?.value || '').trim();
-  if (!name) { showToast('Give the key a name', 'error'); return; }
+  if (!name) { showToast(t('Give the key a name'), 'error'); return; }
   let created;
   try {
     created = await apiJson(JK_KEYS_API, { method: 'POST', body: JSON.stringify({ name }) });
   } catch (e) {
-    showToast(e.message || 'Could not create the key', 'error');
+    showToast(e.message || t('Could not create the key'), 'error');
     return;
   }
   if (input) input.value = '';
@@ -364,27 +368,26 @@ delegateClick('[data-jk-create]', async () => {
 function _jkShowPlainKey(raw) {
   const m = mountModal('jackil-key', { variant: 'm-pop' });
   m.setBody(
-    `<div class="modal-title">Copy your key now</div>`
-    + `<p class="muted" style="margin-bottom:14px;">Vigil keeps only a hash of it `
-      + `and cannot show it again.</p>`
-    + `<input type="text" class="form-control totp-input" id="jackil-key-plain" readonly`
-      + ` value="${escAttr(raw)}" style="font-size:13px;letter-spacing:normal;text-align:left;">`
+    `<div class="modal-title">${escHtml(t('Copy your key now'))}</div>`
+    + `<p class="muted ak-pane-intro">${escHtml(t("Vigil keeps only a hash of it and cannot show it again."))}</p>`
+    + `<input type="text" class="form-control totp-input ak-secret-field" id="jackil-key-plain" readonly`
+      + ` value="${escAttr(raw)}">`
     + `<div class="is-actions">`
-      + `<button type="button" class="btn btn-mint btn-sm" data-jk-copy>Copy</button>`
-      + `<button type="button" class="btn btn-outline btn-sm" data-jk-done>Done</button>`
+      + `<button type="button" class="btn btn-mint btn-sm" data-jk-copy>${escHtml(t('Copy'))}</button>`
+      + `<button type="button" class="btn btn-outline btn-sm" data-jk-done>${escHtml(t('Done'))}</button>`
     + `</div>`);
   // The key is read back out of the box when it is copied rather than kept in
   // a closure: the modal is the only place it exists.
-  m.modal.querySelector('[data-jk-copy]').onclick = async () => {
-    const field = document.getElementById('jackil-key-plain');
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-jk-copy]')).onclick = async () => {
+    const field = /** @type {HTMLInputElement} */ (document.getElementById('jackil-key-plain'));
     try {
       await navigator.clipboard.writeText(field ? field.value : '');
-      showToast('Key copied', 'success');
+      showToast(t('Key copied'), 'success');
     } catch (e) {
-      showToast('Copy failed — select it and copy manually', 'error');
+      showToast(t('Copy failed — select it and copy manually'), 'error');
     }
   };
-  m.modal.querySelector('[data-jk-done]').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-jk-done]')).onclick = () => m.close();
   // Done, a scrim click and Esc all close it by dropping `.open`; whichever
   // it was, the key leaves the page with the modal instead of sitting hidden
   // in the DOM for the rest of the session, and the list picks up the new row.
@@ -400,17 +403,17 @@ function _jkShowPlainKey(raw) {
 
 delegateClick('[data-jk-revoke]', async (el) => {
   const yes = await confirmModal(
-    'Revoke this key? Jackil stops reading Vigil with it straight away.',
-    { title: 'Revoke key', confirmText: 'Revoke', danger: true });
+    t('Revoke this key? Jackil stops reading Vigil with it straight away.'),
+    { title: t('Revoke key'), confirmText: t('Revoke'), danger: true });
   if (!yes) return;
   try {
     await apiJson(`${JK_KEYS_API}${encodeURIComponent(el.dataset.jkRevoke)}/revoke/`,
       { method: 'POST', body: '{}' });
   } catch (e) {
-    showToast(e.message || 'Could not revoke the key', 'error');
+    showToast(e.message || t('Could not revoke the key'), 'error');
     return;
   }
-  showToast('Key revoked', 'success');
+  showToast(t('Key revoked'), 'success');
   loadJackilKeys();
 });
 
@@ -418,7 +421,7 @@ delegateClick('[data-jk-revoke]', async (el) => {
 // too and the server would answer 403 for a revoked key the row already says
 // is revoked.
 document.addEventListener('change', async (ev) => {
-  const box = ev.target.closest && ev.target.closest('[data-jk-write]');
+  const box = /** @type {HTMLInputElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-jk-write]'));
   if (!box) return;
   const enabled = box.checked;
   try {
@@ -426,9 +429,9 @@ document.addEventListener('change', async (ev) => {
       { method: 'POST', body: JSON.stringify({ enabled }) });
   } catch (e) {
     box.checked = !enabled;
-    showToast(e.message || 'Could not change what the key may do', 'error');
+    showToast(e.message || t('Could not change what the key may do'), 'error');
     return;
   }
-  showToast(enabled ? 'The key can now change devices' : 'The key can no longer change devices',
+  showToast(enabled ? t('The key can now change devices') : t('The key can no longer change devices'),
     'success');
 });

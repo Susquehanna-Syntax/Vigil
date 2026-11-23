@@ -13,11 +13,12 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 from .test_reports_ui import _code_only, _function, _node
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-reports.js"
-CSS = ROOT / "static/css/vigil.css"
 TEMPLATE = ROOT / "templates/pages/_reports.html"
 
 SRC = JS.read_text()
@@ -29,6 +30,8 @@ STUBS = "\n".join([
     "const cssVar = n => n;",
     "const escHtml = s => String(s);",
     "const escAttr = escHtml;",
+    "const t = (m) => String(m);",
+    "const tn = (s, p, n) => String(n === 1 ? s : p);",
     "const document = { addEventListener() {} };",
     "const window = {};",
 ])
@@ -132,7 +135,8 @@ class ReportEditorMarkupTests(SimpleTestCase):
     def test_typing_never_redraws_the_cards(self):
         """A redraw replaces the input being typed in, and the cursor with it."""
         wiring = CODE[CODE.index("document.addEventListener('DOMContentLoaded'"):]
-        typing = wiring[wiring.index("addEventListener('input', (e) => {\n    const t = e.target;"):]
+        # The line may carry a JSDoc cast since the file is type-checked (M6).
+        typing = wiring[wiring.index("addEventListener('input', (e) => {\n    const input = "):]
         typing = typing[:typing.index("});")]
         self.assertIn("_rptSchedulePreview()", typing)
         self.assertNotIn("_renderRptWidgets", typing)
@@ -155,7 +159,7 @@ class ReportEditorMarkupTests(SimpleTestCase):
         self.assertIn('id="rpt-widgets"', html)
         self.assertIn('id="rpt-widget-add"', html)
         self.assertRegex(html, r'class="modal modal-wide rpt-editor-modal" id="rpt-editor-modal"')
-        css = CSS.read_text()
+        css = design_css()
         self.assertIn("QA-48: report editor", css)
         self.assertIn(".rpt-wcard", css)
         self.assertIn(".rpt-wprev", css)

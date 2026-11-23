@@ -1,26 +1,26 @@
-{% load static %}
+{% load i18n %}
 <section class="page" id="page-playbooks">
   <div class="page-header">
     <div>
-      <div class="page-title">Deployments</div>
-      <div class="page-sub">The three ways work reaches your machines: playbooks run a fixed sequence, automations run on a trigger, and rollouts go out wave by wave.</div>
+      <div class="page-title">{% translate "Deployments" %}</div>
+      <div class="page-sub">{% translate "The three ways work reaches your machines: playbooks run a fixed sequence, automations run on a trigger, and rollouts go out wave by wave." %}</div>
     </div>
   </div>
 
   <div class="sub-tabs">
-    <div class="sub-tab t-lav active" data-subtab="bl-panel">Playbooks</div>
-    <div class="sub-tab t-sky" data-subtab="auto-panel">Automation</div>
-    <div class="sub-tab t-lemon" data-subtab="wave-panel">Waves</div>
-    <div class="sub-tab t-peach" data-subtab="rollout-panel">Rollouts</div>
-    <div class="sub-tab t-mint" data-subtab="hist-panel">History</div>
+    <div class="sub-tab t-lav active" data-subtab="bl-panel">{% translate "Playbooks" %}</div>
+    <div class="sub-tab t-sky" data-subtab="auto-panel">{% translate "Automation" %}</div>
+    <div class="sub-tab t-lemon" data-subtab="wave-panel">{% translate "Waves" %}</div>
+    <div class="sub-tab t-peach" data-subtab="rollout-panel">{% translate "Rollouts" %}</div>
+    <div class="sub-tab t-mint" data-subtab="hist-panel">{% translate "History" %}</div>
   </div>
 
   <!-- ── Playbooks panel ─────────────────────────────────────────────── -->
   <div class="sub-panel active" id="bl-panel">
     <div class="bl-toolbar">
-      <input type="text" class="form-control bl-search" id="bl-search" placeholder="Search playbooks by name, step, or tag…">
-      <button class="btn btn-outline btn-sm" id="bl-library-btn">Templates</button>
-      <button class="btn btn-mint" id="bl-new-btn">New playbook</button>
+      <input type="text" class="form-control bl-search" id="bl-search" placeholder="{% translate "Search playbooks by name, step, or tag…" %}">
+      <button class="btn btn-outline btn-sm" id="bl-library-btn">{% translate "Templates" %}</button>
+      <button class="btn btn-mint" id="bl-new-btn">{% translate "New playbook" %}</button>
     </div>
     <div id="playbooks-list" class="bl-list"></div>
   </div>
@@ -29,10 +29,10 @@
   <div class="sub-panel" id="wave-panel">
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="wave-search"
-             placeholder="Search waves by name or tag…">
-      <span class="field-hint" tabindex="0" aria-label="How waves work"
-            data-hint="A wave is a group of machines, matched by tag, that get patched together. Rollouts walk the waves in order.&#10;&#10;Put a couple of spare machines in wave 1, the bulk in the last one. If an update breaks something you find out on the spare machines.&#10;&#10;A machine in two waves is patched once, in the earlier one. A machine in no wave is never patched.">?</span>
-      <button class="btn btn-mint" id="wave-new-btn">New wave</button>
+             placeholder="{% translate "Search waves by name or tag…" %}">
+      <span class="field-hint" tabindex="0" aria-label="{% translate "How waves work" %}"
+            data-hint="{% translate "A wave is a group of machines, matched by tag, that get patched together. Rollouts walk the waves in order.&#10;&#10;Put a couple of spare machines in wave 1, the bulk in the last one. If an update breaks something you find out on the spare machines.&#10;&#10;A machine in two waves is patched once, in the earlier one. A machine in no wave is never patched." %}">?</span>
+      <button class="btn btn-mint" id="wave-new-btn">{% translate "New wave" %}</button>
     </div>
     <div id="waves-list" class="bl-list"></div>
   </div>
@@ -41,13 +41,13 @@
     <div class="sub-panel" id="rollout-panel">
       <div class="bl-toolbar">
         <input type="text" class="form-control bl-search" id="rollout-search"
-               placeholder="Search rollouts by definition, wave, or state…">
-        <span class="field-hint" tabindex="0" aria-label="How rollouts work"
-              data-hint="Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched.">?</span>
-        <button class="btn btn-mint" data-act="openRolloutStart">New rollout</button>
+               placeholder="{% translate "Search rollouts by definition, wave, or state…" %}">
+        <span class="field-hint" tabindex="0" aria-label="{% translate "How rollouts work" %}"
+              data-hint="{% translate "Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched." %}">?</span>
+        <button class="btn btn-mint" data-act="openRolloutStart">{% translate "New rollout" %}</button>
       </div>
-      <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
-        <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
+      <div id="rollout-list" class="rollout-list">
+        <div class="empty-state"><div class="empty-state-title">{% translate "Loading…" %}</div></div>
       </div>
     </div>
 
@@ -55,8 +55,8 @@
   <div class="sub-panel" id="auto-panel">
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="auto-search"
-             placeholder="Search automations by name, trigger, task, or tag…">
-      <button class="btn btn-mint" id="auto-new-btn">New automation</button>
+             placeholder="{% translate "Search automations by name, trigger, task, or tag…" %}">
+      <button class="btn btn-mint" id="auto-new-btn">{% translate "New automation" %}</button>
     </div>
     <div id="automations-list" class="bl-list"></div>
   </div>
@@ -65,11 +65,11 @@
   <div class="sub-panel" id="hist-panel">
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="hist-search"
-             placeholder="Search history by name, host, or outcome…">
-      <div class="sa-chips" id="hist-filters" style="margin:0;">
-        <button type="button" class="sa-chip on" data-src="automation,playbook">All</button>
-        <button type="button" class="sa-chip" data-src="playbook">Playbooks</button>
-        <button type="button" class="sa-chip" data-src="automation">Automations</button>
+             placeholder="{% translate "Search history by name, host, or outcome…" %}">
+      <div class="sa-chips" id="hist-filters">
+        <button type="button" class="sa-chip on" data-src="automation,playbook">{% translate "All" %}</button>
+        <button type="button" class="sa-chip" data-src="playbook">{% translate "Playbooks" %}</button>
+        <button type="button" class="sa-chip" data-src="automation">{% translate "Automations" %}</button>
       </div>
     </div>
     <div id="run-history-list" class="bl-list"></div>
@@ -82,67 +82,58 @@
 <div class="modal-overlay" id="bl-editor-overlay"></div>
 <div class="modal modal-wide modal-flow" id="bl-editor-modal" data-editing="">
   <div class="modal-title">
-    <span id="bl-editor-title">New playbook</span>
-    <button class="modal-close" id="bl-cancel-btn" aria-label="Close">
+    <span id="bl-editor-title">{% translate "New playbook" %}</span>
+    <button class="modal-close" id="bl-cancel-btn" aria-label="{% translate "Close" %}">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div class="bl-field">
-    <label>Name</label>
-    <input type="text" class="form-control" id="bl-name" placeholder="e.g. Linux bootstrap" maxlength="120">
-    <div class="bl-hint">Tasks call it by this name: <code class="inline">- type: playbook / params: { name: "…" }</code></div>
+    <label>{% translate "Name" %}</label>
+    <input type="text" class="form-control" id="bl-name" placeholder="{% translate "e.g. Linux bootstrap" %}" maxlength="120">
+    <div class="bl-hint">{% translate 'Tasks call it by this name: <code class="inline">- type: playbook / params: { name: "…" }</code>' %}</div>
   </div>
   <div class="bl-field" id="bl-site-field" hidden>
-    <label for="bl-site">Site</label>
+    <label for="bl-site">{% translate "Site" %}</label>
     <select class="form-control" id="bl-site"></select>
-    <div class="bl-hint">Who may see and change it. A site's playbook runs on that site's hosts only.</div>
+    <div class="bl-hint">{% translate "Who may see and change it. A site's playbook runs on that site's hosts only." %}</div>
   </div>
   <div class="bl-field">
-    <label>Description <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
-    <textarea class="form-control bl-desc" id="bl-desc" rows="3" placeholder="What this playbook does" maxlength="2000"></textarea>
+    <label>{% translate "Description" %} <span class="bl-label-optional">{% translate "(optional)" %}</span></label>
+    <textarea class="form-control bl-desc" id="bl-desc" rows="3" placeholder="{% translate "What this playbook does" %}" maxlength="2000"></textarea>
   </div>
   <div class="bl-field">
-    <label>Steps</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task, run left to right on the target machine. Press + on a line to add a task or an If / else there to choose between tasks from an earlier step's result — its status (ok, failed, not applicable, skipped) or any output its task reports.&#10;&#10;Not applicable: stop here, or go on to the next step.&#10;If it fails: stop here, or carry on so a later branch can recover.&#10;&#10;Colours are yours: use them to group steps that belong together.">?</span>
+    <label>{% translate "Steps" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "Each step is a task, run left to right on the target machine. Press + on a line to add a task or an If / else there to choose between tasks from an earlier step's result — its status (ok, failed, not applicable, skipped) or any output its task reports.&#10;&#10;Not applicable: stop here, or go on to the next step.&#10;If it fails: stop here, or carry on so a later branch can recover.&#10;&#10;Colours are yours: use them to group steps that belong together." %}">?</span>
     <div class="bl-flow">
       <div class="bl-editor-steps" id="bl-editor-steps"></div>
-      <aside class="bl-inspector" id="bl-inspector" aria-label="Selected step"></aside>
+      <aside class="bl-inspector" id="bl-inspector" aria-label="{% translate "Selected step" %}"></aside>
     </div>
     <div id="bl-flow-analysis"></div>
   </div>
   <div class="bl-field">
-    <label class="bl-check"><input type="checkbox" id="bl-auto-sync"> Use each task's latest version automatically</label>
-    <div class="bl-hint">Off, each step keeps the version of its task it was given, so an edit to a task by its owner does not change what this playbook runs until you sync it.</div>
-    <div class="muted-note" id="bl-stale-note" hidden style="margin-top:6px;">
+    <label class="bl-check"><input type="checkbox" id="bl-auto-sync"> {% translate "Use each task's latest version automatically" %}</label>
+    <div class="bl-hint">{% translate "Off, each step keeps the version of its task it was given, so an edit to a task by its owner does not change what this playbook runs until you sync it." %}</div>
+    <div class="muted-note muted-note-below" id="bl-stale-note" hidden>
       <span id="bl-stale-text"></span>
-      <button class="btn btn-outline btn-xs" type="button" id="bl-sync-latest">Sync latest</button>
+      <button class="btn btn-outline btn-xs" type="button" id="bl-sync-latest">{% translate "Sync latest" %}</button>
     </div>
   </div>
   <div class="bl-field">
-    <label>Runs on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
-    <input type="text" class="form-control" id="bl-tags" placeholder="os:linux, role:web">
+    <label>{% translate "Runs on hosts tagged" %} <span class="bl-label-optional">{% translate "(comma-separated; blank = every approved host)" %}</span></label>
+    <input type="text" class="form-control" id="bl-tags" placeholder="{% translate "os:linux, role:web" %}">
   </div>
   <div class="bl-field">
-    <label>Completion tag <span style="color:var(--text-3);font-weight:400;">(applied to a host when the playbook finishes there)</span></label>
-    <input type="text" class="form-control" id="bl-completion-tag" placeholder="hardened" maxlength="120">
-    <div class="muted-note" style="margin-top:6px;">
-      A host carrying this tag is treated as done and is not run again. Remove
-      it from a host to run the playbook there a second time. Required before
-      auto-enrolment can be switched on.
-    </div>
+    <label>{% translate "Completion tag" %} <span class="bl-label-optional">{% translate "(applied to a host when the playbook finishes there)" %}</span></label>
+    <input type="text" class="form-control" id="bl-completion-tag" placeholder="{% translate "hardened" %}" maxlength="120">
+    <div class="muted-note muted-note-below">{% translate "A host carrying this tag is treated as done and is not run again. Remove it from a host to run the playbook there a second time. Required before auto-enrolment can be switched on." %}</div>
   </div>
   <div class="bl-field">
-    <label>Inputs</label>
+    <label>{% translate "Inputs" %}</label>
     <div class="bl-inputs" id="bl-inputs"></div>
-    <button class="btn btn-outline btn-xs" type="button" id="bl-input-add">Add input</button>
-    <div class="muted-note" style="margin-top:6px;">
-      {% verbatim %}
-      Ask for values when the playbook runs. A step uses them as
-      ${{ inputs.&lt;id&gt; }}; a task input with the same id gets the value
-      by itself.
-      {% endverbatim %}
-    </div>
+    <button class="btn btn-outline btn-xs" type="button" id="bl-input-add">{% translate "Add input" %}</button>
+    {% comment %} A translate tag holds the literal ${{ … }} verbatim — outside one the braces would be read as a template variable. {% endcomment %}
+    <div class="muted-note muted-note-below">{% translate "Ask for values when the playbook runs. A step uses them as ${{ inputs.&lt;id&gt; }}; a task input with the same id gets the value by itself." %}</div>
   </div>
-  <label class="setting-check"><input type="checkbox" id="bl-allow-high-risk"> Allow high-risk steps in this playbook</label>
+  <label class="setting-check"><input type="checkbox" id="bl-allow-high-risk"> {% translate "Allow high-risk steps in this playbook" %}</label>
   {% comment %}
     Shown only while the box is being ticked. Run by hand, a high-risk task
     costs 2FA and a 60-second delay with someone watching; in a playbook it
@@ -151,21 +142,13 @@
     Untick freely — withdrawing an authorization needs none.
   {% endcomment %}
   <div class="bl-highrisk-warn" id="bl-highrisk-warn" style="display:none;">
-    <div class="bl-highrisk-lede">
-      High-risk steps will run <strong>unattended</strong> on every host this
-      playbook matches, with nobody at the keyboard to approve or stop them.
-      Saving asks for your TOTP code to authorize that — it stands for every
-      future enrollment.
-    </div>
-    <div class="muted-note" style="margin-top:8px;">
-      <code>update_agent</code> stays excluded either way — it replaces the
-      executable that enforces the agent's own allowlist.
-    </div>
+    <div class="bl-highrisk-lede">{% blocktranslate %}High-risk steps will run <strong>unattended</strong> on every host this playbook matches, with nobody at the keyboard to approve or stop them. Saving asks for your TOTP code to authorize that — it stands for every future enrollment.{% endblocktranslate %}</div>
+    <div class="muted-note bl-highrisk-note">{% blocktranslate %}<code>update_agent</code> stays excluded either way — it replaces the executable that enforces the agent's own allowlist.{% endblocktranslate %}</div>
   </div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" id="bl-cancel-btn-2" type="button">Cancel</button>
-    <button class="btn btn-lav" id="bl-yaml-btn" type="button" title="Edit this playbook as YAML, or copy it to share">Edit as YAML</button>
-    <button class="btn btn-mint" id="bl-save-btn">Save playbook</button>
+    <button class="btn btn-ghost" id="bl-cancel-btn-2" type="button">{% translate "Cancel" %}</button>
+    <button class="btn btn-lav" id="bl-yaml-btn" type="button" title="{% translate "Edit this playbook as YAML, or copy it to share" %}">{% translate "Edit as YAML" %}</button>
+    <button class="btn btn-mint" id="bl-save-btn">{% translate "Save playbook" %}</button>
   </div>
 </div>
 
@@ -177,21 +160,20 @@
 <div class="modal-overlay" id="content-yaml-overlay"></div>
 <div class="modal modal-wide" id="content-yaml-modal">
   <div class="modal-title">
-    <span id="content-yaml-title">Edit as YAML</span>
-    <span class="field-hint" tabindex="0" aria-label="About this view"
-          data-hint="This is the same YAML the community repo stores, so what you see here is exactly what a submission would carry.&#10;&#10;Steps and actions are named by slug rather than by id, because a shared file cannot reference rows on your server. Importing resolves those names against your own library.&#10;&#10;Saving replaces the item you opened it from.">?</span>
+    <span id="content-yaml-title">{% translate "Edit as YAML" %}</span>
+    <span class="field-hint" tabindex="0" aria-label="{% translate "About this view" %}"
+          data-hint="{% translate "This is the same YAML the community repo stores, so what you see here is exactly what a submission would carry.&#10;&#10;Steps and actions are named by slug rather than by id, because a shared file cannot reference rows on your server. Importing resolves those names against your own library.&#10;&#10;Saving replaces the item you opened it from." %}">?</span>
   </div>
   <div class="modal-body">
-    <textarea class="form-control" id="content-yaml-text" spellcheck="false"
-              style="min-height:340px;font-family:'IBM Plex Mono',monospace;font-size:13px;"></textarea>
+    <textarea class="form-control yaml-textarea" id="content-yaml-text" spellcheck="false"></textarea>
     <div class="editor-error" id="content-yaml-error"></div>
     <div class="bl-hint" id="content-yaml-filename"></div>
   </div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" id="content-yaml-cancel" type="button">Cancel</button>
-    <button class="btn btn-lav" id="content-yaml-copy" type="button">Copy</button>
-    <button class="btn btn-lav" id="content-yaml-submit" type="button" title="Open a pull request against the public community repo">Submit to Community</button>
-    <button class="btn btn-mint" id="content-yaml-save" type="button">Save from YAML</button>
+    <button class="btn btn-ghost" id="content-yaml-cancel" type="button">{% translate "Cancel" %}</button>
+    <button class="btn btn-lav" id="content-yaml-copy" type="button">{% translate "Copy" %}</button>
+    <button class="btn btn-lav" id="content-yaml-submit" type="button" title="{% translate "Open a pull request against the public community repo" %}">{% translate "Submit to Community" %}</button>
+    <button class="btn btn-mint" id="content-yaml-save" type="button">{% translate "Save from YAML" %}</button>
   </div>
 </div>
 
@@ -199,22 +181,22 @@
 <div class="modal-overlay" id="auto-editor-overlay"></div>
 <div class="modal modal-wide" id="auto-editor-modal" data-editing="">
   <div class="modal-title">
-    <span id="auto-editor-title">New automation</span>
-    <button class="modal-close" id="auto-cancel-btn" aria-label="Close">
+    <span id="auto-editor-title">{% translate "New automation" %}</span>
+    <button class="modal-close" id="auto-cancel-btn" aria-label="{% translate "Close" %}">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <div class="bl-field">
-    <label>Name</label>
-    <input type="text" class="form-control" id="auto-name" placeholder="e.g. Clean disk when critical" maxlength="120">
+    <label>{% translate "Name" %}</label>
+    <input type="text" class="form-control" id="auto-name" placeholder="{% translate "e.g. Clean disk when critical" %}" maxlength="120">
   </div>
   <div class="bl-field" id="auto-site-field" hidden>
-    <label for="auto-site">Site</label>
+    <label for="auto-site">{% translate "Site" %}</label>
     <select class="form-control" id="auto-site"></select>
-    <div class="bl-hint">Who may see and change it.</div>
+    <div class="bl-hint">{% translate "Who may see and change it." %}</div>
   </div>
   <div class="bl-field">
-    <label>When</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="What starts this automation. Pick the thing that happens, or a schedule to run it on a clock.">?</span>
+    <label>{% translate "When" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "What starts this automation. Pick the thing that happens, or a schedule to run it on a clock." %}">?</span>
     {% comment %}
       One select. It used to be a trigger kind AND an event, which meant two
       choices to express one thing, and the kind said "When an event fires" —
@@ -229,26 +211,26 @@
       automation can watch one host and act on another, so neither is the
       same as "Run on" below.
     {% endcomment %}
-    <div class="auto-when" id="auto-event-fields" style="margin-top:10px;">
-      <span id="auto-rule-wrap">for
-        <select class="form-control" id="auto-event-rule"><option value="">any alert</option></select>
+    <div class="auto-when auto-when-below" id="auto-event-fields">
+      <span id="auto-rule-wrap">{% translate "for" %}
+        <select class="form-control" id="auto-event-rule"><option value="">{% translate "any alert" %}</option></select>
       </span>
-      <span id="auto-event-host-wrap">on
+      <span id="auto-event-host-wrap">{% translate "on" %}
         <button class="btn btn-outline picker-btn" id="auto-event-host-btn" type="button">
-          <span id="auto-event-host-label">any host</span>
+          <span id="auto-event-host-label">{% translate "any host" %}</span>
         </button>
-        <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">Clear</button>
+        <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">{% translate "Clear" %}</button>
         <input type="hidden" id="auto-event-host">
       </span>
     </div>
-    <div class="auto-when" id="auto-sched-fields" style="margin-top:10px;" hidden>
-      <span>cron</span>
-      <input type="text" class="form-control" id="auto-cron-min" value="0" style="width:64px;" title="minute">
-      <input type="text" class="form-control" id="auto-cron-hour" value="2" style="width:64px;" title="hour">
-      <input type="text" class="form-control" id="auto-cron-dom" value="*" style="width:64px;" title="day of month">
-      <input type="text" class="form-control" id="auto-cron-mon" value="*" style="width:64px;" title="month">
-      <input type="text" class="form-control" id="auto-cron-dow" value="*" style="width:64px;" title="day of week">
-      <span class="bl-hint">min hour dom mon dow</span>
+    <div class="auto-when auto-when-below" id="auto-sched-fields" hidden>
+      <span>{% translate "cron" %}</span>
+      <input type="text" class="form-control cron-field" id="auto-cron-min" value="0" title="{% translate "minute" %}">
+      <input type="text" class="form-control cron-field" id="auto-cron-hour" value="2" title="{% translate "hour" %}">
+      <input type="text" class="form-control cron-field" id="auto-cron-dom" value="*" title="{% translate "day of month" %}">
+      <input type="text" class="form-control cron-field" id="auto-cron-mon" value="*" title="{% translate "month" %}">
+      <input type="text" class="form-control cron-field" id="auto-cron-dow" value="*" title="{% translate "day of week" %}">
+      <span class="bl-hint">{% translate "min hour dom mon dow" %}</span>
     </div>
     {% comment %}
       Every value-based filter lives here now — severity, tags and the text
@@ -257,79 +239,73 @@
       and operator list the server advertises, so adding a field is a server
       change only.
     {% endcomment %}
-    <div class="bl-hint" id="auto-cond-wrap" style="margin-top:12px;">
+    <div class="bl-hint auto-cond-wrap" id="auto-cond-wrap">
       <div class="auto-cond-head">
-        <span>Only when</span>
-        <select class="form-control" id="auto-cond-logic" style="display:inline-block;width:auto;">
-          <option value="all">Match all of these</option>
-          <option value="any">Match any of these</option>
+        <span>{% translate "Only when" %}</span>
+        <select class="form-control auto-cond-logic" id="auto-cond-logic">
+          <option value="all">{% translate "Match all of these" %}</option>
+          <option value="any">{% translate "Match any of these" %}</option>
         </select>
-        <button class="btn btn-outline btn-sm" type="button" data-act="addAutoCondition">Add condition</button>
+        <button class="btn btn-outline btn-sm" type="button" data-act="addAutoCondition">{% translate "Add condition" %}</button>
       </div>
       <div id="auto-cond-rows"></div>
-      <span class="bl-hint" style="display:block;margin-top:4px;">No conditions means it runs on every one of these events.</span>
+      <span class="bl-hint auto-cond-note">{% translate "No conditions means it runs on every one of these events." %}</span>
     </div>
   </div>
   <div class="bl-field">
-    <label>Run</label>
+    <label>{% translate "Run" %}</label>
     <div class="auto-when">
       <select class="form-control" id="auto-action-kind">
-        <option value="task">Task</option>
-        <option value="playbook">Playbook</option>
+        <option value="task">{% translate "Task" %}</option>
+        <option value="playbook">{% translate "Playbook" %}</option>
       </select>
-      <button class="btn btn-outline picker-btn" id="auto-action-btn" type="button"><span id="auto-action-label">Choose…</span></button>
-      <button class="btn btn-sky btn-sm" id="auto-view-action" type="button">View / edit</button>
-      <button class="btn btn-outline btn-sm" id="auto-inputs-btn" type="button">Inputs</button>
+      <button class="btn btn-outline picker-btn" id="auto-action-btn" type="button"><span id="auto-action-label">{% translate "Choose…" %}</span></button>
+      <button class="btn btn-sky btn-sm" id="auto-view-action" type="button">{% translate "View / edit" %}</button>
+      <button class="btn btn-outline btn-sm" id="auto-inputs-btn" type="button">{% translate "Inputs" %}</button>
     </div>
-    <span class="muted-note" id="auto-inputs-note" style="display:block;margin-top:5px;" hidden></span>
+    <span class="muted-note auto-inputs-note" id="auto-inputs-note" hidden></span>
     <input type="hidden" id="auto-action-task">
     <input type="hidden" id="auto-action-playbook">
   </div>
   <div class="bl-field">
-    <label>On</label>
+    <label>{% translate "On" %}</label>
     <div class="auto-when">
       <select class="form-control" id="auto-target">
-        <option value="event_host">The host from the event</option>
-        <option value="tags">Hosts matching tags</option>
-        <option value="host">A specific host</option>
-        <option value="all">All managed hosts</option>
+        <option value="event_host">{% translate "The host from the event" %}</option>
+        <option value="tags">{% translate "Hosts matching tags" %}</option>
+        <option value="host">{% translate "A specific host" %}</option>
+        <option value="all">{% translate "All managed hosts" %}</option>
       </select>
-      <input type="text" class="form-control" id="auto-target-tags" placeholder="role:backup" hidden>
-      <button class="btn btn-outline picker-btn" id="auto-target-host-btn" type="button" hidden><span id="auto-target-host-label">Choose a host…</span></button>
+      <input type="text" class="form-control" id="auto-target-tags" placeholder="{% translate "role:backup" %}" hidden>
+      <button class="btn btn-outline picker-btn" id="auto-target-host-btn" type="button" hidden><span id="auto-target-host-label">{% translate "Choose a host…" %}</span></button>
       <input type="hidden" id="auto-target-host">
     </div>
   </div>
   <div class="bl-field">
-    <label>How</label>
+    <label>{% translate "How" %}</label>
     <div class="auto-when">
       <select class="form-control" id="auto-dispatch-mode">
-        <option value="direct">All at once</option>
-        <option value="rollout">Wave by wave</option>
+        <option value="direct">{% translate "All at once" %}</option>
+        <option value="rollout">{% translate "Wave by wave" %}</option>
       </select>
-      <span class="field-hint" tabindex="0" aria-label="Dispatch modes"
-            data-hint="All at once sends the work to every host matched by the target above.&#10;&#10;Wave by wave hands it to the rollout machinery instead — a canary wave first, then wider, halting if too many fail. In this mode the waves decide which hosts get it, so the target above is ignored.">?</span>
+      <span class="field-hint" tabindex="0" aria-label="{% translate "Dispatch modes" %}"
+            data-hint="{% translate "All at once sends the work to every host matched by the target above.&#10;&#10;Wave by wave hands it to the rollout machinery instead — a canary wave first, then wider, halting if too many fail. In this mode the waves decide which hosts get it, so the target above is ignored." %}">?</span>
     </div>
-    <div class="confirm-hint" id="auto-dispatch-hint" style="margin-top:4px;" hidden>
-      Waves decide which hosts get this &mdash; the target above is ignored.
-    </div>
+    <div class="confirm-hint auto-dispatch-hint" id="auto-dispatch-hint" hidden>{% blocktranslate %}Waves decide which hosts get this &mdash; the target above is ignored.{% endblocktranslate %}</div>
   </div>
-  <label class="setting-check"><input type="checkbox" id="auto-allow-high-risk"> Allow high-risk steps in this automation</label>
+  <label class="setting-check"><input type="checkbox" id="auto-allow-high-risk"> {% translate "Allow high-risk steps in this automation" %}</label>
   {% comment %}
     The same opt-in a playbook has, for the same reason: the automation runs
     unattended, so ticking it costs a TOTP code on save, once, for every
     future run. Without it the engine dispatches nothing and says why.
   {% endcomment %}
   <div class="bl-highrisk-warn" id="auto-highrisk-warn" style="display:none;">
-    <div class="bl-highrisk-lede">
-      High-risk steps will run <strong>unattended</strong> every time this
-      automation fires, with nobody at the keyboard to approve or stop them.
-      Saving asks for your TOTP code to authorize that.
-    </div>
+    <div class="bl-highrisk-lede">{% blocktranslate %}High-risk steps will run <strong>unattended</strong> every time this automation fires, with nobody at the keyboard to approve or stop them. Saving asks for your TOTP code to authorize that.{% endblocktranslate %}</div>
   </div>
-  <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>
+  <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> {% translate "Enabled" %}</label>
   <div class="modal-actions">
-    <button class="btn btn-ghost" id="auto-cancel-btn-2" type="button">Cancel</button>
-    <button class="btn btn-lav" id="auto-yaml-btn" type="button" title="Edit this automation as YAML, or copy it to share">Edit as YAML</button>
-    <button class="btn btn-mint" id="auto-save-btn">Save automation</button>
+    <button class="btn btn-ghost" id="auto-cancel-btn-2" type="button">{% translate "Cancel" %}</button>
+    <button class="btn btn-lav" id="auto-yaml-btn" type="button" title="{% translate "Edit this automation as YAML, or copy it to share" %}">{% translate "Edit as YAML" %}</button>
+    <button class="btn btn-mint" id="auto-save-btn">{% translate "Save automation" %}</button>
   </div>
 </div>

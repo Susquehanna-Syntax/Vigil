@@ -1,17 +1,19 @@
 """A Content-Security-Policy header, staged honestly.
 
-`base.html` has carried a note for a while saying CSP was intended and would
-need a server-side nonce. Phases 07a's three injection findings are all
-contained by one, so it is worth having now rather than after the inline
-handlers are gone.
+`base.html` carried a note for a while saying CSP was intended and would need a
+server-side nonce. Phases 07a's three injection findings are all contained by
+one, so it is worth having now rather than after the last rough edge is gone.
 
-What this policy does NOT do, stated plainly: it keeps `'unsafe-inline'` for
-scripts. Thirty inline `onclick` attributes remain in JavaScript-generated
-markup — alerts, rollouts, tasks, tags, waves, community, devices — every one
-built from a server-generated UUID, so none is injectable today, but a strict
-`script-src 'self'` would break all of them at once. Shipping a policy that
-breaks the product is not hardening, and neither is shipping one that claims
-more than it delivers.
+Styles carry no `'unsafe-inline'` either (S6 08m). The only style attribute
+left in markup is the exact string `display:none;`, which scripts undo with
+`element.style.display = ''`; `'unsafe-hashes'` plus that one hash allows it
+and nothing else. A value worked out per render goes through `data-css` and
+`applyDataCss` (vigil-utils.js), which set it through `element.style` - not
+governed by `style-src` - from a short allowlist of properties.
+`vigil/test_inline_styles.py` keeps both rules. The two inline `<style>` blocks
+(status page, compliance report) carry the nonce, and base.html gives the
+nonce to every `<style>` element a script creates, which is how xterm.js
+themes a terminal.
 
 What it does do is real: an injected `<script src>` pointing anywhere off-site
 is blocked, `object-src 'none'` kills plugin vectors, `base-uri 'self'` stops a
@@ -19,16 +21,18 @@ is blocked, `object-src 'none'` kills plugin vectors, `base-uri 'self'` stops a
 stops clickjacking, and `form-action 'self'` stops an injected form posting
 credentials elsewhere.
 
-Removing `'unsafe-inline'` is the follow-up: convert the remaining inline
-handlers to delegated listeners the way the pin bar and host cards now are,
-then drop it here and add a nonce to the one inline block in `base.html`.
+For scripts there is no `'unsafe-inline'` to remove: the inline handlers are
+gone (`apps/hosts/test_inline_handlers.py` keeps them gone) and the inline
+blocks in `base.html` carry a per-request nonce.
 """
-
-from __future__ import annotations
 
 import secrets
 
 from django.conf import settings
+
+#: sha256 of the only inline style attribute value the markup may carry,
+#: `display:none;` (see vigil/test_inline_styles.py).
+DISPLAY_NONE_HASH = "sha256-0EZqoz+oBhx7gF4nvY2bSqoGyy4zLjNF+SDQXGp/ZrY="
 
 #: Sources the app legitimately loads from. Vigil vendors its JavaScript and
 #: CSS rather than using a CDN, so 'self' covers everything except the data:
@@ -41,13 +45,14 @@ from django.conf import settings
 #: between a policy that documents an intention and one that stops an injected
 #: <script> from running.
 #:
-#: style-src keeps 'unsafe-inline' deliberately: the dashboard positions metric
-#: bars and gauges with inline style="width:NN%", which is the correct way to
-#: express a value that changes per render, and no injection reaches it.
+#: style-src: this sheet, nonced <style> blocks, and the one inline attribute
+#: the markup still writes - display:none; - by its hash. An injected style
+#: attribute or <style> element is refused, so injected markup cannot restyle
+#: the page into a convincing fake.
 _POLICY_TEMPLATE = (
     "default-src 'self'; "
     "script-src 'self' 'nonce-{nonce}'; "
-    "style-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'nonce-{nonce}' 'unsafe-hashes' '" + DISPLAY_NONE_HASH + "'; "
     "img-src 'self' data:; "
     "font-src 'self' data:; "
     "connect-src 'self'; "

@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static %}{% load i18n %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
-  <style>
+  <style nonce="{{ request.csp_nonce }}">
     :root {
       --surface: #1E1E2E;
       --card: #27273A;
@@ -165,16 +165,16 @@
       <img class="logo" src="{% if logo_url %}{{ logo_url }}{% else %}{% static 'img/vigil-logo.png' %}{% endif %}" alt="">
       <div>
         <h1>{{ page.title }}</h1>
-        <div class="subtitle">live status · refreshes every minute</div>
+        <div class="subtitle">{% translate "live status · refreshes every minute" %}</div>
       </div>
     </header>
 
     <div class="overall overall--{% if all_up and maintenance_count %}maint{% elif all_up %}up{% else %}down{% endif %}" id="overall">
       <span class="up-dot"></span>
       <span class="overall-title" id="overall-title">
-        {% if all_up and maintenance_count %}Scheduled maintenance in progress{% elif all_up %}All systems operational{% else %}Some systems are down{% endif %}
+        {% if all_up and maintenance_count %}{% translate "Scheduled maintenance in progress" %}{% elif all_up %}{% translate "All systems operational" %}{% else %}{% translate "Some systems are down" %}{% endif %}
       </span>
-      <span class="overall-count" id="overall-count">{{ up_count }}/{{ hosts|length }} up</span>
+      <span class="overall-count" id="overall-count">{% blocktranslate with count=up_count total=hosts|length %}{{ count }}/{{ total }} up{% endblocktranslate %}</span>
     </div>
 
     <section class="notices" id="notices"{% if not notices %} hidden{% endif %}>
@@ -188,12 +188,12 @@
 
     <ul id="cards">
       {% for h in hosts %}
-      <li class="card card--{% if h.state == 'maintenance' %}maint{% else %}{{ h.state }}{% endif %}" data-host-id="{{ h.id }}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
+      <li class="card card--{% if h.state == 'maintenance' %}maint{% else %}{{ h.state }}{% endif %}" data-host-id="{{ h.id }}">
         <div class="card-top">
           <span class="card-name">{{ h.hostname }}</span>
-          <span class="card-uptime">{% if h.uptime_pct %}{{ h.uptime_pct }}% uptime{% endif %}</span>
+          <span class="card-uptime">{% if h.uptime_pct %}{% blocktranslate with pct=h.uptime_pct %}{{ pct }}% uptime{% endblocktranslate %}{% endif %}</span>
           <span class="card-state card-state--{% if h.state == 'maintenance' %}maint{% else %}{{ h.state }}{% endif %}">
-            {% if h.state == "up" %}operational{% else %}{{ h.state }}{% endif %}
+            {% if h.state == "up" %}{% translate "operational" %}{% elif h.state == "maintenance" %}{% translate "maintenance" %}{% else %}{% translate "down" %}{% endif %}
           </span>
         </div>
         {% if h.bars %}
@@ -202,14 +202,14 @@
             {% for bar in h.bars %}<span class="ubar ubar--{{ bar.state }}" title="{{ bar.label }}"></span>{% endfor %}
           </div>
           <div class="uptime-axis">
-            <span>{{ window_days }} days ago</span>
-            <span>today</span>
+            <span>{% blocktranslate with days=window_days %}{{ days }} days ago{% endblocktranslate %}</span>
+            <span>{% translate "today" %}</span>
           </div>
         </div>
         {% endif %}
       </li>
       {% empty %}
-      <li class="card card-empty">No hosts on this page yet.</li>
+      <li class="card card-empty">{% translate "No hosts on this page yet." %}</li>
       {% endfor %}
     </ul>
 
@@ -217,9 +217,9 @@
     <footer>
       <span class="powered">
         <img src="{% static 'img/vigil-logo.png' %}" alt="">
-        Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.
+        {% blocktranslate %}Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.{% endblocktranslate %}
       </span>
-      <span class="sqsy">A <b>SQSY</b> · Susquehanna Syntax product</span>
+      <span class="sqsy">{% blocktranslate %}A <b>SQSY</b> · Susquehanna Syntax product{% endblocktranslate %}</span>
     </footer>
     {% endif %}
   </div>
@@ -227,6 +227,12 @@
   <script nonce="{{ request.csp_nonce }}">
     // Poll for fresh status instead of a full-page meta-refresh, so the entry
     // animations don't replay every minute — only the changed values update.
+    // Each card rises 60ms after the one before it. Set here rather than in a
+    // style attribute, which the CSP refuses; this runs before the first paint.
+    document.querySelectorAll('#cards .card').forEach(function (card, i) {
+      card.style.animationDelay = (i * 60) + 'ms';
+    });
+
     (function () {
       var POLL_MS = 60000;
 

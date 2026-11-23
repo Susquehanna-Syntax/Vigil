@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-modal.js
 // Owns: the behaviour every dialog and drawer shares (M12, SQSY design
 //   language): focus moves in on open, Tab stays inside, Esc closes the top
@@ -121,8 +122,8 @@ function _syncModals() {
 
 new MutationObserver((records) => {
   for (const r of records) {
-    if (r.type === 'attributes' ? r.target.matches?.(_MODAL_SEL)
-      : (_modalStack.length || [...r.addedNodes].some(n => n.nodeType === 1 && n.matches(_MODAL_SEL)))) {
+    if (r.type === 'attributes' ? /** @type {HTMLElement} */ (r.target).matches?.(_MODAL_SEL)
+      : (_modalStack.length || [...r.addedNodes].some((/** @type {Node} */ n) => n.nodeType === 1 && /** @type {HTMLElement} */ (n).matches(_MODAL_SEL)))) {
       _syncModals();
       return;
     }
@@ -154,7 +155,7 @@ window.addEventListener('keydown', (e) => {
   const top = _modalStack[_modalStack.length - 1];
   if (!top) return;
   if (e.key === 'Escape') {
-    if (!_isOpen(top.el) || e.target.closest?.('[role="menu"]')) return;
+    if (!_isOpen(top.el) || /** @type {HTMLElement} */ (e.target).closest?.('[role="menu"]')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     closeModalEl(top.el);
@@ -163,7 +164,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Tab') return;
   // A terminal or a remote desktop needs Tab itself (completion, Alt+Tab on
   // the far side), so a dialog or region marked data-keeps-tab is left alone.
-  if (top.el.hasAttribute('data-keeps-tab') || e.target.closest?.('[data-keeps-tab]')) return;
+  if (top.el.hasAttribute('data-keeps-tab') || /** @type {HTMLElement} */ (e.target).closest?.('[data-keeps-tab]')) return;
   const items = [...top.el.querySelectorAll(_FOCUSABLE)].filter(_visible);
   if (!items.length) { e.preventDefault(); return; }
   const first = items[0];
@@ -225,13 +226,13 @@ function _readModalSize(el) {
 function _saveModalSize(el, w, h) {
   if (!el.id) return;
   // storage can throw in a private window
-  try { localStorage.setItem(_MODAL_SIZE_KEY + el.id, JSON.stringify({ w: w, h: h })); } catch (e) {}
+  try { localStorage.setItem(_MODAL_SIZE_KEY + el.id, JSON.stringify({ w: w, h: h })); } catch (e) { /* state-ok: a blocked storage area keeps the size for this visit only */ }
 }
 
 function _forgetModalSize(el) {
   if (!el.id) return;
   // storage can throw in a private window
-  try { localStorage.removeItem(_MODAL_SIZE_KEY + el.id); } catch (e) {}
+  try { localStorage.removeItem(_MODAL_SIZE_KEY + el.id); } catch (e) { /* state-ok: a blocked storage area has nothing stored to forget */ }
 }
 
 //: The dialog's layout size. Not getBoundingClientRect(): that includes the
@@ -269,7 +270,7 @@ function _modalDragStart(el, grip, ev) {
   const startX = ev.clientX;
   const startY = ev.clientY;
   // setPointerCapture is best-effort: the id can be gone by the time we get here
-  try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+  try { grip.setPointerCapture(ev.pointerId); } catch (e) { /* state-ok: the pointer can be gone already; the drag still tracks on move events */ }
 
   const move = mv => {
     const size = modalClampSize(startW + 2 * (mv.clientX - startX),
@@ -282,7 +283,7 @@ function _modalDragStart(el, grip, ev) {
     grip.removeEventListener('pointerup', stop);
     grip.removeEventListener('pointercancel', stop);
     // the pointer is already up when pointercancel ends the drag
-    try { grip.releasePointerCapture(mv.pointerId); } catch (e) {}
+    try { grip.releasePointerCapture(mv.pointerId); } catch (e) { /* state-ok: a cleanup on a pointer already released */ }
     const now = _modalLayoutSize(el);
     const size = modalClampSize(now.width, now.height, window.innerWidth, window.innerHeight);
     _saveModalSize(el, size.w, size.h);

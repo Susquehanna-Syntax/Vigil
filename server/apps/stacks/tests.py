@@ -490,7 +490,8 @@ class StackNameTests(TestCase):
         self.assertIn("stackEd.nameTouched = true;\n    _checkStackName(false);", js)
         # A new stack written here (not from Git) carries its host and name.
         self.assertIn(
-            "else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),",
+            "else body = { host_id: stackEd.hostId, name: /** @type {HTMLInputElement} */ "
+            "(_stedEl('stack-name')).value.trim(),",
             js,
         )
 

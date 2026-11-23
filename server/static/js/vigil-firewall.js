@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-firewall.js
 // Owns: Firewall page — host picker, tri-state enable/disable + default
 //   policies, rule table with protected-port guard, unparsed-rule callout,
@@ -21,7 +22,7 @@ let firewallHostsLoaded = false;
 let firewallCurrentHostId = null;
 const FW_HOST_KEY = 'vigil.firewall.host';
 
-function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch { /* private window */ } }
+function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch { /* state-ok: private window */ } }
 function _fwRecall() { try { return localStorage.getItem(FW_HOST_KEY) || ''; } catch { return ''; } }
 
 // Port 22 is always protected; 3389 joins it only on a Windows snapshot.
@@ -57,13 +58,13 @@ async function loadFirewall() {
     await _fwPopulateHosts();
     firewallHostsLoaded = true;
   }
-  const sel = document.getElementById('firewall-host-select');
+  const sel = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'));
   if (sel && sel.value) await loadFirewallSnapshot(sel.value);
 }
 
 function pickFirewallHost() {
-  openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
-    const hidden = document.getElementById('firewall-host-select');
+  openPicker({ type: 'machine', title: t('Pick a host'), allowAdd: false, onSelect: (item) => {
+    const hidden = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'));
     hidden.value = item.key;
     _fwRemember(item.key);
     document.getElementById('firewall-host-label').textContent = item.name;
@@ -72,17 +73,16 @@ function pickFirewallHost() {
 }
 
 async function _fwPopulateHosts() {
-  const sel = document.getElementById('firewall-host-select');
+  const sel = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'));
   const noHosts = document.getElementById('firewall-no-hosts');
   const refreshBtn = document.getElementById('firewall-refresh-btn');
   if (!sel) return;
 
   let hosts = [];
-  try {
-    hosts = await apiJson('/api/v1/hosts/');
-  } catch (e) {
-    showToast('Failed to load hosts: ' + e.message, 'error');
-  }
+  // state-ok: the toast carries the failure, and this page has no list of its
+  // own to draw a failed state inside — the picker keeps its placeholder and
+  // the page stops here rather than behaving as if there were no hosts.
+  try { hosts = await apiJson('/api/v1/hosts/'); } catch (e) { showToast(t('Failed to load hosts: {message}', { message: e.message }), 'error'); return; }
 
   // Monitor-mode hosts report metrics only and never execute tasks — the
   // firewall endpoints refuse them (see host.mode == Host.Mode.MONITOR
@@ -118,7 +118,11 @@ async function loadFirewallSnapshot(hostId) {
   try {
     data = await apiJson(`/api/v1/hosts/${hostId}/firewall/`);
   } catch (e) {
-    showToast('Failed to load firewall state: ' + e.message, 'error');
+    const stateEl = document.getElementById('firewall-state');
+    stateEl.style.display = '';
+    document.getElementById('firewall-rules').style.display = 'none';
+    document.getElementById('firewall-empty').style.display = 'none';
+    showLoadFailure(stateEl, t('the firewall state'), e, () => loadFirewallSnapshot(hostId));
     return;
   }
   _fwRender(hostId, data);
@@ -130,7 +134,7 @@ function _fwRender(hostId, data) {
   const stateEl = document.getElementById('firewall-state');
   const rulesEl = document.getElementById('firewall-rules');
 
-  if (ageEl) ageEl.textContent = data.fetched_at ? 'Last read ' + _fwAge(data.fetched_at) : '';
+  if (ageEl) ageEl.textContent = data.fetched_at ? t('Last read {when}', { when: _fwAge(data.fetched_at) }) : '';
 
   // fetched_at is null before any read has ever landed — that is normal
   // (reads are dispatched, not polled), not an error.
@@ -161,12 +165,12 @@ function _fwRenderState(hostId, data) {
   toolRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:14px;';
   const toolLabel = document.createElement('span');
   toolLabel.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);min-width:110px;';
-  toolLabel.textContent = 'Tool';
+  toolLabel.textContent = t('Tool');
   const toolVal = document.createElement('span');
   toolVal.style.cssText = 'font-weight:600;font-size:14px;color:var(--text-1);';
   // data.tool is host-reported (always a non-null string per the ingest
   // contract, but treated as untrusted regardless) — textContent only.
-  toolVal.textContent = unsupported ? 'No supported firewall tool found' : (data.tool || 'unknown');
+  toolVal.textContent = unsupported ? t('No supported firewall tool found') : (data.tool || 'unknown'); // i18n-ignore — a one-word value shown in mono like the tri-state's enabled/disabled, kept for the tool the host reports
   toolRow.append(toolLabel, toolVal);
   card.appendChild(toolRow);
 
@@ -177,14 +181,14 @@ function _fwRenderState(hostId, data) {
   enabledRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:14px;';
   const enabledLabel = document.createElement('span');
   enabledLabel.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);min-width:110px;';
-  enabledLabel.textContent = 'State';
+  enabledLabel.textContent = t('State');
   const enabledVal = document.createElement('span');
   enabledVal.className = 'mono';
   enabledVal.style.fontWeight = '600';
   let enabledText, enabledColor;
-  if (data.enabled === true) { enabledText = 'enabled'; enabledColor = 'var(--mint-ink)'; }
-  else if (data.enabled === false) { enabledText = 'disabled'; enabledColor = 'var(--rose-ink)'; }
-  else { enabledText = 'unknown'; enabledColor = 'var(--peach-ink)'; }
+  if (data.enabled === true) { enabledText = t('enabled'); enabledColor = 'var(--mint-ink)'; }
+  else if (data.enabled === false) { enabledText = t('disabled'); enabledColor = 'var(--rose-ink)'; }
+  else { enabledText = t('unknown'); enabledColor = 'var(--peach-ink)'; }
   enabledVal.style.color = enabledColor;
   enabledVal.textContent = enabledText;
   enabledRow.append(enabledLabel, enabledVal);
@@ -201,13 +205,13 @@ function _fwRenderState(hostId, data) {
 
     const label = document.createElement('span');
     label.style.cssText = 'font-size:12px;color:var(--text-3);min-width:110px;';
-    label.textContent = direction === 'incoming' ? 'Default incoming' : 'Default outgoing';
+    label.textContent = direction === 'incoming' ? t('Default incoming') : t('Default outgoing');
 
     const current = document.createElement('span');
     current.className = 'mono';
     current.style.cssText = 'font-size:12px;color:var(--text-1);min-width:60px;';
     const val = defaults[direction];
-    current.textContent = (typeof val === 'string' && val) ? val : 'unknown';
+    current.textContent = (typeof val === 'string' && val) ? val : t('unknown');
 
     row.append(label, current);
 
@@ -217,7 +221,7 @@ function _fwRenderState(hostId, data) {
       sel.style.cssText = 'width:auto;padding:4px 8px;font-size:12px;';
       const placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = 'Change to…';
+      placeholder.textContent = t('Change to…');
       sel.appendChild(placeholder);
       for (const p of ['allow', 'deny', 'reject']) {
         const opt = document.createElement('option');
@@ -227,9 +231,9 @@ function _fwRenderState(hostId, data) {
       }
       const setBtn = document.createElement('button');
       setBtn.className = 'btn btn-outline btn-sm';
-      setBtn.textContent = 'Set';
+      setBtn.textContent = t('Set');
       setBtn.addEventListener('click', () => {
-        if (!sel.value) { showToast('Choose a policy first', 'error'); return; }
+        if (!sel.value) { showToast(t('Choose a policy first'), 'error'); return; }
         applyFirewallChange(hostId, 'set_firewall_policy', { direction, policy: sel.value }, setBtn);
       });
       row.append(sel, setBtn);
@@ -246,7 +250,7 @@ function _fwRenderState(hostId, data) {
     profWrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:16px;';
     const profTitle = document.createElement('div');
     profTitle.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);margin-bottom:4px;';
-    profTitle.textContent = 'Profiles';
+    profTitle.textContent = t('Profiles');
     profWrap.appendChild(profTitle);
     for (const p of data.profiles) {
       if (!p || typeof p !== 'object') continue;
@@ -258,7 +262,7 @@ function _fwRenderState(hostId, data) {
       const state = document.createElement('span');
       state.className = 'mono';
       state.style.color = p.enabled ? 'var(--mint-ink)' : 'var(--rose-ink)';
-      state.textContent = p.enabled ? 'on' : 'off';
+      state.textContent = p.enabled ? 'on' : 'off'; // i18n-ignore — a one-word value in mono beside the profile's name, like `enabled`/`unknown`, not a sentence
       row.append(name, state);
       profWrap.appendChild(row);
     }
@@ -271,11 +275,11 @@ function _fwRenderState(hostId, data) {
   actionsRow.style.cssText = 'display:flex;gap:10px;';
   const enableBtn = document.createElement('button');
   enableBtn.className = 'btn btn-outline btn-sm';
-  enableBtn.textContent = 'Enable firewall';
+  enableBtn.textContent = t('Enable firewall');
   enableBtn.addEventListener('click', () => applyFirewallChange(hostId, 'enable_firewall', {}, enableBtn));
   const disableBtn = document.createElement('button');
   disableBtn.className = 'btn btn-outline btn-sm';
-  disableBtn.textContent = 'Disable firewall';
+  disableBtn.textContent = t('Disable firewall');
   disableBtn.addEventListener('click', () => applyFirewallChange(hostId, 'disable_firewall', {}, disableBtn));
   actionsRow.append(enableBtn, disableBtn);
   card.appendChild(actionsRow);
@@ -296,13 +300,13 @@ function _fwRenderRules(hostId, data) {
 
   const title = document.createElement('div');
   title.style.cssText = 'font-weight:600;font-size:14px;color:var(--text-1);margin-bottom:12px;';
-  title.textContent = 'Rules';
+  title.textContent = t('Rules');
   tableWrap.appendChild(title);
 
   if (!rules.length) {
     const empty = document.createElement('div');
     empty.style.cssText = 'color:var(--text-3);font-size:12px;padding:8px 0;';
-    empty.textContent = 'No parsed rules on this host.';
+    empty.textContent = t('No parsed rules on this host.');
     tableWrap.appendChild(empty);
   } else {
     const table = document.createElement('table');
@@ -310,7 +314,7 @@ function _fwRenderRules(hostId, data) {
 
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    for (const label of ['Port', 'Protocol', 'Action', 'Source', 'Interface', '']) {
+    for (const label of [t('Port'), t('Protocol'), t('Action'), t('Source'), t('Interface'), '']) {
       const th = document.createElement('th');
       th.textContent = label;
       headRow.appendChild(th);
@@ -355,13 +359,13 @@ function _fwRenderRules(hostId, data) {
         // — do not offer an action known to fail.
         const label = document.createElement('span');
         label.style.cssText = 'font-size:11px;color:var(--text-3);';
-        label.textContent = portNum === 3389 ? '[protected — keeps RDP open]'
-                                             : '[protected — keeps SSH open]';
+        label.textContent = portNum === 3389 ? t('[protected — keeps RDP open]')
+                                             : t('[protected — keeps SSH open]');
         actTd.appendChild(label);
       } else {
         const rmBtn = document.createElement('button');
         rmBtn.className = 'btn btn-outline btn-sm';
-        rmBtn.textContent = 'Remove';
+        rmBtn.textContent = t('Remove');
         rmBtn.addEventListener('click', () => {
           // action and source must be the rule's own values, not left to
           // the executor's defaults (allow / any) — ufw and firewall-cmd
@@ -405,12 +409,12 @@ function _fwRenderRules(hostId, data) {
 
     const uTitle = document.createElement('div');
     uTitle.style.cssText = 'font-weight:600;font-size:13px;color:var(--lemon-ink);margin-bottom:6px;';
-    uTitle.textContent = 'Unparsed rules';
+    uTitle.textContent = t('Unparsed rules');
     uWrap.appendChild(uTitle);
 
     const uSub = document.createElement('div');
     uSub.style.cssText = 'color:var(--text-3);font-size:12px;margin-bottom:10px;line-height:1.6;';
-    uSub.textContent = 'These rules exist on the host but Vigil could not interpret them, so they cannot be edited here. A firewall view that silently omitted them would be worse than one that admits it.';
+    uSub.textContent = t('These rules exist on the host but Vigil could not interpret them, so they cannot be edited here. A firewall view that silently omitted them would be worse than one that admits it.');
     uWrap.appendChild(uSub);
 
     const list = document.createElement('div');
@@ -438,7 +442,7 @@ function _fwRenderRules(hostId, data) {
 
     const fTitle = document.createElement('div');
     fTitle.style.cssText = 'font-weight:600;font-size:14px;color:var(--text-1);margin-bottom:12px;';
-    fTitle.textContent = 'Add a rule';
+    fTitle.textContent = t('Add a rule');
     formWrap.appendChild(fTitle);
 
     const row = document.createElement('div');
@@ -448,7 +452,7 @@ function _fwRenderRules(hostId, data) {
     portInput.type = 'number';
     portInput.min = '1';
     portInput.max = '65535';
-    portInput.placeholder = 'Port';
+    portInput.placeholder = t('Port');
     portInput.className = 'form-control';
     portInput.style.cssText = 'width:100px;';
 
@@ -474,23 +478,23 @@ function _fwRenderRules(hostId, data) {
 
     const sourceInput = document.createElement('input');
     sourceInput.type = 'text';
-    sourceInput.placeholder = 'Source (optional, default any)';
+    sourceInput.placeholder = t('Source (optional, default any)');
     sourceInput.className = 'form-control';
     sourceInput.style.cssText = 'width:220px;';
 
     const ifaceInput = document.createElement('input');
     ifaceInput.type = 'text';
-    ifaceInput.placeholder = 'Interface (optional)';
+    ifaceInput.placeholder = t('Interface (optional)');
     ifaceInput.className = 'form-control';
     ifaceInput.style.cssText = 'width:160px;';
 
     const addBtn = document.createElement('button');
     addBtn.className = 'btn btn-outline btn-sm';
-    addBtn.textContent = 'Add rule';
+    addBtn.textContent = t('Add rule');
     addBtn.addEventListener('click', () => {
       const port = parseInt(portInput.value, 10);
       if (!port || port < 1 || port > 65535) {
-        showToast('Enter a valid port (1-65535)', 'error');
+        showToast(t('Enter a valid port (1-65535)'), 'error');
         return;
       }
       const params = { port, protocol: protoSel.value, action: dispSel.value };
@@ -510,7 +514,7 @@ function _fwRenderRules(hostId, data) {
 /* ── Writes ──────────────────────────────────────────────────────────── */
 
 async function applyFirewallChange(hostId, action, params, btn) {
-  const totp = await totpPrompt('Apply this firewall change.');
+  const totp = await totpPrompt(t('Apply this firewall change.'));
   if (!totp) return;
   const prevOpacity = btn ? btn.style.opacity : '';
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
@@ -519,28 +523,28 @@ async function applyFirewallChange(hostId, action, params, btn) {
       method: 'POST',
       body: JSON.stringify({ action, params, totp }),
     });
-    showToast("Change queued — it applies on the host's next check-in", 'success');
+    showToast(t("Change queued — it applies on the host's next check-in"), 'success');
     setTimeout(() => loadFirewallSnapshot(hostId), 600);
   } catch (e) {
     // Covers both the lockout guard's 400 refusal and a 401 bad-TOTP —
     // apiJson already extracts body.error, so the operator reads why
     // rather than a generic "Request failed".
-    showToast('Firewall change failed: ' + e.message, 'error');
+    showToast(t('Firewall change failed: {message}', { message: e.message }), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.style.opacity = prevOpacity || '1'; }
   }
 }
 
 document.getElementById('firewall-refresh-btn')?.addEventListener('click', async () => {
-  const btn = document.getElementById('firewall-refresh-btn');
-  const hostId = document.getElementById('firewall-host-select')?.value;
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('firewall-refresh-btn'));
+  const hostId = /** @type {HTMLInputElement} */ (document.getElementById('firewall-host-select'))?.value;
   if (!hostId) return;
   btn.disabled = true; btn.style.opacity = '0.5';
   try {
     await apiJson(`/api/v1/hosts/${hostId}/firewall/refresh/`, { method: 'POST' });
-    showToast("Read queued — it lands on the host's next check-in", 'success');
+    showToast(t("Read queued — it lands on the host's next check-in"), 'success');
   } catch (e) {
-    showToast('Refresh failed: ' + e.message, 'error');
+    showToast(t('Refresh failed: {message}', { message: e.message }), 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }
@@ -549,7 +553,7 @@ document.getElementById('firewall-refresh-btn')?.addEventListener('click', async
 // Auto-load the first time the Firewall tab is opened, following the
 // wrap-navigateTo pattern documented atop vigil-nav.js.
 const _fwNavigateTo = navigateTo;
-navigateTo = function (page) {
+window.navigateTo = function (page) {
   _fwNavigateTo(page);
   if (page === 'firewall') loadFirewall();
 };

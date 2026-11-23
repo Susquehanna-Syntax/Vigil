@@ -1,11 +1,12 @@
+{% load i18n %}
 {# Firewall page section #}
 {# Logic: static/js/vigil-firewall.js | Data: client-side fetch /api/v1/hosts/<id>/firewall/ #}
     <section id="page-firewall" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Firewall<span>.</span></div>
-          <div class="page-sub">Read and edit a host's firewall rules and policies</div>
+          <div class="page-title">{% translate "Firewall" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Read and edit a host's firewall rules and policies" %}</div>
         </div>
       </div>
 
@@ -15,15 +16,15 @@
         title row.
       {% endcomment %}
       <div class="fw-controls">
-        <label class="fw-controls-label" for="firewall-host-select">Host</label>
+        <label class="fw-controls-label" for="firewall-host-select">{% translate "Host" %}</label>
         <button class="btn btn-outline picker-btn fw-host-select" id="firewall-host-btn" type="button">
-          <span id="firewall-host-label">Choose a host…</span>
+          <span id="firewall-host-label">{% translate "Choose a host…" %}</span>
         </button>
         <input type="hidden" id="firewall-host-select">
         <span id="firewall-snapshot-age" class="fw-snapshot-age"></span>
         <button class="btn btn-outline btn-sm" id="firewall-refresh-btn">
           <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-          Refresh
+          {% translate "Refresh" %}
         </button>
       </div>
 
@@ -35,23 +36,19 @@
         {% comment %}, not {# #}: the latter comments only to end of line, so a
         multi-line {# #} renders every line after the first as page text.
       {% endcomment %}
-      <div id="firewall-no-hosts" style="display:none;background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
+      <div id="firewall-no-hosts" class="fw-panel" style="display:none;">
         <svg class="empty-glyph" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="3" y1="14.5" x2="21" y2="14.5"/><line x1="9" y1="4" x2="9" y2="9.5"/><line x1="15" y1="9.5" x2="15" y2="14.5"/><line x1="9" y1="14.5" x2="9" y2="20"/></svg>
-        <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">No eligible hosts</div>
-        <div style="color:var(--text-2);font-size:13px;max-width:460px;margin:0 auto;line-height:1.7;">
-          Every host is in Monitor mode, which reports metrics only and never
-          executes tasks. Switch a host to Managed or Full Control to manage
-          its firewall here.
+        <div class="fw-panel-title">{% translate "No eligible hosts" %}</div>
+        <div class="fw-panel-text">
+          {% blocktranslate %}Every host is in Monitor mode, which reports metrics only and never executes tasks. Switch a host to Managed or Full Control to manage its firewall here.{% endblocktranslate %}
         </div>
       </div>
 
-      <div id="firewall-empty" style="display:none;background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
+      <div id="firewall-empty" class="fw-panel" style="display:none;">
         <svg class="empty-glyph" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="3" y1="14.5" x2="21" y2="14.5"/><line x1="9" y1="4" x2="9" y2="9.5"/><line x1="15" y1="9.5" x2="15" y2="14.5"/><line x1="9" y1="14.5" x2="9" y2="20"/></svg>
-        <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">Nothing read yet</div>
-        <div style="color:var(--text-2);font-size:13px;max-width:460px;margin:0 auto;line-height:1.7;">
-          Vigil reads a host's firewall on demand rather than polling for it.
-          Press Refresh to dispatch a read task — it lands on the host's next
-          check-in.
+        <div class="fw-panel-title">{% translate "Nothing read yet" %}</div>
+        <div class="fw-panel-text">
+          {% blocktranslate %}Vigil reads a host's firewall on demand rather than polling for it. Press Refresh to dispatch a read task — it lands on the host's next check-in.{% endblocktranslate %}
         </div>
       </div>
 

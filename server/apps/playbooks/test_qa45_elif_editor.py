@@ -19,15 +19,19 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 FLOW_JS = ROOT / "static/js/vigil-playbook-flow.js"
 PLAYBOOKS_JS = ROOT / "static/js/vigil-playbooks.js"
-CSS = ROOT / "static/css/vigil.css"
 
 # The shipped flow file uses the page's escapers; in node they stand in as
 # identity functions so markup tests see the tree's own text.
 _STUBS = ("global.escHtml = s => String(s == null ? '' : s);\n"
-          "global.escAttr = s => String(s == null ? '' : s);\n")
+          "global.escAttr = s => String(s == null ? '' : s);\n"
+          "global.t = (m, p) => String(m).replace(/\\{(\\w+)\\}/g,"
+          " (x, k) => (p && Object.prototype.hasOwnProperty.call(p, k) ? String(p[k]) : x));\n"
+          "global.tn = (a, b, n, p) => global.t(n === 1 ? a : b, Object.assign({ n }, p || {}));\n")
 
 
 @skipUnless(shutil.which("node"), "node is not installed")
@@ -277,7 +281,7 @@ class MarkupTests(SimpleTestCase):
             self.assertIn(needle, playbooks)
 
     def test_css_appended(self):
-        css = CSS.read_text()
+        css = design_css()
         self.assertGreater(len(css.splitlines()), 4566)
         for needle in (".modal {", ".fcn-if {", ".fce.t-elif", ".fcn-port.p-elif",
                        ".fce-add.t-elif", ".fi-elif", "QA-45: or-if exits"):

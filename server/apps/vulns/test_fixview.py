@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
+from vigil.css_text import design_css
 
 from .evidence import add_evidence
 from .models import EpssScore, KevEntry, VulnFinding
@@ -144,7 +145,7 @@ class VulnTabsTests(TestCase):
         root = Path(__file__).resolve().parents[2]
         self.html = (root / "templates/pages/_vulns.html").read_text(encoding="utf-8")
         self.js = (root / "static/js/vigil-vulns.js").read_text(encoding="utf-8")
-        self.css = (root / "static/css/vigil.css").read_text(encoding="utf-8")
+        self.css = design_css()
 
     def test_two_tabs(self):
         self.assertIn('data-tab="vulns-by-fix"', self.html)
@@ -162,7 +163,7 @@ class VulnTabsTests(TestCase):
         self.assertLess(content, scans, "Recent scans stays below the tabs")
         self.assertIn('class="tab-content active" id="vulns-by-fix"', self.html)
         self.assertEqual(self.html.count('class="tab-content active"'), 1)
-        self.assertIn('<p class="apps-intro">One row per fix', self.html)
+        self.assertIn('class="apps-intro">{% translate "One row per fix', self.html)
         self.assertIn(".vuln-tabs { margin-bottom: 18px; }", self.css)
         self.assertIn(".vfix-skeleton { padding:", self.css)
         self.assertIn("pointer-events: none; }", self.css)
@@ -170,7 +171,7 @@ class VulnTabsTests(TestCase):
     def test_fix_skeleton(self):
         self.assertIn("function _fixSkeleton", self.js)
         self.assertIn("vfix-skeleton", self.js)
-        self.assertIn('aria-label="Loading fixes"', self.js)
+        self.assertIn("${escAttr(t('Loading fixes'))}", self.js)
         start = self.js.index("async function refreshFixGroups()")
         body = self.js[start:self.js.index("\n}", start)]
         self.assertLess(body.index("_fixSkeleton()"), body.index("apiJson("),
@@ -184,8 +185,8 @@ class VulnTabsTests(TestCase):
         self.assertIn("  .modal-skeleton .sk-line, .vfix-skeleton", reduced)
 
     def test_empty_state_names_its_case(self):
-        self.assertIn("'No open findings match.' : 'No open findings", self.js)
-        self.assertIn("nothing to fix.'", self.js)
+        self.assertIn("t('No open findings match.')", self.js)
+        self.assertIn("t('No open findings — nothing to fix.')", self.js)
 
     def test_section_no_longer_hides(self):
         self.assertNotIn("section.hidden =", self.js)

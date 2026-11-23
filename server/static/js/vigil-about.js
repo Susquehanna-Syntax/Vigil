@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-about.js
 // Owns: About page — version surface, scanner configured-status pills.
 // HTML: templates/pages/_about.html
@@ -5,7 +6,7 @@
 // API: GET /api/v1/about/
 
 async function refreshAbout() {
-  const btn = document.getElementById('about-refresh-btn');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('about-refresh-btn'));
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
 
   try {
@@ -17,19 +18,12 @@ async function refreshAbout() {
     _setText('about-timezone', d.timezone || 'UTC');
     _setText('about-licensed-to', d.licensed_to
       ? `${d.licensed_to}${d.license_id ? ` (license ${d.license_id})` : ''}`
-      : 'Free edition');
+      : t('Free edition'));
     _renderScanners(d.scanners || []);
     _renderHealth();
   } catch (e) {
     // 401 only happens if a logged-out client somehow hits this; show a hint.
-    const wrap = document.getElementById('about-scanners');
-    if (wrap) {
-      wrap.replaceChildren();
-      const err = document.createElement('div');
-      err.style.color = 'var(--text-3)';
-      err.textContent = 'Failed to load: ' + e.message;
-      wrap.appendChild(err);
-    }
+    showLoadFailure(document.getElementById('about-scanners'), 'the instance details', e, () => refreshAbout());
   } finally {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
@@ -47,7 +41,7 @@ function _renderScanners(scanners) {
   if (!scanners.length) {
     const empty = document.createElement('div');
     empty.style.color = 'var(--text-3)';
-    empty.textContent = 'No scanners registered.';
+    empty.textContent = t('No scanners registered.');
     wrap.appendChild(empty);
     return;
   }
@@ -76,11 +70,11 @@ function _renderScanners(scanners) {
     if (s.configured) {
       pill.style.color = 'var(--mint-ink)';
       pill.style.background = 'rgba(var(--rgb-mint), var(--tint-a))';
-      pill.textContent = 'Configured';
+      pill.textContent = t('Configured');
     } else {
       pill.style.color = 'var(--text-3)';
       pill.style.background = 'var(--s2)';
-      pill.textContent = 'Not configured';
+      pill.textContent = t('Not configured');
     }
     row.appendChild(pill);
     wrap.appendChild(row);

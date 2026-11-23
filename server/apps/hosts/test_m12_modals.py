@@ -10,9 +10,13 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 SERVER = Path(__file__).resolve().parents[2]
 JS = SERVER / "static" / "js"
-CSS = (SERVER / "static" / "css" / "vigil.css").read_text()
+CSS = "\n".join(
+    [(SERVER / "static" / "css" / "tokens.css").read_text(), design_css()]
+)
 
 
 def _src(name):

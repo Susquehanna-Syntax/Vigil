@@ -25,7 +25,11 @@ from django.test import SimpleTestCase, TestCase
 from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
 
-#: Apps whose every /api/v1/ view comes out typed.
+#: Apps whose every /api/v1/ view comes out typed. ``apps_business`` joins here
+#: on the strength of the ``@extend_schema`` work in the private Vigil_Business
+#: repository (543cb46, 8b8152a). CI installs the older wheels business.lock
+#: pins, so test_typed_apps_stay_typed holds it to TYPED only when the installed
+#: build documents its views (business_typed).
 TYPED: set[str] = {
     "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
     "automations", "catalog", "dashboards", "hosts", "instance", "jackil",
@@ -36,6 +40,9 @@ TYPED: set[str] = {
     # they are installed.
     "apps_business",
 }
+
+#: Apps still to type, each one phase of the work. Empty: the milestone's finish line.
+PENDING: set[str] = set()
 
 #: Apps still to type, each one phase of the work. None are left: an app added
 #: later starts here until its views are typed.

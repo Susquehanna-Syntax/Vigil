@@ -1,16 +1,16 @@
-{# Containers page section — a host's containers by compose stack, Vigil-managed stacks, live logs, and (14.3) its images, volumes and networks in sub-tabs #}
-{# Logic: static/js/vigil-containers.js (containers, logs, host picker) + vigil-stacks.js (managed stacks) | Styles: vigil.css .docker-*, .managed-stack*, .ctr-logs | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/, /api/v1/hosts/{id}/docker/, /api/v1/hosts/docker-summary/, /api/v1/stacks/ #}
+{% load i18n %}{# Containers page section — a host's containers by compose stack, Vigil-managed stacks, live logs, and (14.3) its images, volumes and networks in sub-tabs #}
+{# Logic: static/js/vigil-containers.js (containers, logs, host picker) + vigil-stacks.js (managed stacks) | Styles: css/vigil/*.css .docker-*, .managed-stack*, .ctr-logs | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/, /api/v1/hosts/{id}/docker/, /api/v1/hosts/docker-summary/, /api/v1/stacks/ #}
     <section id="page-containers" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Containers<span>.</span></div>
-          <div class="page-sub">Containers and compose stacks on your hosts</div>
+          <div class="page-title">{% translate "Containers" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Containers and compose stacks on your hosts" %}</div>
         </div>
         <div class="right">
           <button class="btn btn-outline btn-sm" data-act="refreshContainers">
             <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            Refresh
+            {% translate "Refresh" %}
           </button>
         </div>
       </div>
@@ -19,33 +19,33 @@
         <button class="btn btn-outline picker-btn ctr-host-btn" id="containers-host-btn" type="button" data-ctr-pick-host
           aria-haspopup="dialog">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <span id="containers-host-label">Choose a host…</span>
+          <span id="containers-host-label">{% translate "Choose a host…" %}</span>
         </button>
         <input type="hidden" id="containers-host" value="">
-        <div class="ctr-pins" id="containers-pins" aria-label="Pinned hosts"></div>
+        <div class="ctr-pins" id="containers-pins" role="group" aria-label="{% translate "Pinned hosts" %}"></div>
         <span class="section-count" id="docker-count"></span>
       </div>
 
       <div id="containers-empty" class="monitor-empty">
-        <div class="monitor-empty-title">Choose a host</div>
+        <div class="monitor-empty-title">{% translate "Choose a host" %}</div>
         <div class="monitor-empty-desc">
-          Pick a host to see its containers, stacks, images, volumes and networks, and to restart, update,
-          read the logs of, or clean up any of them.
+          {% blocktranslate %}Pick a host to see its containers, stacks, images, volumes and networks, and to restart, update,
+          read the logs of, or clean up any of them.{% endblocktranslate %}
         </div>
       </div>
 
       <div id="containers-content" hidden>
-        <div class="ctr-tabs" role="tablist" aria-label="Container resources">
-          <button class="ctr-tab is-on" type="button" role="tab" aria-selected="true" data-ctr-tab="containers">Containers &amp; stacks <span class="ctr-tab-n" id="ctr-n-containers"></span></button>
-          <button class="ctr-tab" type="button" role="tab" aria-selected="false" data-ctr-tab="images">Images <span class="ctr-tab-n" id="ctr-n-images"></span></button>
-          <button class="ctr-tab" type="button" role="tab" aria-selected="false" data-ctr-tab="volumes">Volumes <span class="ctr-tab-n" id="ctr-n-volumes"></span></button>
-          <button class="ctr-tab" type="button" role="tab" aria-selected="false" data-ctr-tab="networks">Networks <span class="ctr-tab-n" id="ctr-n-networks"></span></button>
+        <div class="ctr-tabs" role="tablist" aria-label="{% translate "Container resources" %}">
+          <button class="ctr-tab is-on" type="button" role="tab" aria-selected="true" data-ctr-tab="containers">{% translate "Containers &amp; stacks" %} <span class="ctr-tab-n" id="ctr-n-containers"></span></button>
+          <button class="ctr-tab" type="button" role="tab" aria-selected="false" data-ctr-tab="images">{% translate "Images" %} <span class="ctr-tab-n" id="ctr-n-images"></span></button>
+          <button class="ctr-tab" type="button" role="tab" aria-selected="false" data-ctr-tab="volumes">{% translate "Volumes" %} <span class="ctr-tab-n" id="ctr-n-volumes"></span></button>
+          <button class="ctr-tab" type="button" role="tab" aria-selected="false" data-ctr-tab="networks">{% translate "Networks" %} <span class="ctr-tab-n" id="ctr-n-networks"></span></button>
         </div>
 
         <div class="ctr-filterbar">
-          <input type="search" class="form-control ctr-filter-q" id="ctr-filter-q" placeholder="Filter…" autocomplete="off"
-            spellcheck="false" aria-label="Filter this list">
-          <div class="ctr-chips" id="ctr-filter-chips" role="group" aria-label="Quick filters"></div>
+          <input type="search" class="form-control ctr-filter-q" id="ctr-filter-q" placeholder="{% translate "Filter…" %}" autocomplete="off"
+            spellcheck="false" aria-label="{% translate "Filter this list" %}">
+          <div class="ctr-chips" id="ctr-filter-chips" role="group" aria-label="{% translate "Quick filters" %}"></div>
           <div class="ctr-tab-actions" id="ctr-tab-actions"></div>
         </div>
 
@@ -54,7 +54,7 @@
         <div data-ctr-panel="containers">
           <div class="managed-stacks" id="managed-stacks"></div>
           <div id="docker-stacks" class="docker-stacks">
-            <div class="docker-empty" id="docker-empty">No containers reported for this host.</div>
+            <div class="docker-empty" id="docker-empty">{% translate "No containers reported for this host." %}</div>
           </div>
         </div>
         <div data-ctr-panel="images" hidden><div id="ctr-images"></div></div>
