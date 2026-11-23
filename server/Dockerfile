@@ -1,17 +1,19 @@
 # Stage 1: Build agent binary with PyInstaller
-FROM python:3.12-slim AS agent-builder
+# On Rocky Linux 9, not python:3.12-slim: the binary needs the glibc it was
+# linked against or newer, and Rocky 9's 2.34 is the oldest of the hosts the
+# agent supports (RHEL/Rocky 9, Debian 12, Ubuntu 22.04 on). See build-agent in
+# .github/workflows/docker-publish.yml.
+FROM rockylinux:9 AS agent-builder
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends binutils && \
-    rm -rf /var/lib/apt/lists/*
+RUN dnf install -y -q python3.12 python3.12-pip binutils && dnf clean all
 
 WORKDIR /build
 # The agent's own lock pins PyInstaller too: requirements.txt names it.
 COPY agent/requirements.txt agent/requirements-lock.txt ./
-RUN pip install --no-cache-dir -r requirements.txt pyinstaller
+RUN python3.12 -m pip install --no-cache-dir -r requirements.txt pyinstaller
 COPY agent/vigil_agent/ vigil_agent/
 COPY agent/vigil_agent_main.py vigil_agent_main.py
-RUN pyinstaller --onefile --name vigil-agent \
+RUN python3.12 -m PyInstaller --onefile --name vigil-agent \
     --collect-all cffi \
     --collect-all nacl \
     vigil_agent_main.py
@@ -19,7 +21,7 @@ RUN pyinstaller --onefile --name vigil-agent \
 # Record which agent version this build produced. The server image has the
 # binaries but not the agent source, and it needs the version to tell an
 # outdated host from a current one — this is the only place both are present.
-RUN python -c "exec(open('vigil_agent/__version__.py').read()); print(__version__)" \
+RUN python3.12 -c "exec(open('vigil_agent/__version__.py').read()); print(__version__)" \
     > /build/AGENT_VERSION
 
 # Stage 2: Server image
