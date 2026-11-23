@@ -617,10 +617,11 @@ td.agent-hostname { font-weight: 600; }
   margin-bottom: 6px; font-size: 11px; color: var(--text-3);
   text-transform: uppercase; letter-spacing: .05em;
 }
+.agent-plat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 20px; margin-bottom: 16px; }
+.install-cmd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px 20px; }
+.install-cmd-grid .code-block { max-width: none; margin: 0; word-break: break-all; }
 .agent-dl-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.agent-dl-row-last { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .copyable-code { cursor: pointer; user-select: all; }
-.install-cmd-label { margin-top: 10px; }
 .agent-versions { margin-top: 10px; font-size: 12px; color: var(--text-3); min-height: 16px; }
 .agent-upload { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 18px; }
 .deploy-input-label.agent-upload-label { margin-bottom: 10px; }

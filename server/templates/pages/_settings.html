@@ -526,37 +526,51 @@
         </div>
 
         <!-- Download links -->
-        <div class="agent-plat-label">{% translate "Linux" %}</div>
-        <div class="agent-dl-row">
-          <a href="/agent/download/linux-amd64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {% translate "x86-64" %}
-          </a>
-          <a href="/agent/download/linux-arm64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {% translate "ARM64" %}
-          </a>
-        </div>
-        <div class="agent-plat-label">{% translate "macOS" %}</div>
-        <div class="agent-dl-row">
-          <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {% translate "Apple Silicon" %}
-          </a>
-        </div>
-        <div class="agent-plat-label">{% translate "Windows" %}</div>
-        <div class="agent-dl-row-last">
-          <a href="/agent/download/windows-amd64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {% translate "x86-64 (.exe)" %}
-          </a>
+        <div class="agent-plat-grid">
+          <div>
+            <div class="agent-plat-label">{% translate "Linux" %}</div>
+            <div class="agent-dl-row">
+              <a href="/agent/download/linux-amd64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "x86-64" %}
+              </a>
+              <a href="/agent/download/linux-arm64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "ARM64" %}
+              </a>
+            </div>
+          </div>
+          <div>
+            <div class="agent-plat-label">{% translate "macOS" %}</div>
+            <div class="agent-dl-row">
+              <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "Apple Silicon" %}
+              </a>
+            </div>
+          </div>
+          <div>
+            <div class="agent-plat-label">{% translate "Windows" %}</div>
+            <div class="agent-dl-row">
+              <a href="/agent/download/windows-amd64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "x86-64 (.exe)" %}
+              </a>
+            </div>
+          </div>
         </div>
 
         <!-- One-liner install commands -->
-        <label class="deploy-input-label">{% translate "Linux / macOS one-liner" %}</label>
-        <div class="code-block mono copyable-code" id="install-cmd" data-act="copyInstallCmd" title='{% translate "Click to copy" %}'></div>
-        <label class="deploy-input-label install-cmd-label">{% translate "Windows (PowerShell, run as Administrator)" %}</label>
-        <div class="code-block mono copyable-code" id="install-cmd-ps1" data-act="copyInstallCmdPs1" title='{% translate "Click to copy" %}'></div>
+        <div class="install-cmd-grid">
+          <div>
+            <label class="deploy-input-label">{% translate "Linux / macOS one-liner" %}</label>
+            <div class="code-block mono copyable-code" id="install-cmd" data-act="copyInstallCmd" title='{% translate "Click to copy" %}'></div>
+          </div>
+          <div>
+            <label class="deploy-input-label">{% translate "Windows (PowerShell, run as Administrator)" %}</label>
+            <div class="code-block mono copyable-code" id="install-cmd-ps1" data-act="copyInstallCmdPs1" title='{% translate "Click to copy" %}'></div>
+          </div>
+        </div>
         <div id="agent-versions" class="agent-versions"></div>
 
         <!-- Upload new binary -->
