@@ -788,19 +788,21 @@ jobs:
         run: |
           Compress-Archive -Path "dist/${{ matrix.out }}/*" -DestinationPath "dist/${{ matrix.out }}.zip" -Force
           Get-Item "dist/${{ matrix.out }}.zip" | ForEach-Object { Write-Host ("zip bytes: " + $_.Length) }
-      # Build inside python:3.12-slim (Debian 12) rather than on the runner
-      # directly — a binary linked against the runner's glibc 2.39 would not
-      # start on Debian 11 / Ubuntu 20.04 era hosts. This matches the glibc
-      # floor of the previous in-Dockerfile agent build.
-      - name: Build binary (Linux, Debian 12 container)
+      # Build inside Rocky Linux 9 rather than on the runner: the binary needs
+      # the glibc it was linked against or newer, so the build machine sets the
+      # oldest host the agent starts on. Rocky 9's glibc 2.34 covers RHEL/Rocky
+      # 9, Debian 12 and Ubuntu 22.04 onward. python:3.12-slim did this job
+      # until its tag moved to a newer Debian: from then on the binary needed
+      # glibc 2.38 and failed to start on Debian 12 and Rocky 9, which only the
+      # agents-install job (running the installed binary) caught.
+      - name: Build binary (Linux, Rocky Linux 9 container)
         if: runner.os == 'Linux'
         run: |
-          docker run --rm -v "$PWD":/build -w /build python:3.12-slim bash -c "
+          docker run --rm -v "$PWD":/build -w /build rockylinux:9 bash -c "
             set -e
-            apt-get update
-            apt-get install -y --no-install-recommends binutils
-            pip install --no-cache-dir -r requirements.txt pyinstaller
-            pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+            dnf install -y -q python3.12 python3.12-pip binutils
+            python3.12 -m pip install -q --no-cache-dir -r requirements.txt pyinstaller
+            python3.12 -m PyInstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
           "
       # What the binary just built costs a machine (sprint M8): installed
       # size, start-up, memory at rest, a check-in's CPU, the software scan.
