@@ -97,7 +97,7 @@ class SnmpParamsTests(TestCase):
     def test_an_unknown_kind_names_snmp(self):
         with self.assertRaises(ValueError) as caught:
             validate_params("snmpv3", _snmp_params())
-        self.assertEqual(str(caught.exception), "kind must be icmp, tcp, http, dns or snmp")
+        self.assertEqual(str(caught.exception), "kind must be icmp, tcp, http, dns, snmp or ssh")
 
 
 class SnmpCommunityApiTests(TestCase):

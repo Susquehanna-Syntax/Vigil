@@ -2281,6 +2281,30 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .device-check-values dt { color: var(--text-2); }
 .device-check-values dd { margin: 0; font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; }
 .device-check-walk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); flex-basis: 100%; }
+/* SSH config backup (S9 08d): the add row's user and command, and the panel
+   under an expanded SSH row. Tinted boxes, never a one-sided border. */
+.device-check-ssh { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
+.device-check-ssh #device-check-ssh-user { flex: 0 1 160px; }
+.device-check-ssh #device-check-ssh-command { flex: 1 1 260px; }
+.device-check-ssh-panel { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 4px; font-size: 12px; }
+.device-check-ssh-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-2); }
+.device-check-ssh-keyline { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; }
+.device-check-ssh-key { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 11px; word-break: break-all;
+  background: var(--s2); border-radius: var(--r-sm, 6px); padding: 6px 8px; color: var(--text-1); flex: 1 1 auto; }
+.device-check-ssh-unpinned { color: var(--text-3); }
+.device-check-ssh-rotate { align-self: flex-start; }
+.device-check-backups { width: 100%; border-collapse: collapse; }
+.device-check-backups th, .device-check-backups td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.device-check-backups th { color: var(--text-3); font-size: 11px; font-weight: 600; }
+.device-check-backups tbody tr:last-child td { border-bottom: 0; }
+.device-check-backup-size { font-family: var(--font-mono, 'IBM Plex Mono', monospace); color: var(--text-2); }
+.device-check-config { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 12px; line-height: 1.5;
+  max-height: 420px; overflow: auto; white-space: pre; background: var(--s1); border-radius: var(--r-sm, 6px);
+  padding: 8px 10px; margin: 0; }
+.device-check-config > span { display: block; }
+.device-check-config .diff-add { background: color-mix(in srgb, var(--mint) 18%, transparent); }
+.device-check-config .diff-del { background: color-mix(in srgb, var(--rose) 18%, transparent); }
+.device-check-config .diff-hunk { color: var(--sky-ink); }
 .device-check-ifaces { width: 100%; margin: 12px 0 0; border-collapse: collapse; font-size: 12px; }
 .device-check-ifaces th { text-align: left; font-weight: 500; color: var(--text-2); padding: 4px 8px; border-bottom: 1px solid var(--border); }
 .device-check-ifaces td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; }

@@ -460,6 +460,9 @@ class DeviceCheck(models.Model):
         HTTP = "http", "HTTP(S)"
         DNS = "dns", "DNS"
         SNMP = "snmp", "SNMP"
+        # Config backup (S9 08, Business): log in with a key, run one command,
+        # keep what it printed. The private key is the check's secret.
+        SSH = "ssh", "SSH config backup"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     device = models.ForeignKey(UnmanagedDevice, on_delete=models.CASCADE,
@@ -470,7 +473,8 @@ class DeviceCheck(models.Model):
     enabled = models.BooleanField(default=True)
     poller = models.ForeignKey(Host, on_delete=models.SET_NULL, null=True, blank=True,
                                related_name="assigned_checks")
-    # Fernet ciphertext (crypto.encrypt_secret) of the SNMP community; never in params, never in an API answer.
+    # Fernet ciphertext (crypto.encrypt_secret) of the SNMP community or passwords, or an SSH
+    # check's private key; never in params, never in an API answer.
     secret = models.BinaryField(blank=True, default=b"", editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -72,6 +72,10 @@ KNOWN_EVENTS = frozenset({
     # matched file contents back to the server. Business audit-logs it; on
     # Free the event simply has no subscriber.
     "hunt_text_requested",  # payload: run, actor, step_ids
+    # An SSH device check fetched a configuration (S9 08): the text whose
+    # digest matched, at the result's time. Business config backup keeps it;
+    # on Free nothing listens and the text is dropped.
+    "device_config_fetched",  # payload: check, time, output, sha256
 })
 
 _subscribers: dict[str, list[Callable]] = defaultdict(list)

@@ -36,7 +36,8 @@ from ..api_schema import (
 from apps.alerts.device_alerts import resolve_for_check
 from apps.alerts.tasks import _is_older, _version_key
 from ..crypto import encrypt_secret
-from ..device_checks import device_states, stored_v3_passwords, validate_interval, validate_params
+from ..device_checks import (DEFAULT_SSH_INTERVAL, MIN_SSH_INTERVAL, device_states, ssh_private_key,
+                             stored_v3_passwords, validate_interval, validate_params)
 from ..models import DeviceCheck, Host
 from ._common import *  # noqa: F401,F403
 
@@ -284,6 +285,8 @@ def _check_out(check) -> dict:
         "has_community": bool(check.secret) and not v3,
         "has_auth_password": bool(passwords),
         "has_priv_password": bool(passwords and passwords["priv"]),
+        # An SSH check's private key: whether one is stored, never the key.
+        "has_key": check.kind == DeviceCheck.Kind.SSH and bool(ssh_private_key(check)),
         "interval_seconds": check.interval_seconds,
         "enabled": check.enabled,
         "poller": str(check.poller_id) if check.poller_id else None,
@@ -344,7 +347,9 @@ def _check_fields(device, data, current=None) -> dict:
     # away from SNMP forgets them and a secret in that body is ignored.
     # encrypt_secret("") is b"", which is the field's default.
     kind = fields.get("kind", current.kind if current else None)
-    if kind == DeviceCheck.Kind.SNMP:
+    if kind == DeviceCheck.Kind.SSH:
+        _ssh_fields(fields, data, current)
+    elif kind == DeviceCheck.Kind.SNMP:
         params = fields.get("params", current.params if current else {})
         if params.get("version") == "3":
             fields["secret"] = _v3_fields(data, params, current)
@@ -353,6 +358,67 @@ def _check_fields(device, data, current=None) -> dict:
     elif kind is not None:
         fields["secret"] = encrypt_secret("")
     return fields
+
+
+def _new_ssh_key() -> tuple[bytes, str]:
+    """A fresh Ed25519 key pair: (encrypted OpenSSH private key, OpenSSH public key line)."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key = Ed25519PrivateKey.generate()
+    private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
+                                serialization.NoEncryption()).decode()
+    public = key.public_key().public_bytes(serialization.Encoding.OpenSSH,
+                                           serialization.PublicFormat.OpenSSH).decode()
+    return encrypt_secret(private), f"{public} vigil-config-backup"
+
+
+def _ssh_fields(fields, data, current) -> None:
+    """The SSH-only parts of a check write, in place on *fields* (S9 08).
+
+    - Config backup is a Business feature: a check becomes SSH only under a
+      license that grants it. One that already is can still be edited,
+      disabled or deleted after the license lapses (it is simply not handed
+      to a poller, device_checks._ssh_wire_params).
+    - It runs at most every 15 minutes, daily unless the body says otherwise.
+    - The server makes the key pair. The private half is the check's secret
+      and is never answered; the public half goes in params for an admin to
+      put in the device's authorized keys. A PATCH keeps the pair unless it
+      sends ``rotate_key: true``.
+    - A pinned host key survives an edit that does not mention it, as long as
+      the host and port stay the same; ``host_key: ""`` unpins it so the next
+      run learns the device's key again.
+    """
+    from vigil.licensing import has_feature
+
+    was_ssh = current is not None and current.kind == DeviceCheck.Kind.SSH
+    if not was_ssh and not has_feature("config_backup"):
+        raise ValueError("SSH config backup needs a Business license")
+    if "interval_seconds" not in data and not was_ssh:
+        fields["interval_seconds"] = DEFAULT_SSH_INTERVAL
+    interval = fields.get("interval_seconds", current.interval_seconds if current else None)
+    if interval is not None and interval < MIN_SSH_INTERVAL:
+        raise ValueError("an SSH check runs at most every 15 minutes (interval_seconds 900 or more)")
+
+    old = dict(current.params) if was_ssh and isinstance(current.params, dict) else {}
+    params = fields.get("params")
+    if params is None:
+        params = dict(old)
+    else:
+        sent = data.get("params") if isinstance(data.get("params"), dict) else {}
+        same_target = (params.get("host") == old.get("host")
+                       and params.get("port", 22) == old.get("port", 22))
+        if "host_key" not in sent and old.get("host_key") and same_target:
+            params["host_key"] = old["host_key"]
+    rotate = data.get("rotate_key", False)
+    if not isinstance(rotate, bool):
+        raise ValueError("rotate_key must be true or false")
+    if was_ssh and not rotate and ssh_private_key(current) and old.get("public_key"):
+        fields["secret"] = current.secret
+        params["public_key"] = old["public_key"]
+    else:
+        fields["secret"], params["public_key"] = _new_ssh_key()
+    fields["params"] = params
 
 
 def _v2c_secret(data, current) -> bytes:

@@ -98,7 +98,7 @@ function closeDeviceModal() {
 
 /* ── Checks: what a poller reports about this device (S9) ─────────────────── */
 
-const DEVICE_CHECK_KINDS = { icmp: 'Ping', tcp: 'TCP', http: 'HTTP', dns: 'DNS', snmp: 'SNMP' };
+const DEVICE_CHECK_KINDS = { icmp: 'Ping', tcp: 'TCP', http: 'HTTP', dns: 'DNS', snmp: 'SNMP', ssh: 'SSH backup' };
 const NO_POLLER_HINT = 'No results yet: is a poller assigned? See Settings > Agents for hosts with poller: true';
 
 let _checkDeviceId = null;
@@ -138,6 +138,7 @@ function openDeviceChecks(device) {
   if (device) {
     setDeviceCheckKind(_deviceEl('device-check-kind'));
     loadDeviceChecks(device.id);
+    _applyConfigBackupLicense();
   } else if (_deviceEl('device-checks-list')) {
     _deviceEl('device-checks-list').replaceChildren();
   }
@@ -147,6 +148,13 @@ function openDeviceChecks(device) {
 function _checkLabel(check) {
   const p = check.params || {};
   let target = '';
+  // SSH is labelled by the user we log in as plus the host, not the bare
+  // address: an operator installing the key wants to see both.
+  if (check.kind === 'ssh') {
+    const port = (p.port !== undefined && p.port !== null && p.port !== '' && Number(p.port) !== 22)
+      ? `:${p.port}` : '';
+    return `${DEVICE_CHECK_KINDS.ssh} ${String(p.username || '').trim()}@${String(p.host || '').trim()}${port}`;
+  }
   if (check.kind === 'tcp') target = [p.host, p.port].filter(x => x !== undefined && x !== null && x !== '').join(':');
   else if (check.kind === 'http') target = p.url || '';
   else if (check.kind === 'dns') target = p.name || '';
@@ -329,6 +337,10 @@ function collapseDeviceCheckChart() {
   // chart is destroyed before its canvas leaves the page.
   if (_interfaceChart) { _interfaceChart.destroy(); _interfaceChart = null; }
   if (_checkInterfaces) { _checkInterfaces.remove(); _checkInterfaces = null; }
+  // An SSH row's key and backup panel goes with it too, and the check it was
+  // drawn for is forgotten: an answer still on its way must not paint a panel
+  // that no longer has a place on the page.
+  _collapseSshPanel();
   // The host we last rendered into, tracked here rather than queried: the rows
   // are replaced on every reload and there is exactly one list in the modal.
   if (_chartHost) {
@@ -389,6 +401,14 @@ async function toggleDeviceCheckChart(row) {
     _checkValues = _snmpValuesList(extra);
     holder.after(_checkValues);
     anchor = _checkValues;
+  }
+  // An SSH check adds its panel straight after the chart host — before the
+  // interface walk, whose answer would otherwise jump the queue and land above
+  // it: which key to install on the device, what host key we trust, and every
+  // kept config.
+  if (check && check.kind === 'ssh') {
+    holder.after(_configBackupPanel(check, _canEditChecks(_checkDeviceId)));
+    void _loadConfigBackups(check.id);
   }
   // A stale answer is dropped by _loadCheckInterfaces' own guard, so it runs
   // unawaited: awaiting would hold the chart up behind a second request.
@@ -573,12 +593,405 @@ async function _selectInterface(table, tr) {
   });
 }
 
+/* ── Config backups: an SSH check's keys and every kept configuration ───────
+
+`apps_business.configbackup` keeps one text per successful poll (`/api/v1/
+config-backups/?check=<id>`). The panel under an expanded SSH row shows what to
+install on the device, what we already trust of it, and what we have of it. */
+
+// The expansion's check id and its panel: a delegated handler gets an element,
+// not the row that drew it, and both are gone by the time a request answers.
+let _panelOwner = '';
+let _openPanel = null;
+// What the table was drawn from, so the Compare line can name what is ticked.
+let _backupRows = [];
+// The View / Compare box under the table, whenever either put one there.
+let _backupViewer = null;
+
+/** Take down the expanded SSH row's panel and forget whose it was, so a list
+ *  still on its way finds nothing to paint. */
+function _collapseSshPanel() {
+  if (_openPanel) _openPanel.remove();
+  _openPanel = null;
+  _panelOwner = '';
+  _backupRows = [];
+  _backupViewer = null;
+}
+
+function _configBackupsPath(checkId) {
+  return `/api/v1/config-backups/?check=${encodeURIComponent(String(checkId))}`;
+}
+
+function _configBackupDetailPath(id) {
+  return `/api/v1/config-backups/${encodeURIComponent(String(id))}/`;
+}
+
+/** The SSH panel a clicked control sits in, or null. */
+function _panelFor(el) {
+  return (el && el.closest) ? el.closest('.device-check-ssh-panel') : null;
+}
+
+/** The part of the open panel the backup list draws into (under the key lines). */
+function _backupList() {
+  return _openPanel ? _openPanel.querySelector('.device-check-backup-list') : null;
+}
+
+/** "Public key: …", the key, and the button that takes it to the clipboard. */
+function _sshKeyLine(publicKey) {
+  const wrap = document.createElement('div');
+  const lead = document.createElement('div');
+  lead.className = 'device-check-ssh-line';
+  lead.textContent = "Public key: add it to the device's authorized keys";
+  wrap.appendChild(lead);
+
+  // The key on a line of its own, wide as the panel and broken anywhere it has
+  // to be: an ed25519 line outruns this modal twice over.
+  const row = document.createElement('div');
+  row.className = 'device-check-ssh-keyline';
+  const code = document.createElement('code');
+  code.className = 'device-check-ssh-key';
+  code.textContent = publicKey;
+  row.appendChild(code);
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'btn btn-sky btn-sm device-check-ssh-copy';
+  copy.dataset.sshCopy = publicKey;
+  copy.textContent = 'Copy';
+  row.appendChild(copy);
+  wrap.appendChild(row);
+  return wrap;
+}
+
+/** "Host key:" with the pinned one, or what an unpinned check is waiting for. */
+function _sshHostKeyLine(hostKey, canEdit) {
+  const line = document.createElement('div');
+  line.className = 'device-check-ssh-line';
+  const label = document.createElement('span');
+  label.textContent = 'Host key:';
+  line.appendChild(label);
+  if (!hostKey) {
+    // Nothing to forget, so the sentence says why the panel offers no such button.
+    const pending = document.createElement('span');
+    pending.className = 'device-check-ssh-unpinned';
+    pending.textContent = 'not pinned yet: the first run learns it';
+    line.appendChild(pending);
+    return line;
+  }
+  const code = document.createElement('code');
+  code.className = 'device-check-ssh-key';
+  code.textContent = hostKey;
+  line.appendChild(code);
+  if (canEdit) {
+    const forget = document.createElement('button');
+    forget.type = 'button';
+    forget.className = 'btn btn-ghost btn-sm device-check-ssh-forget';
+    forget.dataset.sshUnpin = '';
+    forget.textContent = 'Forget host key';
+    line.appendChild(forget);
+  }
+  return line;
+}
+
+function _configBackupPanel(check, canEdit) {
+  const params = check.params || {};
+  _panelOwner = String(check.id);
+  _openPanel = null;
+  _backupRows = [];
+  _backupViewer = null;
+
+  const panel = document.createElement('div');
+  panel.className = 'device-check-ssh-panel';
+  if (params.public_key) panel.appendChild(_sshKeyLine(String(params.public_key)));
+  panel.appendChild(_sshHostKeyLine(params.host_key, canEdit));
+  if (canEdit) {
+    const rotate = document.createElement('button');
+    rotate.type = 'button';
+    rotate.className = 'btn btn-ghost btn-sm device-check-ssh-rotate';
+    rotate.dataset.sshRotate = '';
+    rotate.textContent = 'New key pair';
+    panel.appendChild(rotate);
+  }
+  // Left empty for the list to fill, so a slow answer cannot leave its table
+  // beside the note that already answered for it, and never touches the key
+  // lines above it.
+  const list = document.createElement('div');
+  list.className = 'device-check-backup-list';
+  panel.appendChild(list);
+  _openPanel = panel;
+  return panel;
+}
+
+function _backupHeading(text) {
+  const head = document.createElement('div');
+  head.className = 'device-check-ssh-line';
+  head.textContent = text;
+  return head;
+}
+
+/** One kept configuration: its tick, when, how big, and the two ways out. */
+function _backupRow(backup) {
+  const tr = document.createElement('tr');
+
+  const pick = document.createElement('td');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.dataset.backupPick = String(backup.id);
+  box.setAttribute('aria-label', 'Select this configuration to compare with another');
+  pick.appendChild(box);
+  tr.appendChild(pick);
+
+  const when = document.createElement('td');
+  when.textContent = new Date(backup.taken_at).toLocaleString();
+  // The answer as the server wrote it, beside what the locale turned local.
+  when.title = String(backup.taken_at);
+  tr.appendChild(when);
+
+  const size = document.createElement('td');
+  size.className = 'device-check-backup-size';
+  size.textContent = `${(Number(backup.size || 0) / 1024).toFixed(1)} KB`;
+  tr.appendChild(size);
+
+  const view = document.createElement('td');
+  const viewBtn = document.createElement('button');
+  viewBtn.type = 'button';
+  viewBtn.className = 'btn btn-sky btn-sm device-check-backup-view';
+  viewBtn.dataset.backupView = String(backup.id);
+  viewBtn.textContent = 'View';
+  view.appendChild(viewBtn);
+  tr.appendChild(view);
+
+  // A link rather than a button that fetches and saves: the browser can keep
+  // the name the server gives it, and the file never has to be a JS string.
+  const saved = document.createElement('td');
+  const link = document.createElement('a');
+  link.className = 'btn btn-ghost btn-sm device-check-backup-download';
+  link.href = `${_configBackupDetailPath(backup.id)}download/`;
+  link.download = '';
+  link.textContent = 'Download';
+  saved.appendChild(link);
+  tr.appendChild(saved);
+  return tr;
+}
+
+function _backupsTable(rows) {
+  const table = document.createElement('table');
+  table.className = 'device-check-backups';
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const title of ['Compare', 'Taken', 'Size', '', '']) {
+    const cell = document.createElement('th');
+    cell.textContent = title;
+    headRow.appendChild(cell);
+  }
+  head.appendChild(headRow);
+  table.appendChild(head);
+
+  const body = document.createElement('tbody');
+  for (const backup of rows) body.appendChild(_backupRow(backup));
+  table.appendChild(body);
+  return table;
+}
+
+/** The Compare button, out of reach until exactly two rows are ticked. */
+function _compareButton() {
+  const compare = document.createElement('button');
+  compare.type = 'button';
+  compare.className = 'btn btn-ghost btn-sm device-check-backup-compare';
+  compare.dataset.backupCompare = '';
+  compare.disabled = true;
+  compare.textContent = 'Compare';
+  return compare;
+}
+
+function _backupPicks() {
+  return _openPanel ? Array.from(_openPanel.querySelectorAll('[data-backup-pick]')) : [];
+}
+
+function _pickedIds() {
+  const ids = [];
+  for (const box of _backupPicks()) if (box.checked) ids.push(String(box.dataset.backupPick));
+  // Newest first down the table, so with two ticks the second is the older:
+  // the diff reads forward in time, additions as lines the device gained.
+  return ids.length === 2 ? [ids[1], ids[0]] : ids;
+}
+
+/** The rows the ticks cover, in the order they are kept: newest first. */
+function _pickedRows() {
+  const ids = new Set(_backupPicks().filter((b) => b.checked).map((b) => String(b.dataset.backupPick)));
+  return _backupRows.filter((b) => ids.has(String(b.id)));
+}
+
+/** The Compare line: the button once two rows are ticked, and until then the
+ *  one sentence that says what is still wanted — naming what already is. */
+function _compareLine() {
+  const picked = _pickedRows();
+  if (picked.length === 2) return _compareButton();
+  const line = _backupHeading('Tick two configurations to compare them.');
+  if (picked.length === 1) {
+    // Its own time cell, so the sentence cannot name a row that is not there.
+    const only = document.createElement('span');
+    only.textContent = ` One so far: ${new Date(picked[0].taken_at).toLocaleString()}.`;
+    line.appendChild(only);
+  }
+  return line;
+}
+
+/** Redraw the Compare line against the ticks as they stand. */
+function _syncCompareButton(panel) {
+  const line = panel ? panel.querySelector('.device-check-backup-compare-line') : null;
+  if (line) line.replaceChildren(_compareLine());
+}
+
+/** Whatever the last View or Compare left under the table. */
+function _dropBackupViewer() {
+  if (_backupViewer) { _backupViewer.remove(); _backupViewer = null; }
+}
+
+/** A configuration, or a diff, under the table: one box per line of text the
+ *  device said, so a `<` there stays a character and colour still reaches it. */
+function _showBackupText(text) {
+  if (!_openPanel) return;
+  _dropBackupViewer();
+  const pre = document.createElement('pre');
+  pre.className = 'device-check-config';
+  for (const line of String(text === null || text === undefined ? '' : text).split('\n')) {
+    const span = document.createElement('span');
+    if (line.startsWith('+') && !line.startsWith('+++')) span.className = 'diff-add';
+    else if (line.startsWith('-') && !line.startsWith('---')) span.className = 'diff-del';
+    else if (line.startsWith('@@')) span.className = 'diff-hunk';
+    // A context line carries no class: the box behind it is already its colour.
+    span.textContent = line;
+    pre.appendChild(span);
+  }
+  _openPanel.appendChild(pre);
+  _backupViewer = pre;
+}
+
+/** The list, replacing anything a lapsed license or an empty answer said. */
+async function _loadConfigBackups(checkId) {
+  let answer;
+  try {
+    answer = await apiJson(_configBackupsPath(checkId));
+  } catch (e) {
+    // 402 is the license and worth a sentence. 404 means this install has no
+    // configbackup at all, or the check is not an SSH one: say nothing.
+    const list = _panelOwner === String(checkId) ? _backupList() : null;
+    if (!list) return;
+    list.replaceChildren();
+    if (e.status === 402) {
+      list.appendChild(_backupHeading('Config backups need a Business license.'));
+    }
+    return;
+  }
+  // Collapsed, or another row opened, while that was out.
+  const list = _panelOwner === String(checkId) ? _backupList() : null;
+  if (!list) return;
+  const rows = Array.isArray(answer) ? answer : [];
+  _backupRows = rows;
+  _dropBackupViewer();
+  list.replaceChildren();
+  if (!rows.length) {
+    list.appendChild(_backupHeading('No configuration kept yet: the first successful run keeps one.'));
+    return;
+  }
+  list.appendChild(_backupHeading('Configurations kept'));
+  list.appendChild(_backupsTable(rows));
+  const compareLine = document.createElement('div');
+  compareLine.className = 'device-check-backup-compare-line';
+  list.appendChild(compareLine);
+  _syncCompareButton(_openPanel);
+}
+
+async function _showBackup(el) {
+  const panel = _panelFor(el);
+  if (!panel) return;
+  const owner = _panelOwner;
+  try {
+    const answer = await apiJson(_configBackupDetailPath(el.dataset.backupView));
+    // Another row may have opened, or this one closed, behind the request.
+    if (_panelOwner !== owner || _openPanel !== panel) return;
+    _openPanel = panel;
+    _showBackupText(answer && answer.content);
+  } catch (e) {
+    showToast(e.message || 'Could not read that configuration', 'error');
+  }
+}
+
+async function _compareBackups(el) {
+  const panel = _panelFor(el);
+  if (!panel) return;
+  const ids = _pickedIds();
+  if (ids.length !== 2) return;
+  const owner = _panelOwner;
+  try {
+    const answer = await apiJson(
+      `/api/v1/config-backups/diff/?from=${encodeURIComponent(ids[0])}&to=${encodeURIComponent(ids[1])}`);
+    if (_panelOwner !== owner || _openPanel !== panel) return;
+    _openPanel = panel;
+    _showBackupText(answer && answer.diff);
+  } catch (e) {
+    showToast(e.message || 'Could not compare those configurations', 'error');
+  }
+}
+
+/** Copy, forget or rotate: the three things a key pair needs of a page. */
+async function _copySshKey(el) {
+  await copyText(String(el.dataset.sshCopy || ''));
+  showToast('Copied', 'success');
+}
+
+/** The check as it stands, less the public half the server writes alone, plus
+ *  an empty host key: what a PATCH must send to change one key of a check. */
+function _sshParamsPatch(check) {
+  const params = { ...(check.params || {}) };
+  delete params.public_key;
+  params.host_key = '';
+  return JSON.stringify({ params });
+}
+
+async function _rotateSshKey() {
+  if (!confirm('Make a new key pair? The device refuses the poller until the new public key is installed on it.')) return;
+  const check = _loadedChecks.get(_panelOwner);
+  if (!check) return;
+  try {
+    await apiJson(_checkPath(check.id), { method: 'PATCH', body: JSON.stringify({ rotate_key: true }) });
+    showToast('New key pair made. Install the public key on the device.', 'success');
+    await loadDeviceChecks(_checkDeviceId);   // the new key is in the list's params
+  } catch (e) {
+    showToast((e.body && e.body.error) || e.message || 'Could not make a new key pair', 'error');
+  }
+}
+
+async function _unpinSshHostKey() {
+  if (!confirm('Forget the pinned host key? The next run trusts whatever key the device presents.')) return;
+  const check = _loadedChecks.get(_panelOwner);
+  if (!check) return;
+  try {
+    await apiJson(_checkPath(check.id), { method: 'PATCH', body: _sshParamsPatch(check) });
+    showToast('Host key forgotten. The next run learns it again.', 'success');
+    await loadDeviceChecks(_checkDeviceId);
+  } catch (e) {
+    showToast((e.body && e.body.error) || e.message || 'Could not forget the host key', 'error');
+  }
+}
+
+/** A tick: the Compare line under the table answers it. */
+function _pickBackup(box) {
+  const panel = _panelFor(box);
+  if (!panel) return;
+  _openPanel = panel;
+  _syncCompareButton(panel);
+}
+
+/** The add row is one flex line, so the SSH boxes take a line to themselves. */
 function setDeviceCheckKind(select) {
   const kind = select && 'value' in select ? select.value : (select || 'icmp');
   const port = _deviceEl('device-check-port');
   if (port) {
-    port.hidden = kind !== 'tcp' && kind !== 'snmp';
-    port.placeholder = kind === 'snmp' ? 'Port (161)' : 'Port';
+    // SSH reaches the device on a real TCP port, and it is nearly always 22 —
+    // the placeholder says so instead of leaving the box blank and required.
+    port.hidden = kind !== 'tcp' && kind !== 'snmp' && kind !== 'ssh';
+    port.placeholder = kind === 'snmp' ? 'Port (161)' : (kind === 'ssh' ? 'Port (22)' : 'Port');
   }
   const version = _deviceEl('device-check-snmp-version');
   if (version) version.hidden = kind !== 'snmp';
@@ -587,6 +1000,37 @@ function setDeviceCheckKind(select) {
   if (oids) oids.hidden = kind !== 'snmp';
   const walk = _deviceEl('device-check-walk');
   if (walk) walk.hidden = kind !== 'snmp';
+  const ssh = _deviceEl('device-check-ssh');
+  if (ssh) ssh.hidden = kind !== 'ssh';
+  // A config is worth keeping, not polling every minute, and the server would
+  // refuse anything under fifteen: nudge the pick instead of the operator.
+  const interval = _deviceEl('device-check-interval');
+  if (kind === 'ssh' && interval && parseInt(interval.value, 10) < 900) interval.value = '86400';
+}
+
+/* ── License: SSH config backup is a Business feature (S9 phase 08d) ─────── */
+
+// One answer per page load: the license does not change while the modal is open.
+let _configBackupLicense = null;
+
+async function _configBackupActive() {
+  if (_configBackupLicense !== null) return _configBackupLicense;
+  try {
+    const lic = await apiJson('/api/v1/license/');
+    const f = (lic.features || []).find((x) => x.name === 'config_backup');
+    _configBackupLicense = !!(f && f.active);
+  } catch (e) {
+    _configBackupLicense = false;
+  }
+  return _configBackupLicense;
+}
+
+/** Unlicensed, the SSH kind stays in the list to be seen but cannot be picked. */
+async function _applyConfigBackupLicense() {
+  const option = document.getElementById('device-check-kind-ssh');
+  if (!option || await _configBackupActive()) return;
+  option.disabled = true;
+  option.textContent = 'SSH config backup (Business)';
 }
 
 /** The community box for v2c, the user/protocol/password row for v3, neither otherwise. */
@@ -615,9 +1059,11 @@ async function addDeviceCheck() {
   if (kind === 'http') params = { url: target };
   else if (kind === 'dns') params = { name: target };
   else if (kind === 'tcp') params = { host: target, port: parseInt(portRaw, 10) };
+  else if (kind === 'ssh') params = { host: target, username: _deviceEl('device-check-ssh-user').value.trim(), command: _deviceEl('device-check-ssh-command').value.trim() };
   else params = { host: target };
 
   const body = { kind, params, interval_seconds: interval };
+  if (kind === 'ssh' && portRaw) params.port = parseInt(portRaw, 10);
   if (kind === 'snmp') {
     if (portRaw) params.port = parseInt(portRaw, 10);
     const parsed = parseSnmpOids(oidsBox.value);
@@ -656,6 +1102,10 @@ async function addDeviceCheck() {
     }
     oidsBox.value = '';
     if (walkBox) walkBox.checked = false;
+    for (const id of ['device-check-ssh-user', 'device-check-ssh-command']) {
+      const box = _deviceEl(id);
+      if (box) box.value = '';
+    }
     loadDeviceChecks(_checkDeviceId);
   } catch (e) {
     // The server refuses a bad target with one sentence in `error`.
@@ -774,6 +1224,13 @@ delegateClick('.device-check-row', (el, ev) => {
   if (ev.target.closest('[data-act]')) return;
   toggleDeviceCheckChart(el);
 });
+// The SSH panel's controls (S9 08d): one delegated listener each.
+delegateClick('[data-ssh-copy]', (el) => { void _copySshKey(el); });
+delegateClick('[data-ssh-rotate]', () => { void _rotateSshKey(); });
+delegateClick('[data-ssh-unpin]', () => { void _unpinSshHostKey(); });
+delegateClick('[data-backup-view]', (el) => { void _showBackup(el); });
+delegateClick('[data-backup-compare]', (el) => { void _compareBackups(el); });
+delegateClick('[data-backup-pick]', (el) => _pickBackup(el));
 // An interface row's traffic chart: one delegated listener for every table.
 delegateClick('.device-check-ifaces tr[data-if-index]', (el) => {
   void _selectInterface(el.closest('table'), el);

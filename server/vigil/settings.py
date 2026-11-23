@@ -133,6 +133,10 @@ if BUSINESS_API_KEYS:
     INSTALLED_APPS += ["apps_business.apikeys"]
 if BUSINESS_WEBHOOKS:
     INSTALLED_APPS += ["apps_business.webhooks"]
+#: Added in 2026.17.0 (S9 08): SSH config backup keeps what device_config_fetched hands it.
+BUSINESS_CONFIG_BACKUP = BUSINESS_INSTALLED and _find_spec("apps_business.configbackup") is not None
+if BUSINESS_CONFIG_BACKUP:
+    INSTALLED_APPS += ["apps_business.configbackup"]
 
 # ---------------------------------------------------------------------------
 # Licensing (SQSY-LICENSING.md)

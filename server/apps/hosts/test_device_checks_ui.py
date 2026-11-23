@@ -28,6 +28,10 @@ MODAL_IDS = (
     "device-check-community",
     "device-check-oids",
     "device-check-interval",
+    "device-check-kind-ssh",
+    "device-check-ssh",
+    "device-check-ssh-user",
+    "device-check-ssh-command",
 )
 
 
@@ -67,9 +71,18 @@ class DeviceChecksMarkupTests(SimpleTestCase):
         self.assertIn('id="device-checks" hidden', self.modal)
         self.assertIn('data-act="addDeviceCheck"', self.modal)
 
-    def test_the_kind_options_are_the_five_a_poller_runs(self):
-        for kind in ("icmp", "tcp", "http", "dns", "snmp"):
+    def test_the_kind_options_are_the_six_a_poller_runs(self):
+        for kind in ("icmp", "tcp", "http", "dns", "snmp", "ssh"):
             self.assertIn(f'value="{kind}"', self.modal)
+
+    def test_the_ssh_boxes_start_hidden_and_offer_the_usual_commands(self):
+        self.assertIn("hidden", _tag(self.modal, 'id="device-check-ssh"'))
+        for command in ("show running-config", "cat /conf/config.xml", "/export"):
+            self.assertIn(f'<option value="{command}">', self.modal)
+
+    def test_a_config_backup_can_run_every_six_hours_or_daily(self):
+        self.assertIn('<option value="21600">', self.modal)
+        self.assertIn('<option value="86400">', self.modal)
 
     def test_the_community_box_is_neither_shown_nor_autofilled(self):
         # It holds an SNMP community: masked, and no browser offers to fill it.
@@ -244,3 +257,43 @@ class DeviceChecksStyleTests(SimpleTestCase):
                 continue
             self.assertTrue(re.search(r"--mint|--rose|--text-3", body),
                             f"{selector} hard-codes a state colour: {body}")
+
+
+class ConfigBackupUiTests(SimpleTestCase):
+    """The SSH panel (S9 08d): drawn with DOM calls, every control delegated, and
+    its CSS tints rather than draws a one-sided border."""
+
+    def setUp(self):
+        self.js = (JS / "vigil-devices.js").read_text(encoding="utf-8")
+        self.css = (CSS / "vigil.css").read_text(encoding="utf-8")
+
+    def _function(self, name: str) -> str:
+        start = self.js.index(f"function {name}(")
+        nxt = re.search(r"\n(?:async )?function |\n/\* ──", self.js[start + 1:])
+        return self.js[start:start + 1 + nxt.start()] if nxt else self.js[start:]
+
+    def test_the_panel_never_writes_html_from_an_answer(self):
+        for name in ("_sshKeyLine", "_sshHostKeyLine", "_configBackupPanel", "_backupRow",
+                     "_backupsTable", "_showBackupText", "_loadConfigBackups", "_compareLine"):
+            with self.subTest(name=name):
+                self.assertNotIn("innerHTML", self._function(name))
+
+    def test_every_panel_control_has_a_delegated_listener(self):
+        for selector in ("[data-ssh-copy]", "[data-ssh-rotate]", "[data-ssh-unpin]",
+                         "[data-backup-view]", "[data-backup-compare]", "[data-backup-pick]"):
+            with self.subTest(selector=selector):
+                self.assertIn(f"delegateClick('{selector}'", self.js)
+
+    def test_loading_the_list_keeps_the_key_lines(self):
+        # The list draws into its own holder; replacing the whole panel would
+        # take the public key and the host key away with it.
+        body = self._function("_loadConfigBackups")
+        self.assertNotIn("_openPanel.replaceChildren", body)
+        self.assertIn("_backupList()", body)
+
+    def test_the_new_rules_have_no_one_sided_border(self):
+        block = self.css[self.css.index("/* SSH config backup (S9 08d)"):]
+        block = block[:block.index(".device-check-config .diff-hunk")]
+        for side in ("border-left", "border-right", "border-top:", "border-inline", "border-block"):
+            with self.subTest(side=side):
+                self.assertNotIn(side, block)

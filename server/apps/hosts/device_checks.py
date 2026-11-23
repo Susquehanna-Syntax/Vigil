@@ -48,6 +48,18 @@ MAX_SAMPLE_NAME = 100
 MAX_RESULT_AGE = timedelta(hours=1)
 _RESULT_KEYS = {"check", "ok", "latency_ms", "detail", "at"}
 
+# SSH config backup (S9 08). The same rules as agent/vigil_agent/netcheck.py's ssh kind.
+_SSH_USER_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+_SSH_KEY_TYPES = frozenset({"ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
+                            "ecdsa-sha2-nistp521", "rsa-sha2-256", "rsa-sha2-512", "ssh-rsa"})
+_SSH_KEY_B64_RE = re.compile(r"[A-Za-z0-9+/]+={0,2}")
+MAX_SSH_COMMAND = 500
+MAX_SSH_HOST_KEY = 2000
+MIN_SSH_INTERVAL = 900          # a config does not change by the minute; logging in that often is noise
+DEFAULT_SSH_INTERVAL = 86400
+MAX_SSH_OUTPUT = 1_000_000      # the agent's own cap (netcheck.SSH_MAX_OUTPUT)
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
 
 def _is_int(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
@@ -146,6 +158,46 @@ def _snmp_params(params: dict) -> dict:
     return cleaned
 
 
+def ssh_host_key(value) -> str | None:
+    """``"<type> <base64>"`` cleaned, or None when *value* is not one."""
+    if not isinstance(value, str) or len(value) > MAX_SSH_HOST_KEY:
+        return None
+    parts = value.split()
+    if len(parts) != 2 or parts[0] not in _SSH_KEY_TYPES or not _SSH_KEY_B64_RE.fullmatch(parts[1]):
+        return None
+    return f"{parts[0]} {parts[1]}"
+
+
+def _ssh_params(params: dict) -> dict:
+    """Cleaned SSH params. The private key is the check's secret, never a param.
+
+    ``host_key`` pins the device's key: an empty or missing one means the
+    poller learns it on the next run and the server pins what it reports
+    (store_check_results). ``public_key`` is written by the server alone
+    (views._check_fields), so one in a body is dropped here.
+    """
+    cleaned = {"host": _host_value(params.get("host"), "host")}
+    port = _int_in(params.get("port", 22), "port", 1, 65535)
+    if port != 22:
+        cleaned["port"] = port
+    username = params.get("username")
+    if not isinstance(username, str) or not _SSH_USER_RE.fullmatch(username):
+        raise ValueError("username must be 1 to 64 letters, digits, '.', '_' or '-'")
+    cleaned["username"] = username
+    command = params.get("command")
+    if not isinstance(command, str) or not 1 <= len(command) <= MAX_SSH_COMMAND \
+            or any(c in command for c in "\n\r\x00"):
+        raise ValueError("command must be one line of 1 to 500 characters")
+    cleaned["command"] = command
+    host_key = params.get("host_key")
+    if host_key not in (None, ""):
+        pinned = ssh_host_key(host_key)
+        if pinned is None:
+            raise ValueError("host_key must be '<type> <base64>', as in a known_hosts line")
+        cleaned["host_key"] = pinned
+    return cleaned
+
+
 def validate_params(kind: str, params) -> dict:
     """Cleaned params for one check kind, or ValueError with one sentence. Unknown keys are dropped."""
     if not isinstance(params, dict):
@@ -196,7 +248,9 @@ def validate_params(kind: str, params) -> dict:
         # any that arrive here.
         return _snmp_params({k: v for k, v in params.items()
                              if k not in ("community", "auth_password", "priv_password")})
-    raise ValueError("kind must be icmp, tcp, http, dns or snmp")
+    if kind == DeviceCheck.Kind.SSH:
+        return _ssh_params(params)
+    raise ValueError("kind must be icmp, tcp, http, dns, snmp or ssh")
 
 
 def _eligible(poller: Host, device) -> bool:
@@ -311,6 +365,8 @@ def check_params_for(check: DeviceCheck) -> dict | None:
     param but not a wire one — an authNoPriv v3 entry carries no privacy
     password and says nothing else about privacy.
     """
+    if check.kind == DeviceCheck.Kind.SSH:
+        return _ssh_wire_params(check)
     if check.kind != DeviceCheck.Kind.SNMP:
         return check.params
     params = dict(check.params)
@@ -330,6 +386,33 @@ def check_params_for(check: DeviceCheck) -> dict | None:
         if priv_password is None:
             return None
         params["priv_password"] = priv_password
+    return params
+
+
+def ssh_private_key(check: DeviceCheck) -> str | None:
+    """The OpenSSH private key an SSH check logs in with, or None. Never logged, never answered."""
+    if not check.secret:
+        return None
+    key = decrypt_secret(check.secret)
+    return key if key and key.startswith("-----BEGIN OPENSSH PRIVATE KEY-----") else None
+
+
+def _ssh_wire_params(check: DeviceCheck) -> dict | None:
+    """An SSH check as a poller gets it: its params, less the public key, plus the private key.
+
+    None, so the check is left out, when the key no longer decrypts or the
+    license no longer grants config backup: a lapsed license stops the logins
+    rather than leaving a credential working nobody pays for.
+    """
+    from vigil.licensing import has_feature
+
+    if not has_feature("config_backup"):
+        return None
+    key = ssh_private_key(check)
+    if key is None:
+        return None
+    params = {k: v for k, v in check.params.items() if k != "public_key"}
+    params["private_key"] = key
     return params
 
 
@@ -438,6 +521,7 @@ def store_check_results(host: Host, rows) -> int:
     allowed = {str(c.id): c for c in checks_for(host)}
     to_create = []
     samples = []
+    fetched = []
     for row in rows[:MAX_RESULTS_PER_CHECKIN]:
         if not isinstance(row, dict):
             continue
@@ -445,6 +529,9 @@ def store_check_results(host: Host, rows) -> int:
         check = allowed.get(cid) if isinstance(cid, str) else None
         if check is None or not isinstance(row.get("ok"), bool):
             continue
+        output = None
+        if check.kind == DeviceCheck.Kind.SSH:
+            row, output = _ssh_row(check, row)
         detail = row.get("detail")
         to_create.append(CheckResult(
             device_check=check,
@@ -454,10 +541,19 @@ def store_check_results(host: Host, rows) -> int:
             detail=(detail if isinstance(detail, str) else "")[:MAX_DETAIL],
             extra=_extra(row),
         ))
+        if output is not None:
+            fetched.append((check, to_create[-1].time, output, row["sha256"]))
         if check.kind == DeviceCheck.Kind.SNMP and isinstance(row.get("interfaces"), list):
             samples.extend(_interface_samples(check, to_create[-1].time, row["interfaces"]))
     CheckResult.objects.bulk_create(to_create)
     InterfaceSample.objects.bulk_create(samples)
+    if fetched:
+        # Business config backup keeps the text (apps_business.configbackup);
+        # without it nothing listens and the output is dropped here.
+        from vigil import hooks
+        for check, fetched_at, output, sha256 in fetched:
+            hooks.emit("device_config_fetched", check=check, time=fetched_at,
+                       output=output, sha256=sha256)
     if to_create:
         # A check that just failed twice opens an alert (S9 04b), in the worker.
         # Late import: alerts imports hosts models, so a module-level import
@@ -465,6 +561,39 @@ def store_check_results(host: Host, rows) -> int:
         from apps.alerts.device_alerts import queue_evaluation
         queue_evaluation({r.device_check_id for r in to_create})
     return len(to_create)
+
+
+def _ssh_row(check: DeviceCheck, row: dict) -> tuple[dict, str | None]:
+    """One SSH result split into what CheckResult keeps and the output text.
+
+    The output (a device's whole configuration) never goes into
+    CheckResult.extra: only its digest and size do. It is handed on only for a
+    successful run whose digest matches the text, so a garbled or truncated
+    row is never kept as a backup. The first host key a poller reports for a
+    check with none pinned is pinned now; a check that has one keeps it, and
+    the poller refuses any other (ssh StrictHostKeyChecking=yes).
+    """
+    import hashlib
+
+    row = dict(row)
+    output = row.pop("output", None)
+    reported = ssh_host_key(row.pop("host_key", None))
+    params = check.params if isinstance(check.params, dict) else {}
+    if reported and not params.get("host_key"):
+        check.params = {**params, "host_key": reported}
+        check.save(update_fields=["params"])
+    sha256 = row.get("sha256")
+    if not (row.get("ok") is True and isinstance(output, str) and isinstance(sha256, str)
+            and _SHA256_RE.fullmatch(sha256)):
+        return row, None
+    data = output.encode("utf-8")
+    if len(data) > MAX_SSH_OUTPUT or hashlib.sha256(data).hexdigest() != sha256:
+        row["ok"] = False
+        row["sha256"] = None
+        row["detail"] = "the output did not match its digest"
+        return row, None
+    row["size"] = len(data)
+    return row, output
 
 
 def device_states(devices) -> dict:
