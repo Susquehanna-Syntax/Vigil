@@ -1121,4 +1121,4 @@ function deleteHostFromDetailPanel(btn) {
   deleteHost(panel.dataset.hostId, panel.dataset.hostname, btn);
 }
 
-document.getElementById('detail-depends-on')?.addEventListener('change', (e) => saveDetailDependsOn(e.target));
+document.getElementById('detail-depends-on')?.addEventListener('change', (e) => saveDetailDependsOn(/** @type {HTMLSelectElement} */ (e.target)));

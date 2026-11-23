@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static" / "js"
@@ -127,7 +128,7 @@ class DiscoveryMarkupTests(SimpleTestCase):
         # shape a refused cidr explains against, the second names what an empty
         # ports box means.
         self.assertIn('placeholder="10.0.0.0/24"', _tag(self.modal, 'id="discovery-cidr"'))
-        self.assertIn('placeholder="Ports (optional)"', _tag(self.modal, 'id="discovery-ports"'))
+        self.assertIn('placeholder="{% translate "Ports (optional)" %}"', _tag(self.modal, 'id="discovery-ports"'))
         # What an empty ports box means is said once, in the help line.
         help_tag = self.modal[self.modal.index('id="discovery-help"'):]
         self.assertIn("22, 23, 80, 443, 445, 3389, 8080 and 8443", help_tag)
@@ -140,7 +141,7 @@ class DiscoveryMarkupTests(SimpleTestCase):
 
     def test_no_inline_style_anywhere_in_the_dialog(self):
         # A ratchet on another branch holds base.html to its count of them; the
-        # dialog's every look lives in vigil.css instead.
+        # dialog's every look lives in the design stylesheets instead.
         self.assertNotIn('style="', self.modal)
         self.assertNotIn('style="', _inventory_buttons(
             (TEMPLATES / "pages" / "_inventory.html").read_text(encoding="utf-8")))
@@ -218,7 +219,7 @@ class DiscoveryScriptTests(SimpleTestCase):
 
 class DiscoveryStyleTests(SimpleTestCase):
     def setUp(self):
-        self.css = (CSS / "vigil.css").read_text(encoding="utf-8")
+        self.css = design_css()
 
     def _rules(self, selector_prefix: str):
         """Every rule whose selector is *selector_prefix* or something under it.

@@ -180,7 +180,7 @@
     <section class="notices" id="notices"{% if not notices %} hidden{% endif %}>
       {% for notice in notices %}
       <div class="notice">
-        <div class="notice-when">{% if notice.active %}{% translate "Maintenance in progress, until" %} <time datetime="{{ notice.ends_at }}">{{ notice.end|date:"M j, H:i" }} UTC</time>{% else %}{% translate "Scheduled maintenance:" %} <time datetime="{{ notice.starts_at }}">{{ notice.start|date:"M j, H:i" }} UTC</time> {% translate "to" %} <time datetime="{{ notice.ends_at }}">{{ notice.end|date:"M j, H:i" }} UTC</time>{% endif %}</div>
+        <div class="notice-when">{% if notice.active %}{% translate "Maintenance in progress, until" %} <time datetime="{{ notice.ends_at }}">{{ notice.end|date:"M j, H:i" }} {% translate "UTC" %}</time>{% else %}{% translate "Scheduled maintenance:" %} <time datetime="{{ notice.starts_at }}">{{ notice.start|date:"M j, H:i" }} {% translate "UTC" %}</time> {% translate "to" %} <time datetime="{{ notice.ends_at }}">{{ notice.end|date:"M j, H:i" }} {% translate "UTC" %}</time>{% endif %}</div>
         <div class="notice-hosts">{{ notice.hosts|join:", " }}</div>
       </div>
       {% endfor %}

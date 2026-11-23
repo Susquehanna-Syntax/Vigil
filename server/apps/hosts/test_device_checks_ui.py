@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static" / "js"
@@ -213,7 +214,7 @@ class DeviceChecksScriptTests(SimpleTestCase):
 
 class DeviceChecksStyleTests(SimpleTestCase):
     def setUp(self):
-        self.css = (CSS / "vigil.css").read_text(encoding="utf-8")
+        self.css = design_css()
 
     def _rules(self, selector_prefix: str):
         """Every rule whose selector is *selector_prefix* or something under it
@@ -265,7 +266,7 @@ class ConfigBackupUiTests(SimpleTestCase):
 
     def setUp(self):
         self.js = (JS / "vigil-devices.js").read_text(encoding="utf-8")
-        self.css = (CSS / "vigil.css").read_text(encoding="utf-8")
+        self.css = design_css()
 
     def _function(self, name: str) -> str:
         start = self.js.index(f"function {name}(")

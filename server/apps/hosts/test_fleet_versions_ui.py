@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
+from vigil.css_text import design_css
 
 SERVER = Path(__file__).resolve().parents[2]
 
@@ -44,7 +45,7 @@ class FleetVersionsScriptTests(SimpleTestCase):
 
 class FleetVersionsCssTests(SimpleTestCase):
     def test_rules_exist_without_side_stripes(self):
-        css = _read("static/css/vigil.css")
+        css = design_css()
         rules = re.findall(r"(\.fleet-versions[^{]*)\{([^}]*)\}", css)
         selectors = [selector.strip() for selector, _ in rules]
         self.assertIn(".fleet-versions", selectors)

@@ -120,25 +120,27 @@ def dispatch_device_alert(alert, event="firing"):
     """
     from vigil import scoping
 
-    channels = NotificationChannel.objects.filter(enabled=True)
+    # Named targets, not channels: that is the channel-types module this file
+    # sends through (M7).
+    targets = NotificationChannel.objects.filter(enabled=True)
     if event == "firing":
-        channels = channels.filter(on_firing=True)
+        targets = targets.filter(on_firing=True)
     elif event == "resolved":
-        channels = channels.filter(on_resolved=True)
+        targets = targets.filter(on_resolved=True)
     else:
         return
 
-    payload = _device_payload(alert, event)
+    # The same Message every channel type words a host alert from (M7):
+    # host carries the device's name, and no link since there is no host page.
+    message = message_for(_device_payload(alert, event))
     # A global device reaches global channels only; a site's device also
     # reaches its own site's channels. site_id_of() is None for both "global"
     # cases, so the comparison is exactly that rule.
     device_site_id = alert.device.site_id
-    for channel in channels:
+    for channel in targets:
         if scoping.site_id_of(channel) not in (device_site_id, None):
             continue
-        dispatcher = _DISPATCHERS.get(channel.kind)
-        if dispatcher:
-            dispatcher(channel, payload)
+        deliver(channel, message)
 
 
 def _device_payload(alert, event):

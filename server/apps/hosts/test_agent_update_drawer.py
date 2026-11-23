@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from django.test import SimpleTestCase
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static" / "js"
@@ -62,7 +63,7 @@ class AgentUpdateDrawerJsTests(SimpleTestCase):
 class AgentUpdateDrawerCssTests(SimpleTestCase):
 
     def test_tint_fills_the_box_and_there_is_no_side_stripe(self):
-        css = _read(CSS / "vigil.css")
+        css = design_css()
         rules = re.findall(r"\.detail-agent-update[^{]*\{[^}]*\}", css)
         self.assertTrue(rules, "no .detail-agent-update rule found")
         self.assertIn(".detail-agent-update--bad", css)

@@ -29,5 +29,7 @@ class PruneByDatabaseKindTests(TestCase):
                 mock.patch.object(tasks, "_metricpoint_has_retention_policy", return_value=True), \
                 mock.patch("django.db.connection.cursor") as cursor:
             out = tasks.prune_old_metric_points()
-        cursor.assert_not_called()
+        # Device check results are still pruned (an ordinary table); what must
+        # not happen is a drop_chunks of the metrics hypertable.
+        self.assertFalse(any("drop_chunks" in str(c) for c in cursor.mock_calls))
         self.assertIn("drop_chunks policy", out)

@@ -22,6 +22,7 @@ from apps.alerts.models import DeviceAlert, NotificationChannel
 from apps.alerts.tasks import prune_old_alerts
 from apps.hosts.device_checks import store_check_results
 from apps.hosts.models import CheckResult, DeviceCheck, Host, UnmanagedDevice
+from vigil.css_text import design_css
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static" / "js"
@@ -211,10 +212,8 @@ class NotificationTests(TestCase):
         add_result(self.check, False, seconds_ago=10, detail="no route to host")
 
     def _payloads(self):
-        with patch.dict(
-            "apps.alerts.notifications._DISPATCHERS",
-            {NotificationChannel.Kind.WEBHOOK: lambda channel, payload: payloads.append(payload)},
-        ):
+        with patch("apps.alerts.notifications.deliver",
+                   side_effect=lambda channel, message: payloads.append(message.payload)):
             payloads = []
             evaluate({self.check.id})          # firing
             add_result(self.check, True)
@@ -240,10 +239,8 @@ class NotificationTests(TestCase):
         NotificationChannel.objects.create(
             name="firing-only", kind=NotificationChannel.Kind.WEBHOOK, on_resolved=False,
             config={"url": "https://hooks.example.com/ops"})
-        with patch.dict(
-            "apps.alerts.notifications._DISPATCHERS",
-            {NotificationChannel.Kind.WEBHOOK: lambda channel, payload: seen.append(payload)},
-        ):
+        with patch("apps.alerts.notifications.deliver",
+                   side_effect=lambda channel, message: seen.append(message.payload)):
             seen = []
             evaluate({self.check.id})
             add_result(self.check, True)
@@ -472,7 +469,7 @@ class PageSourceTests(SimpleTestCase):
         self.assertNotIn('delegateClick(\'[data-act="acknowledgeDeviceAlert"]', self.JS)
 
     def test_no_device_alert_rule_adds_a_side_stripe(self):
-        css = (CSS / "vigil.css").read_text(encoding="utf-8")
+        css = design_css()
         rules = re.findall(r"(\.device-alert[^{]*)\{([^}]*)\}", css)
         self.assertTrue(rules, "the device alert CSS is missing")
         for selector, body in rules:
