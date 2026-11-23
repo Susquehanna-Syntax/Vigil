@@ -1050,8 +1050,10 @@ jobs:
         env:
           AGENT_E2E_WORK: ${{ runner.temp }}/agent-install
         run: |
+          set -o pipefail
           python scripts/agent-e2e.py --server http://127.0.0.1:8010 --workdir "$AGENT_E2E_WORK" \
-            --timeout 300 --agent "scripts/agent-installed-in-container.sh ${{ matrix.image }} http://127.0.0.1:8010"
+            --timeout 300 --agent "scripts/agent-installed-in-container.sh ${{ matrix.image }} http://127.0.0.1:8010" \
+            2>&1 | tee agent-install.log
       - name: install.ps1 as Administrator
         if: runner.os == 'Windows'
         shell: pwsh
@@ -1075,7 +1077,9 @@ jobs:
             --workdir "${{ runner.temp }}/agent-install" --agent "\"$AGENT_EXE\"" 2>&1 | tee agent-install.log
       - name: Server log
         if: failure()
-        run: tail -200 server.log
+        run: |
+          tail -200 server.log
+          scripts/ci-annotate.sh "Installed agent" 80 agent-install.log server.log
 
   # ── Build and push Docker image (main branch + tags only) ──────────────────
   publish:
