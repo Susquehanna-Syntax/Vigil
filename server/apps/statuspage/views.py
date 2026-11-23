@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404, render
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status as http
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -271,7 +271,10 @@ def _apply(page, request):
     return None
 
 
-@extend_schema(responses=StatusPageUptimeDaySerializer(many=True))
+@extend_schema(parameters=[
+    OpenApiParameter("days", int,
+                     description="How many days of history to return. Default 30, clamped between 1 and 90."),
+], responses=StatusPageUptimeDaySerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_uptime(request, host_id):

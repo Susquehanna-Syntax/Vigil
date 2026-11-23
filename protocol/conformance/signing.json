@@ -1,0 +1,106 @@
+{
+  "seed_b64": "pnlMHQMRyzc5xmAXm78szdSpabQuJBVx3iAH4rJKeFM=",
+  "public_key_b64": "4Hg/5XORPK3yw9rQBknWK3E+bo3j4iBnrCNeccP+GVE=",
+  "agent_token": "conformance-agent-token-0123456789abcdef",
+  "note": "Test vectors only. This key signs nothing real.",
+  "cases": [
+    {
+      "name": "v1_flat_params",
+      "version": 1,
+      "task": {
+        "id": "3f2b7c91-8d34-4e0a-9c1b-6a5f2d0e7b11",
+        "host_id": "9a4e1c77-2b60-4d18-8f55-0c3a69e2b8fd",
+        "action": "install_package",
+        "params": {
+          "name": "htop",
+          "version": "3.3.0"
+        },
+        "nonce": "v1a00000000000000000000000000000aa",
+        "ttl_seconds": 300
+      },
+      "canonical": "{\"action\": \"install_package\", \"host_id\": \"9a4e1c77-2b60-4d18-8f55-0c3a69e2b8fd\", \"id\": \"3f2b7c91-8d34-4e0a-9c1b-6a5f2d0e7b11\", \"nonce\": \"v1a00000000000000000000000000000aa\", \"params\": {\"name\": \"htop\", \"version\": \"3.3.0\"}, \"ttl_seconds\": 300}",
+      "signature_b64": "Onwct3PpKCBRUigKYe9fmwz1XoN3TT+MW3xNY+zEOZQjWg6bLxvSl1aqzuBdgjAdNnR0pW7nr+yL/8eLWL7CBQ=="
+    },
+    {
+      "name": "v1_nested_list_and_non_ascii",
+      "version": 1,
+      "task": {
+        "id": "7c1d5e33-4a28-4f6b-b0c9-1e8d7a5246ff",
+        "host_id": "0b7f3a92-6c41-4e5d-9a28-3d16b7c05e94",
+        "action": "write_file",
+        "params": {
+          "zeta": true,
+          "note": "caf\u00e9",
+          "alpha": {
+            "inner": {
+              "deep": [
+                3,
+                1,
+                2
+              ]
+            },
+            "list": [
+              {
+                "k": "\u00fc"
+              },
+              "tail"
+            ]
+          },
+          "empty": {},
+          "count": 0
+        },
+        "nonce": "v1a11111111111111111111111111111bb",
+        "ttl_seconds": 90
+      },
+      "canonical": "{\"action\": \"write_file\", \"host_id\": \"0b7f3a92-6c41-4e5d-9a28-3d16b7c05e94\", \"id\": \"7c1d5e33-4a28-4f6b-b0c9-1e8d7a5246ff\", \"nonce\": \"v1a11111111111111111111111111111bb\", \"params\": {\"alpha\": {\"inner\": {\"deep\": [3, 1, 2]}, \"list\": [{\"k\": \"\\u00fc\"}, \"tail\"]}, \"count\": 0, \"empty\": {}, \"note\": \"caf\\u00e9\", \"zeta\": true}, \"ttl_seconds\": 90}",
+      "signature_b64": "hSvRhzvOaMBp6hGdb8UpYg0igg2mjbMpoG1apQNUw6gBrXv6ehTCC3aB37TsZEwi9ZMnuWg/U+a/H/88+9xgAw=="
+    },
+    {
+      "name": "v2_flat_params",
+      "version": 2,
+      "task": {
+        "id": "b41c9a02-5d7e-42f8-9c63-8ae1f30d6b27",
+        "host_id": "5e8d2f14-90bc-47a6-8d21-4f7c0b3a9e66",
+        "action": "restart_service",
+        "params": {
+          "service": "nginx"
+        },
+        "nonce": "v2a2222222222222222222222222222cc",
+        "ttl_seconds": 600
+      },
+      "dispatched_at": "2026-11-16T10:00:00+00:00",
+      "agent_token": "conformance-agent-token-0123456789abcdef",
+      "canonical": "{\"action\": \"restart_service\", \"agent\": \"91308206a71043a189d1979ed28505b2697a76c8c4237a60d24fcaecd349fdad\", \"dispatched_at\": \"2026-11-16T10:00:00+00:00\", \"host_id\": \"5e8d2f14-90bc-47a6-8d21-4f7c0b3a9e66\", \"id\": \"b41c9a02-5d7e-42f8-9c63-8ae1f30d6b27\", \"nonce\": \"v2a2222222222222222222222222222cc\", \"params\": {\"service\": \"nginx\"}, \"ttl_seconds\": 600, \"v\": 2}",
+      "signature_b64": "HiRDLW7CDCDWNcKPMIZ917s5++Wqm0lgVcpPVaPGfTIo9AMUZadwO896VayPW3FNcefcTpB1NgFsPQ0fSAuYDA=="
+    },
+    {
+      "name": "v2_nested_list_and_non_ascii",
+      "version": 2,
+      "task": {
+        "id": "e03a76b8-1c25-4d97-a4f0-6b9d28c531ee",
+        "host_id": "2c6b48da-7f13-49e0-b5a2-8d40e1c7f693",
+        "action": "apply_config",
+        "params": {
+          "profile": {
+            "name": "caf\u00e9",
+            "limits": {
+              "max": 1000,
+              "min": null
+            }
+          },
+          "tags": [
+            "prod",
+            "\u00fcn\u00efcode"
+          ],
+          "retry": 3
+        },
+        "nonce": "v2a3333333333333333333333333333dd",
+        "ttl_seconds": 45
+      },
+      "dispatched_at": "2026-11-16T10:00:00+00:00",
+      "agent_token": "conformance-agent-token-0123456789abcdef",
+      "canonical": "{\"action\": \"apply_config\", \"agent\": \"91308206a71043a189d1979ed28505b2697a76c8c4237a60d24fcaecd349fdad\", \"dispatched_at\": \"2026-11-16T10:00:00+00:00\", \"host_id\": \"2c6b48da-7f13-49e0-b5a2-8d40e1c7f693\", \"id\": \"e03a76b8-1c25-4d97-a4f0-6b9d28c531ee\", \"nonce\": \"v2a3333333333333333333333333333dd\", \"params\": {\"profile\": {\"limits\": {\"max\": 1000, \"min\": null}, \"name\": \"caf\\u00e9\"}, \"retry\": 3, \"tags\": [\"prod\", \"\\u00fcn\\u00efcode\"]}, \"ttl_seconds\": 45, \"v\": 2}",
+      "signature_b64": "Ty3yHS3/As32rn3u0+tI7JMWWwgMWYY67mAphKQCJmrE+GSGVGBxnGEBCZ+bvJ1Dqv7238R+P12l7bALjcGCBg=="
+    }
+  ]
+}

@@ -32,13 +32,14 @@ TYPED: set[str] = {
     "licensing", "metrics", "playbooks", "policies", "relays", "remote",
     "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
     "vigil", "vulns",
-}
-
-#: Apps still to type, each one phase of the work.
-PENDING: set[str] = {
-    # The Business apps, which live in the private Vigil_Business repository.
+    # The Business apps (private Vigil_Business repository), checked whenever
+    # they are installed.
     "apps_business",
 }
+
+#: Apps still to type, each one phase of the work. None are left: an app added
+#: later starts here until its views are typed.
+PENDING: set[str] = set()
 
 #: Messages tied to no view file, such as a view mounted at two URLs getting
 #: the same operation id twice (vigil.schema.drop_legacy_routes leaves such an
@@ -77,6 +78,18 @@ def _view_owners() -> dict[str, str]:
     return {name: next(iter(apps)) for name, apps in seen.items() if len(apps) == 1}
 
 
+def business_typed() -> bool:
+    """Whether the installed Business build is one that documents its views:
+    Vigil_Business feat/m5-api-types added apps_business/upgrade_body.py with
+    them. False with no Business at all, which leaves nothing to check."""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("apps_business.upgrade_body") is not None
+    except ModuleNotFoundError:
+        return False
+
+
 def schema_problems() -> dict[str, list[str]]:
     """Generate the schema once, and return each app's warnings and errors."""
     GENERATOR_STATS.reset()
@@ -104,7 +117,12 @@ class ApiSchemaRatchetTests(SimpleTestCase):
         cls.problems = schema_problems()
 
     def test_typed_apps_stay_typed(self):
-        regressed = {app: self.problems[app] for app in TYPED if self.problems.get(app)}
+        typed = set(TYPED)
+        if not business_typed():
+            # CI installs the Business wheels business.lock names; one built
+            # before Vigil_Business typed its views is not this repo's to fix.
+            typed.discard("apps_business")
+        regressed = {app: self.problems[app] for app in typed if self.problems.get(app)}
         self.assertEqual(regressed, {}, "an app on TYPED has untyped views again")
 
     def test_a_clean_app_moves_to_typed(self):
@@ -161,3 +179,71 @@ class ApiSchemaAccessTests(TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertNotIn(b"https://", page.content)
         self.assertNotIn(b"<style", page.content)
+
+
+# ── Query parameters ─────────────────────────────────────────────────────────
+#
+# A view that reads ``request.query_params.get("state")`` takes a parameter the
+# generator cannot see, so the schema (and every client built from it) misses
+# it unless ``@extend_schema(parameters=[...])`` says so. This reads each
+# routed view function's own source for the names it reads and compares them
+# with what its GET operation documents. It sees only reads made in the view
+# function itself, not in a helper it calls.
+
+_QUERY_READ = re.compile(
+    r"""(?:query_params|request\.GET)(?:\.get\(|\.getlist\(|\[)\s*["']([A-Za-z_]+)["']""")
+
+#: Views with undocumented query parameters, each one to fix: document the
+#: parameters with OpenApiParameter, then delete its line here.
+QUERY_PARAMS_PENDING: dict[str, set[str]] = {}
+
+
+def undocumented_query_params() -> dict[str, set[str]]:
+    """GET path → the query parameters its view reads and its schema omits."""
+    import inspect
+
+    from drf_spectacular.generators import EndpointEnumerator
+
+    with GENERATOR_STATS.silence():
+        paths = SchemaGenerator().get_schema(request=None, public=True)["paths"]
+    gaps: dict[str, set[str]] = {}
+    for path, _regex, method, callback in EndpointEnumerator().get_api_endpoints():
+        operation = paths.get(path, {}).get("get")
+        if method != "GET" or operation is None:
+            continue
+        handler = getattr(getattr(callback, "cls", None), "get", None)
+        func = handler
+        # @api_view wraps the function in a handler that closes over it.
+        for cell in getattr(handler, "__closure__", None) or ():
+            if inspect.isfunction(cell.cell_contents):
+                func = cell.cell_contents
+        # The Business apps ship compiled, with no source to read here.
+        if getattr(func, "__module__", "").startswith("apps_business"):
+            continue
+        try:
+            source = inspect.getsource(inspect.unwrap(func))
+        except (TypeError, OSError):
+            continue
+        documented = {p["name"] for p in operation.get("parameters", [])
+                      if p["in"] == "query"}
+        missing = set(_QUERY_READ.findall(source)) - documented
+        if missing:
+            gaps[path] = missing
+    return gaps
+
+
+class QueryParameterRatchetTests(SimpleTestCase):
+    def test_no_view_reads_an_undocumented_query_parameter(self):
+        gaps = undocumented_query_params()
+        new = {path: sorted(names - QUERY_PARAMS_PENDING.get(path, set()))
+               for path, names in gaps.items()
+               if names - QUERY_PARAMS_PENDING.get(path, set())}
+        self.assertEqual(new, {}, "document these with @extend_schema(parameters=[...])")
+
+    def test_a_documented_parameter_leaves_the_pending_list(self):
+        gaps = undocumented_query_params()
+        done = {path: sorted(names - gaps.get(path, set()))
+                for path, names in QUERY_PARAMS_PENDING.items()
+                if names - gaps.get(path, set())}
+        self.assertEqual(done, {}, "these are documented now: delete them from "
+                                   "QUERY_PARAMS_PENDING")

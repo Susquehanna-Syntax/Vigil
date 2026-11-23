@@ -3096,6 +3096,28 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
       <p class="section-desc">All API endpoints are under <code>/api/v1/</code>. Browsers authenticate with the session cookie; integrations use a scoped API key (<code>Authorization: Bearer vsk_...</code>, Business edition), so they never need a user's password.</p>
       <p class="prose">An admin can read the full OpenAPI schema at <code>/api/schema/</code> (YAML, for code generators and API clients) and browse it at <code>/api/docs/</code>. Both are admin-only, because the schema maps every endpoint. The tables below cover the endpoints most integrations need.</p>
 
+      <h3 id="cli">Command line</h3>
+      <p class="prose">The <code>vigil</code> command does the everyday things from a terminal: list hosts, read and acknowledge alerts, list tasks, deploy one and follow the run. It is one small Python package with no dependencies, in the <code>cli/</code> folder of the repository, and works with every edition.</p>
+      <div class="code-block"><pre>pipx install "git+https://github.com/Susquehanna-Syntax/Vigil#subdirectory=cli"
+vigil login --url https://vigil.example.com</pre></div>
+      <p class="prose"><code>vigil login</code> signs in the way the browser does: your password, then the six-digit code from your authenticator. An account that has only a security key needs a code added first (Settings &rarr; Account &amp; Security), because a terminal cannot tap a key. The session is kept in <code>~/.config/vigil/session.json</code>, readable only by you; your password is never stored. The session ends on the same rules as a browser tab (Settings &rarr; Retention &amp; Limits: idle time and longest sign-in), and <code>vigil status</code> shows how long is left.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>vigil hosts</code></td><td>Every host you can see. <code>--status offline</code>, <code>--tag prod</code> and <code>--site West</code> narrow it; <code>vigil hosts web-01</code> shows one.</td></tr>
+            <tr><td><code>vigil alerts</code></td><td>Firing alerts. <code>--state acknowledged</code> or <code>--state resolved</code> for the others.</td></tr>
+            <tr><td><code>vigil alerts ack 3f2b --for 2h</code></td><td>Acknowledge alerts by id, or the first few characters of one. Without <code>--for</code> the acknowledgement lasts until the alert resolves.</td></tr>
+            <tr><td><code>vigil tasks</code></td><td>Task definitions, with their risk and last run.</td></tr>
+            <tr><td><code>vigil deploy "Restart nginx" --host web-01</code></td><td>Run a task on hosts (<code>--host</code>, repeatable) or on every online host with a tag (<code>--tag</code>). <code>--input name=value</code> fills a task input. It says what is about to run, then asks for a fresh authenticator code, as the dashboard does. <code>--wait</code> follows the run and exits non-zero unless it completed.</td></tr>
+            <tr><td><code>vigil runs</code></td><td>Recent runs; <code>vigil runs 9a4e</code> shows one with each host's result.</td></tr>
+            <tr><td><code>vigil api GET /api/v1/hosts/inventory/</code></td><td>Any other API path, printed as JSON. <code>--data</code> sends a JSON body.</td></tr>
+            <tr><td><code>vigil status</code>, <code>vigil logout</code></td><td>Where you are signed in and for how long; end the session.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">Every command takes <code>--json</code> for the server's own answer. For scripts on a Business install, set <code>VIGIL_URL</code> and put a scoped API key in <code>VIGIL_API_KEY</code>: no sign-in is needed and nothing is stored. A deploy still asks for the code of the admin who made the key. The certificate is always checked; <code>--ca-cert</code> adds your own CA, and a plain <code>http://</code> address other than this machine is refused unless you pass <code>--allow-http</code>.</p>
+
       <h3>Hosts</h3>
       <div class="table-wrap">
         <table>

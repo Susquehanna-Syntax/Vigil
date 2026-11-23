@@ -86,6 +86,15 @@ def _is_test(path):
     return path.name.startswith("test") or path.name == "testsupport.py"
 
 
+def _in_scoping(rel):
+    # vigil/scoping.py was split into the vigil/scoping/ package (S5 07), so
+    # every submodule of the package is excluded from the crossing sweep, as
+    # the module itself used to be. Its __init__ is a re-export list whose
+    # names (`system`, ...) an AST sweep would otherwise read as crossings.
+    return rel in ("vigil/scoping.py", "vigil/scoping/__init__.py") \
+        or rel.startswith("vigil/scoping/")
+
+
 def _system_names(tree):
     """Local names bound to vigil.scoping.system by a from-import."""
     names = set()
@@ -111,7 +120,7 @@ def find_crossings(root=SERVER):
         rel = path.relative_to(root).as_posix()
         if ".venv" in path.parts or "migrations" in path.parts or _is_test(path):
             continue
-        if rel == "vigil/scoping.py":
+        if _in_scoping(rel):
             continue
         text = path.read_text(encoding="utf-8")
         if "unscoped" not in text and "system" not in text:

@@ -8,7 +8,8 @@ secrets it is not changing.
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -160,7 +161,10 @@ def _save(request, stack: ManagedStack, data, *, note: str) -> Response | None:
     return None
 
 
-@extend_schema(methods=["GET"], responses={200: StacksStackListSerializer})
+@extend_schema(methods=["GET"], parameters=[
+    OpenApiParameter("host", OpenApiTypes.UUID,
+                     description="Only stacks on this host. Default: every visible stack."),
+], responses={200: StacksStackListSerializer})
 @extend_schema(
     methods=["POST"],
     request=StacksStackCreateSerializer,

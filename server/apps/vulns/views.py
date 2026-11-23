@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.db.models import Avg, Case, F, IntegerField, Value, When
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -33,7 +33,10 @@ from .serializers import (
 )
 
 
-@extend_schema(responses={200: VulnSummarySerializer(many=True)})
+@extend_schema(parameters=[
+    OpenApiParameter("host", OpenApiTypes.UUID, required=True,
+                     description="The host whose installed software to match against the vuln feed."),
+], responses={200: VulnSummarySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -72,7 +75,23 @@ def fleet_score(request):
     })
 
 
-@extend_schema(responses={200: VulnFindingSerializer(many=True), 400: VulnErrorResponse})
+@extend_schema(parameters=[
+    OpenApiParameter("host", str, required=True,
+                     description="Hosts to list findings for: a comma-separated list of host ids, or "
+                                 "the literal all for every open finding."),
+    OpenApiParameter("severity", str, enum=list(VulnFinding.Severity),
+                     description="Which severities to list. Default critical and high."),
+    OpenApiParameter("scanner", str, enum=list(VulnScan.Scanner),
+                     description="Only findings from this scanner. Default: any scanner."),
+    OpenApiParameter("state", str, enum=list(VulnFinding.State),
+                     description="Which findings to list. Default open."),
+    OpenApiParameter("sort", str, enum=list(SEVERITY_RANK),
+                     description="Sort ascending by this severity instead of by score and age."),
+    OpenApiParameter("overdue", str, enum=["1"],
+                     description="Set to 1 to list only findings past their remediation SLA."),
+    OpenApiParameter("due_within", int,
+                     description="With overdue=1, this many days as the SLA instead of the severity default."),
+], responses={200: VulnFindingSerializer(many=True), 400: VulnErrorResponse})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -170,7 +189,9 @@ def finding_list(request):
     return Response(VulnFindingSerializer(qs[:500], many=True).data)
 
 
-@extend_schema(request=None, responses={200: VulnScoreHistorySerializer(many=True)})
+@extend_schema(request=None, parameters=[
+    OpenApiParameter("days", int, description="How many days of score history. Default 30, at most 730."),
+], responses={200: VulnScoreHistorySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def score_history(request, host_id):
@@ -192,7 +213,10 @@ def score_history(request, host_id):
     return Response(VulnScoreHistorySerializer(qs, many=True).data)
 
 
-@extend_schema(request=None, responses={200: VulnScanSerializer(many=True)})
+@extend_schema(request=None, parameters=[
+    OpenApiParameter("host", OpenApiTypes.UUID, required=True,
+                     description="The host whose scan rows to list, newest first."),
+], responses={200: VulnScanSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -337,7 +361,10 @@ def vuln_data(request):
                      "kev_entries": KevEntry.objects.count(), "epss_scores": EpssScore.objects.count()})
 
 
-@extend_schema(request=None, responses={200: VulnFixGroupListSerializer})
+@extend_schema(request=None, parameters=[
+    OpenApiParameter("q", str,
+                     description="Case-insensitive substring match on the group's title, package, or a CVE."),
+], responses={200: VulnFixGroupListSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")

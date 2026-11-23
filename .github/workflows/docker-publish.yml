@@ -126,6 +126,11 @@ jobs:
       - name: Run relay tests
         working-directory: relay
         run: python -m unittest discover -s tests -t . -v
+      # The vigil command line (cli/): standard library only. Its end-to-end
+      # tests against a live server ran above, in vigil/test_cli.py.
+      - name: Run CLI unit tests
+        working-directory: cli
+        run: python -m unittest discover -s tests -t . -v
 
   # ── JavaScript unit tests ──────────────────────────────────────────────────
   # The dashboard's scripts are plain globals with no bundler, so the tests load

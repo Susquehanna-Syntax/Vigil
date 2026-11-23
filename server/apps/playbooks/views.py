@@ -3,7 +3,7 @@ from pathlib import Path
 from django.db import transaction
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -245,7 +245,10 @@ def _validate_and_set_inputs(playbook: Playbook, raw, auto_enroll=None, *,
     return None
 
 
-@extend_schema(methods=["GET"], responses=PlaybookSerializer(many=True))
+@extend_schema(methods=["GET"], parameters=[
+    OpenApiParameter("archived", str, enum=["1"],
+                     description="Pass 1 to list archived playbooks; without it the list is the unarchived ones."),
+], responses=PlaybookSerializer(many=True))
 @extend_schema(methods=["POST"], request=PlaybookCreateSerializer,
                responses={201: PlaybookSerializer, 400: PlaybookDetailSerializer,
                           403: PlaybookDetailSerializer})

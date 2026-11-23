@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -261,6 +262,10 @@ def _label_key(labels):
                          description="`category/metric[:limit]`, comma-separated."),
         OpenApiParameter("hosts", str, description="Comma-separated host ids; the whole fleet otherwise."),
         OpenApiParameter("from", str, description="ISO-8601 lower bound on the point time."),
+        OpenApiParameter("host", OpenApiTypes.UUID,
+                         description=f"Host id to report, repeated once per host, at most "
+                                     f"{MAX_RECENT_HOSTS}. Default: up to the first "
+                                     f"{MAX_RECENT_HOSTS} visible hosts."),
     ],
     responses={(200, "application/json"): MetricsRecentSerializer,
                (400, "application/json"): MetricErrorSerializer})
