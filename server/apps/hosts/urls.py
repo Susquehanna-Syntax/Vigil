@@ -5,6 +5,7 @@ from . import docker_views, logtail, topology, views
 urlpatterns = [
     path("", views.host_list, name="host-list"),
     path("tags/", views.tag_index, name="tag-index"),
+    path("agent-versions/", views.agent_versions, name="agent-versions"),
     path("inventory/", views.inventory_list, name="inventory-list"),
     path("docker/overview/", views.docker_overview, name="docker-overview"),
     path("devices/", views.unmanaged_devices, name="unmanaged-devices"),

@@ -163,10 +163,11 @@ function escAttr(str) {
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
+  if (!isFinite(bytes)) return '—';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  // Clamped: a chart axis asks for fractions of a byte (0.5 gave "512
-  // undefined") and nothing here goes past TB.
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  // Clamped: under 1 B (a chart's 0.5 B tick) the log is negative, and past
+  // the last unit it runs off the list; both used to print "512 undefined".
   const i = Math.min(sizes.length - 1,
     Math.max(0, Math.floor(Math.log(Math.abs(bytes)) / Math.log(k))));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];

@@ -662,7 +662,13 @@ class DesktopSessionTests(_DesktopCase):
             browser = await self.browser()
             await self.login(browser)
             self.assertTrue(await guacd.wait_for_handshake())
-            session = await _sync(self.refresh)
+            # The bridge saves the path just after the handshake it answers,
+            # so a slow runner can read the row first: wait for the save.
+            for _ in range(50):
+                session = await _sync(self.refresh)
+                if session.recording:
+                    break
+                await asyncio.sleep(0.05)
             await browser.close()
 
         values = dict(zip(FAKE_ARGS[2:], guacd.connect_values[1:]))

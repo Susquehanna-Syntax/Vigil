@@ -30,6 +30,11 @@ test('versions compare numerically and unknown never warns', () => {
 test('formatBytes and the per-second formatter', () => {
   assert.equal(w.formatBytes(0), '0 B');
   assert.equal(w.formatBytes(1536), '1.5 KB');
+  // A chart's fractional tick and a value past TB stay in range (was "512 undefined").
+  assert.equal(w.formatBytes(0.5), '0.5 B');
+  assert.equal(w.formatBytes(1024 ** 6), '1024 PB');
+  assert.equal(w.formatBytes(-2048), '-2 KB');
+  assert.equal(w.formatBytes(NaN), '—');
   assert.equal(w.formatBytes(1024 ** 3), '1 GB');
   assert.equal(w.formatBytes(0.5), '0.5 B');   // an axis tick, not "512 undefined"
   assert.equal(w.formatBytes(1024 ** 6), '1048576 TB');

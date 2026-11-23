@@ -1512,6 +1512,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   margin-bottom: 6px;
 }
 .detail-meta { font-size: 13px; color: var(--text-2); }
+.detail-agent-update { font-size: 12px; border-radius: 8px; padding: 6px 10px; margin-top: 2px; }
+.detail-agent-update--ok { color: var(--mint-ink); background: rgba(var(--rgb-mint), var(--tint-a)); }
+.detail-agent-update--bad { color: var(--rose-ink); background: rgba(var(--rgb-rose), var(--tint-a)); }
+.detail-agent-update-reason { display: block; color: var(--text-3); margin-top: 2px; word-break: break-word; }
 
 .detail-section { margin-bottom: 28px; }
 .detail-section-title {
@@ -2400,6 +2404,25 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .settings-pane { display: none; }
 .settings-pane.active { display: block; animation: fadein 0.25s var(--ease-out-expo); }
 .settings-pane .section-label:first-child { margin-top: 0; }
+
+/* Fleet versions under Settings > Agent Binary (vigil-settings.js loadFleetVersions). */
+.fleet-versions { margin-top: 14px; font-size: 12px; }
+.fleet-versions-label { margin-bottom: 6px; font-size: 11px; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .05em; }
+.fleet-versions-summary { color: var(--text-2); margin-bottom: 8px; }
+.fleet-versions-table { width: 100%; border-collapse: collapse; }
+.fleet-versions-table th, .fleet-versions-table td { text-align: left; padding: 6px 10px;
+  border-bottom: 1px solid var(--border); }
+.fleet-versions-table th { color: var(--text-3); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em; }
+.fleet-versions-table tbody tr:last-child td { border-bottom: 0; }
+.fleet-status-current { color: var(--mint-ink); }
+.fleet-status-outdated { color: var(--peach-ink); }
+.fleet-status-newer { color: var(--text-3); }
+.fleet-rollback-title { margin-top: 14px; color: var(--text-2); }
+.fleet-rollback-list { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); }
+.fleet-rollback-list li { margin-bottom: 6px; }
+.fleet-rollback-reason { display: block; color: var(--text-3); margin-top: 2px; }
 @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 900px) {
   .settings-layout { grid-template-columns: minmax(0, 1fr); }

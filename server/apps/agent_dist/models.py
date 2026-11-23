@@ -12,6 +12,7 @@ class AgentBinary(models.Model):
         # longer built or offered (Apple Silicon only).
         DARWIN_AMD64 = "darwin-amd64", "macOS (Intel)"
         DARWIN_ARM64 = "darwin-arm64", "macOS (Apple Silicon)"
+        FREEBSD_AMD64 = "freebsd-amd64", "FreeBSD (x86-64)"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     platform = models.CharField(max_length=30, choices=Platform.choices, unique=True)

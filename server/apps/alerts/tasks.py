@@ -595,7 +595,10 @@ def _version_key(version: str) -> tuple[int, ...] | None:
     for chunk in version.strip().lstrip("vV").split("."):
         digits = ""
         for char in chunk:
-            if not char.isdigit():
+            # ASCII digits only: str.isdigit() is also true for "²" and other
+            # Unicode digits that int() refuses, and agent_version is whatever
+            # an agent sent. One such host used to crash the hourly check.
+            if char not in "0123456789":
                 break
             digits += char
         if not digits:

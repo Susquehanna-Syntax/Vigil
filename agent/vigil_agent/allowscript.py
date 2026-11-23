@@ -22,6 +22,9 @@ _KEY = "allowed_script_hashes"
 #: Must match the systemd unit name install.sh writes.
 _SYSTEMD_UNIT = "vigil-agent"
 
+#: Must match the rc.d script name install.sh writes on FreeBSD.
+_RC_D_SERVICE = "vigil_agent"
+
 
 class _Noop(ValueError):
     """The requested change is already in place."""
@@ -177,6 +180,8 @@ def _restart_agent() -> None:
         from .winservice import SERVICE_NAME
 
         cmd = ["sc.exe", "stop", SERVICE_NAME]
+    elif sys.platform.startswith("freebsd"):
+        cmd = ["service", _RC_D_SERVICE, "restart"]
     else:
         cmd = ["systemctl", "restart", _SYSTEMD_UNIT]
     try:

@@ -102,6 +102,13 @@ class Host(models.Model):
     # Whether the agent's process runs as root, as it last reported it (QA-08):
     # None until an agent new enough to report it checks in.
     agent_runs_as_root = models.BooleanField(null=True, blank=True)
+    #: How this agent's last self-update ended, as the agent reported it
+    #: (sprint M8): {"state": "confirmed" | "rolled_back" | "not_applied",
+    #: "from_version", "to_version", "running", "reason", "at"}. Null until an
+    #: agent with the update guard reports one. A rollback stays here until a
+    #: later update is confirmed, so a failed agent release is still visible
+    #: after the host is healthy again.
+    agent_update = models.JSONField(null=True, blank=True)
     last_checkin = models.DateTimeField(null=True, blank=True)
     #: The next task-signing key this agent holds (sprint M3 phase 3): the
     #: public key it reported as ``key_ack``, which it accepts only after

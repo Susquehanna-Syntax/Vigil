@@ -39,6 +39,11 @@ class HostsHostSerializer(serializers.Serializer):
     agent_allow_reprovision = serializers.BooleanField()
     agent_runs_as_root = serializers.BooleanField(
         allow_null=True, help_text="Null until the agent reports it.")
+    agent_update = serializers.DictField(
+        allow_null=True,
+        help_text="How the agent's last self-update ended, as it reported: state "
+                  "(confirmed, rolled_back or not_applied), from_version, to_version, "
+                  "running, reason and at. Null when it has reported none.")
     reboot_required = serializers.BooleanField()
     last_checkin = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
@@ -50,6 +55,43 @@ class HostsHostSerializer(serializers.Serializer):
 
 class HostsDeletedSerializer(serializers.Serializer):
     deleted = serializers.CharField(help_text="The hostname that was removed.")
+
+
+class HostsAgentVersionRowSerializer(serializers.Serializer):
+    version = serializers.CharField(
+        allow_blank=True, help_text='The agent version the hosts report; "" means unknown.')
+    hosts = serializers.IntegerField()
+    current = serializers.BooleanField(
+        help_text="True when this is the version the server ships.")
+    outdated = serializers.BooleanField(
+        help_text="True only when the version is provably behind the server's.")
+
+
+class HostsAgentUpdateCountsSerializer(serializers.Serializer):
+    confirmed = serializers.IntegerField()
+    rolled_back = serializers.IntegerField()
+    not_applied = serializers.IntegerField()
+
+
+class HostsRolledBackRowSerializer(serializers.Serializer):
+    host_id = serializers.CharField()
+    hostname = serializers.CharField()
+    from_version = serializers.CharField(allow_blank=True)
+    to_version = serializers.CharField(allow_blank=True)
+    reason = serializers.CharField(allow_blank=True)
+    at = serializers.CharField(allow_null=True, help_text="When the agent reported it.")
+
+
+class HostsAgentVersionsSerializer(serializers.Serializer):
+    """The version-drift report: approved hosts only, self-updates from the last 30 days."""
+
+    expected = serializers.CharField(
+        allow_blank=True, help_text="The agent version this server ships; empty when unknown.")
+    total = serializers.IntegerField(help_text="Approved hosts in scope.")
+    versions = HostsAgentVersionRowSerializer(many=True)
+    outdated_hosts = serializers.IntegerField()
+    updates = HostsAgentUpdateCountsSerializer()
+    rolled_back = HostsRolledBackRowSerializer(many=True, help_text="Newest first, at most 50.")
 
 
 class HostsDeviceSerializer(serializers.Serializer):
@@ -260,6 +302,11 @@ class HostsCheckinBodySerializer(serializers.Serializer):
     runs_as_root = serializers.BooleanField(required=False)
     features = serializers.ListField(child=serializers.CharField(), required=False)
     reboot_required = serializers.BooleanField(required=False)
+    agent_update = serializers.DictField(
+        required=False,
+        help_text="How a self-update ended, sent until one check-in carrying it "
+                  "succeeds: state (confirmed, rolled_back or not_applied), "
+                  "from_version, to_version, running and reason.")
     tags = serializers.ListField(child=serializers.CharField(), required=False,
                                  help_text="Namespaced under agent:* on the way in.")
     inventory = serializers.DictField(required=False)

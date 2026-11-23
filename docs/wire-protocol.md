@@ -99,6 +99,7 @@ empty".
 | `runs_as_root` | boolean | A managed agent left unprivileged fails every task, so the server marks such a host. Omitted on Windows. |
 | `features` | list of string | Task-language features this agent understands (`signed_v2`, `relevant`, …). The server will not dispatch what the agent cannot read; see section 4 for what `signed_v2` does. |
 | `reboot_required` | boolean | Absent means too old to report; an explicit `false` writes. |
+| `agent_update` | object | How a self-update ended, sent on each check-in until one carrying it succeeds: `state` (`confirmed`, `rolled_back` or `not_applied`), `from_version`, `to_version`, `running` (the version now running) and `reason`. Absent on every other check-in. The server stores it for display with its own timestamp and decides nothing from it. |
 | `tags` | list of string | Namespaced under `agent:*` on the way in. |
 | `inventory` | object | Custom inventory columns. |
 | `software` | object | Installed-software list; absent means "nothing new to store". |

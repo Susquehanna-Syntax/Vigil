@@ -54,6 +54,7 @@ class SoftwareItem(models.Model):
         RPM = "rpm", "rpm"
         APK = "apk", "apk"
         PACMAN = "pacman", "pacman"
+        PKG = "pkg", "pkg (FreeBSD)"
         FLATPAK = "flatpak", "flatpak"
         SNAP = "snap", "snap"
         WINGET = "winget", "winget"

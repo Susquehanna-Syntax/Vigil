@@ -1,6 +1,6 @@
 {% autoescape off %}#!/bin/bash
 # Vigil Agent installer — {{ base_url }}
-# Linux / macOS
+# Linux / FreeBSD / macOS
 # Usage: curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
 #   or:  curl -fsSL {{ base_url }}/agent/install.sh | sudo env VIGIL_TOKEN=<token> bash
 #   mode: add VIGIL_MODE=monitor|managed|full_control to the env (default monitor)
@@ -30,6 +30,12 @@ case "$OS" in
       echo "This Mac has an Intel processor. The Vigil agent supports Apple Silicon Macs only (macOS no longer supports Intel Macs)." >&2
       exit 1
     fi
+    ;;
+  freebsd)
+    case "$ARCH" in
+      amd64|x86_64) PLATFORM="freebsd-amd64" ;;
+      *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+    esac
     ;;
   *)
     echo "Unsupported OS: $OS" >&2
@@ -86,9 +92,18 @@ fi
 
 install -m 0755 "$TMP_AGENT" /usr/local/bin/vigil-agent
 
-mkdir -p /etc/vigil
+# FreeBSD keeps third-party configuration under /usr/local/etc like every other
+# package there; Linux uses /etc/vigil. Every config path in this script goes
+# through CONF_DIR, so the download, digest check and token handling stay shared.
+if [ "$OS" = "freebsd" ]; then
+  CONF_DIR=/usr/local/etc/vigil
+else
+  CONF_DIR=/etc/vigil
+fi
+
+mkdir -p $CONF_DIR
 # 0755 regardless of umask: monitor mode runs as vigil-agent, which must traverse this dir (agent.yml itself stays 0600).
-chmod 0755 /etc/vigil
+chmod 0755 $CONF_DIR
 
 # VIGIL_TOKEN ends up inside sed replacements: accept only a plain token.
 if [ -n "${VIGIL_TOKEN:-}" ] && ! printf '%s' "$VIGIL_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
@@ -103,12 +118,12 @@ fi
 # keys back out of it with sed is no answer either: YAML and sed can disagree
 # about what a file says. So it is set aside and rebuilt below as on a fresh
 # install, carrying over only the agent token, which is the host's identity.
-if [ -f /etc/vigil/agent.yml ]; then
-  CFG_OWNER="$(stat -c %u /etc/vigil/agent.yml 2>/dev/null || stat -f %u /etc/vigil/agent.yml 2>/dev/null || echo unknown)"
-  CFG_PERM="$(stat -c %a /etc/vigil/agent.yml 2>/dev/null || stat -f %Lp /etc/vigil/agent.yml 2>/dev/null || echo 777)"
+if [ -f $CONF_DIR/agent.yml ]; then
+  CFG_OWNER="$(stat -c %u "$CONF_DIR"/agent.yml 2>/dev/null || stat -f %u "$CONF_DIR"/agent.yml 2>/dev/null || echo unknown)"
+  CFG_PERM="$(stat -c %a "$CONF_DIR"/agent.yml 2>/dev/null || stat -f %Lp "$CONF_DIR"/agent.yml 2>/dev/null || echo 777)"
   if [ "$CFG_OWNER" != "0" ] || [ $(( 0$CFG_PERM & 022 )) -ne 0 ]; then
     if [ -z "${VIGIL_TOKEN:-}" ]; then
-      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
+      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' "$CONF_DIR"/agent.yml | head -1 | tr -d '"'"'"' ')"
       # It came from a file root does not trust and goes into a sed command
       # run as root: only a plain token shape is carried over.
       if printf '%s' "$KEPT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
@@ -117,10 +132,10 @@ if [ -f /etc/vigil/agent.yml ]; then
         echo "WARNING: the old agent token was not a valid token; a new one is generated and the host must be approved again." >&2
       fi
     fi
-    mv -f /etc/vigil/agent.yml "/etc/vigil/agent.yml.untrusted.$(date +%s)"
-    chmod 600 /etc/vigil/agent.yml.untrusted.* 2>/dev/null || true
-    chown root /etc/vigil/agent.yml.untrusted.* 2>/dev/null || true
-    echo "WARNING: /etc/vigil/agent.yml was writable by a non-root account, so none of its" >&2
+    mv -f $CONF_DIR/agent.yml "$CONF_DIR"/agent.yml.untrusted.$(date +%s)
+    chmod 600 $CONF_DIR/agent.yml.untrusted.* 2>/dev/null || true
+    chown root $CONF_DIR/agent.yml.untrusted.* 2>/dev/null || true
+    echo "WARNING: "$CONF_DIR"/agent.yml was writable by a non-root account, so none of its" >&2
     echo "settings are trusted. It was set aside and rebuilt; only the agent token was kept." >&2
   fi
 fi
@@ -147,26 +162,26 @@ if [ -n "${VIGIL_CONFIG_TOKEN:-}" ]; then
     exit 1
   fi
   chmod 600 "$PROFILE_FILE"
-  if [ -f /etc/vigil/agent.yml ]; then
+  if [ -f $CONF_DIR/agent.yml ]; then
     if [ -z "${VIGIL_TOKEN:-}" ] && [ -z "${VIGIL_ENROLL_TOKEN:-}" ]; then
-      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
+      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' "$CONF_DIR"/agent.yml | head -1 | tr -d '"'"'"' ')"
       if printf '%s' "$KEPT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
         VIGIL_TOKEN="$KEPT_TOKEN"
       fi
     fi
-    mv -f /etc/vigil/agent.yml "/etc/vigil/agent.yml.before-profile.$(date +%s)"
-    chmod 600 /etc/vigil/agent.yml.before-profile.* 2>/dev/null || true
+    mv -f $CONF_DIR/agent.yml "$CONF_DIR"/agent.yml.before-profile.$(date +%s)
+    chmod 600 $CONF_DIR/agent.yml.before-profile.* 2>/dev/null || true
   fi
 fi
 
-if [ ! -f /etc/vigil/agent.yml ]; then
+if [ ! -f $CONF_DIR/agent.yml ]; then
   if [ -n "$PROFILE_FILE" ]; then
     # The profile's file is the template: it already names its server and
     # carries the REPLACE_WITH_TOKEN placeholder the token steps below fill.
-    mv -f "$PROFILE_FILE" /etc/vigil/agent.yml
+    mv -f "$PROFILE_FILE" $CONF_DIR/agent.yml
     echo "Config written from the agent profile."
   else
-    cat > /etc/vigil/agent.yml << 'EOF'
+    cat > $CONF_DIR/agent.yml << 'EOF'
 server_url: "REPLACE_WITH_SERVER_URL"
 agent_token: "REPLACE_WITH_TOKEN"
 mode: monitor
@@ -185,11 +200,11 @@ allowlist:
   - hunt_registry
   - hunt_service
 EOF
-    sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+    sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
   fi
 
   if [ -n "${VIGIL_TOKEN:-}" ]; then
-    sed -i.bak "s|REPLACE_WITH_TOKEN|${VIGIL_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+    sed -i.bak "s|REPLACE_WITH_TOKEN|${VIGIL_TOKEN}|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
     echo "Agent token configured from VIGIL_TOKEN."
   elif [ -n "${VIGIL_ENROLL_TOKEN:-}" ]; then
     # Post-rebuild re-enrolment (docs/reprovisioning.md §4.3). We generate the
@@ -201,7 +216,7 @@ EOF
     ENROLL_BODY="{\"enroll_token\":\"${VIGIL_ENROLL_TOKEN}\",\"agent_token\":\"${NEW_TOKEN}\",\"hostname\":\"$(hostname)\"}"
     if curl -fsS -X POST "${VIGIL_SERVER}/api/v1/reprovision/enroll" \
          -H "Content-Type: application/json" -d "${ENROLL_BODY}" >/dev/null; then
-      sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+      sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
       echo "Re-enrolled against the existing host record."
     else
       # Fail loudly: a rebuilt machine that silently fails to enrol is
@@ -221,12 +236,12 @@ EOF
     # The reprovision branch above has generated a real token all along; this
     # branch simply never did.
     NEW_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-    sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
-    echo "Config written to /etc/vigil/agent.yml with a generated agent token."
+    sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
+    echo "Config written to "$CONF_DIR"/agent.yml with a generated agent token."
   fi
 elif [ -n "${VIGIL_TOKEN:-}" ]; then
   # Re-adding a machine: keep its config but take the token the wizard is waiting for.
-  sed -i.bak "s|^agent_token:.*|agent_token: \"${VIGIL_TOKEN}\"|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  sed -i.bak "s|^agent_token:.*|agent_token: \"${VIGIL_TOKEN}\"|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
   echo "Existing config kept; agent token replaced from VIGIL_TOKEN."
 fi
 
@@ -237,16 +252,16 @@ fi
 # by the unprivileged service account in monitor mode) cannot override it.
 SERVER_PUBLIC_KEY="{{ public_key }}"
 if [ -n "$SERVER_PUBLIC_KEY" ]; then
-  if grep -q '^server_public_key:' /etc/vigil/agent.yml; then
-    sed -i.bak "s|^server_public_key:.*|server_public_key: \"${SERVER_PUBLIC_KEY}\"|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  if grep -q '^server_public_key:' $CONF_DIR/agent.yml; then
+    sed -i.bak "s|^server_public_key:.*|server_public_key: \"${SERVER_PUBLIC_KEY}\"|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
   else
-    printf 'server_public_key: "%s"\n' "$SERVER_PUBLIC_KEY" >> /etc/vigil/agent.yml
+    printf 'server_public_key: "%s"\n' "$SERVER_PUBLIC_KEY" >> $CONF_DIR/agent.yml
   fi
 fi
 
 # agent.yml is root-owned by now (an untrusted one was rebuilt above), so the
 # mode in it was written by root. VIGIL_MODE lets the admin set it here.
-CFG_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1 | tr -d '"'"'"' ')"
+CFG_MODE="$(sed -n 's/^mode:[[:space:]]*//p' "$CONF_DIR"/agent.yml 2>/dev/null | head -1 | tr -d '"'"'"' ')"
 if [ -n "${VIGIL_MODE:-}" ]; then
   case "$VIGIL_MODE" in
     monitor|managed|full_control) CFG_MODE="$VIGIL_MODE" ;;
@@ -258,17 +273,17 @@ case "${CFG_MODE:-monitor}" in
   *) echo "WARNING: unknown mode '${CFG_MODE}' in agent.yml; using monitor" >&2; CFG_MODE="monitor" ;;
 esac
 CFG_MODE="${CFG_MODE:-monitor}"
-if grep -q '^mode:' /etc/vigil/agent.yml; then
-  sed -i.bak "s|^mode:.*|mode: ${CFG_MODE}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+if grep -q '^mode:' $CONF_DIR/agent.yml; then
+  sed -i.bak "s|^mode:.*|mode: ${CFG_MODE}|" $CONF_DIR/agent.yml && rm -f $CONF_DIR/agent.yml.bak
 else
-  printf 'mode: %s\n' "$CFG_MODE" >> /etc/vigil/agent.yml
+  printf 'mode: %s\n' "$CFG_MODE" >> $CONF_DIR/agent.yml
 fi
 # Root owns the config in every mode; monitor mode gets group read below.
-chown root /etc/vigil/agent.yml
-chmod 600 /etc/vigil/agent.yml
+chown root $CONF_DIR/agent.yml
+chmod 600 $CONF_DIR/agent.yml
 if [ -n "${VIGIL_CONFIG_TOKEN:-}" ]; then
-  P_SERVER="$(sed -n 's/^server_url:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
-  P_FALLBACKS="$(awk '/^fallback_urls:/{f=1;next} /^[^ -]/{f=0} f&&/^[ ]*- /{n++} END{print n+0}' /etc/vigil/agent.yml)"
+  P_SERVER="$(sed -n 's/^server_url:[[:space:]]*//p' "$CONF_DIR"/agent.yml | head -1 | tr -d '"'"'"' ')"
+  P_FALLBACKS="$(awk '/^fallback_urls:/{f=1;next} /^[^ -]/{f=0} f&&/^[ ]*- /{n++} END{print n+0}' "$CONF_DIR"/agent.yml)"
   echo "Profile applied: mode ${CFG_MODE}, checks in with ${P_SERVER}, ${P_FALLBACKS} fallback address(es)."
 fi
 
@@ -320,8 +335,8 @@ Environment=no_proxy=${_np_full}"
       mkdir -p /var/lib/vigil-agent
       chown -R vigil-agent /var/lib/vigil-agent
       # Readable by the service account, writable only by root (SEC-3).
-      chown root:vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
-      chmod 640 /etc/vigil/agent.yml 2>/dev/null || true
+      chown root:vigil-agent $CONF_DIR/agent.yml 2>/dev/null || true
+      chmod 640 $CONF_DIR/agent.yml 2>/dev/null || true
       RUN_AS="User=vigil-agent"
       # Safe for a process that only reads counters. Deliberately NOT applied
       # to managed or full_control: an agent whose job is systemctl and
@@ -419,6 +434,45 @@ EOF
     echo "  2. Approve the host in Vigil Settings > Enrollment Queue"
   fi
 
+elif [ "$OS" = "freebsd" ]; then
+  # `daemon -r` restarts the agent when it exits: the update rollback asks the
+  # service manager to restart and relies on something bringing the new binary
+  # back. Third-party software lives under /usr/local here — a host's own /etc
+  # belongs to the base system — so that is where both this script and the
+  # agent's config go. pkg creates no service account and there is no systemctl,
+  # so the agent runs as root, as an OPNsense box expects of one.
+  mkdir -p /usr/local/etc/rc.d
+  cat > /usr/local/etc/rc.d/vigil_agent << 'EOF'
+#!/bin/sh
+# PROVIDE: vigil_agent
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+. /etc/rc.subr
+name="vigil_agent"
+rcvar="vigil_agent_enable"
+command="/usr/sbin/daemon"
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/bin/vigil-agent"
+command_args="-r -P ${pidfile} -o /var/log/vigil-agent.log /usr/local/bin/vigil-agent -c /usr/local/etc/vigil/agent.yml"
+load_rc_config $name
+: ${vigil_agent_enable:="NO"}
+run_rc_command "$1"
+EOF
+  chmod 0755 /usr/local/etc/rc.d/vigil_agent
+  sysrc vigil_agent_enable=YES
+  # The same two-step as the other platforms: start now only when this run gave
+  # the host a token, or when an agent was already running and must pick up what
+  # this install just wrote.
+  if [ -n "${VIGIL_TOKEN:-}" ] || service vigil_agent status >/dev/null 2>&1; then
+    service vigil_agent start
+    echo "Vigil agent installed and started."
+    echo "Approve this host in Vigil Settings > Enrollment Queue."
+  else
+    echo "Vigil agent installed with a generated agent token."
+    echo "  1. service vigil_agent start"
+    echo "  2. Approve the host in Vigil Settings > Enrollment Queue"
+  fi
+
 elif [ "$OS" = "darwin" ]; then
   PLIST_PATH="/Library/LaunchDaemons/com.susquehannasyntax.vigil-agent.plist"
   cat > "$PLIST_PATH" << 'EOF'
@@ -456,6 +510,6 @@ EOF
 
 else
   echo "Vigil agent installed to /usr/local/bin/vigil-agent"
-  echo "Edit /etc/vigil/agent.yml and start the agent manually."
+  echo "Edit "$CONF_DIR"/agent.yml and start the agent manually."
 fi
 {% endautoescape %}

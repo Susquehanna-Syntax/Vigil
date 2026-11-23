@@ -26,6 +26,7 @@ import threading
 import time
 from pathlib import Path
 
+from .. import update_guard
 from ..config import AgentConfig
 from ..executor import ActionOutput
 from ..procenv import clean_env
@@ -145,7 +146,8 @@ def _looks_like_zip(path: str) -> bool:
         return False
 
 
-def _stage_onedir_update(archive_path: str, current_exe: Path) -> None:
+def _stage_onedir_update(archive_path: str, current_exe: Path, *, config=None,
+                         to_version: str = "unknown") -> None:
     """Unpack a onedir update beside the install and swap it in on restart.
 
     Windows cannot replace a running executable — the file is locked for as
@@ -174,11 +176,23 @@ def _stage_onedir_update(archive_path: str, current_exe: Path) -> None:
         zf.extractall(staging)
     os.unlink(archive_path)
 
-    if not list(staging.rglob(current_exe.name)):
+    staged = list(staging.rglob(current_exe.name))
+    if not staged:
         shutil.rmtree(staging, ignore_errors=True)
         raise ValueError(
             f"the update archive contains no {current_exe.name}; "
             "refusing to swap it in")
+    if config is not None:
+        # The staged build proves itself where it lies, before the service is
+        # touched. A running service cannot put its own folder back, so on
+        # Windows this check is the whole protection.
+        try:
+            to_version = update_guard.run_preflight(staged[0], config) or to_version
+        except ValueError:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        update_guard.begin(config.data_dir, to_version=to_version,
+                           exe=current_exe, previous=None)
 
     # A detached cmd: this process is about to be stopped, so the swap cannot
     # run inside it. Waits for the service to stop before touching anything.
@@ -225,6 +239,11 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         elif sys.platform == "darwin":
             # Apple Silicon only since 2026.15: no Intel build is published.
             platform = "darwin-arm64" if os.uname().machine == "arm64" else "darwin-amd64"
+        elif sys.platform.startswith("freebsd"):
+            machine = os.uname().machine
+            if machine not in ("amd64", "x86_64"):
+                raise RuntimeError(f"No Vigil agent build for FreeBSD on {machine}")
+            platform = "freebsd-amd64"
         else:
             machine = os.uname().machine
             platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
@@ -272,24 +291,35 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
                 f"Downloaded agent binary failed SHA-256 verification: "
                 f"expected {expected_sha}, got {actual_sha}"
             )
+        new_version = resp.headers.get("X-Vigil-Version", "unknown")
         if _looks_like_zip(tmp_path):
             # Windows ships a PyInstaller --onedir build as a zip, because a
             # --onefile executable cannot host a Windows service. Writing that
             # archive over the service binary would replace the agent with a
             # zip file and brick the host, so the whole directory is swapped
             # instead, after the service has stopped and released its files.
-            _stage_onedir_update(tmp_path, current_exe)
+            # The staged build proves itself before the helper is started.
+            _stage_onedir_update(tmp_path, current_exe, config=config,
+                                 to_version=new_version)
         else:
             os.chmod(tmp_path, 0o755)
-            os.replace(tmp_path, current_exe)
+            # The new build proves it runs here and reaches the server before
+            # it replaces the agent that could have said it does not.
+            new_version = update_guard.run_preflight(Path(tmp_path), config) or new_version
+            previous = update_guard.keep_previous(current_exe)
+            update_guard.begin(config.data_dir, to_version=new_version,
+                               exe=current_exe, previous=previous)
+            try:
+                os.replace(tmp_path, current_exe)
+            except OSError:
+                update_guard.forget(config.data_dir)
+                raise
     except Exception:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
-
-    new_version = resp.headers.get("X-Vigil-Version", "unknown")
 
     # Self-heal proxy egress: reload the unit with any /etc/environment
     # proxy *before* the restart below picks up the new binary, so a
@@ -299,30 +329,7 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
 
     def _restart_after_delay():
         time.sleep(3)
-        try:
-            if sys.platform == "win32":
-                subprocess.run(["sc", "stop", "vigil-agent"], timeout=10,
-                               capture_output=True, env=clean_env())
-                time.sleep(2)
-                subprocess.run(["sc", "start", "vigil-agent"], timeout=10,
-                               capture_output=True, env=clean_env())
-            elif sys.platform == "darwin":
-                subprocess.run(
-                    ["launchctl", "stop", "com.susquehannasyntax.vigil-agent"],
-                    timeout=10, capture_output=True, env=clean_env(),
-                )
-                time.sleep(1)
-                subprocess.run(
-                    ["launchctl", "start", "com.susquehannasyntax.vigil-agent"],
-                    timeout=10, capture_output=True, env=clean_env(),
-                )
-            else:
-                subprocess.run(
-                    ["systemctl", "restart", "vigil-agent"],
-                    timeout=10, capture_output=True, env=clean_env(),
-                )
-        except Exception:  # noqa: S110 — the swap already landed; nothing left to do
-            pass
+        update_guard.restart_service()
 
     t = threading.Thread(target=_restart_after_delay, daemon=True)
     t.start()

@@ -44,7 +44,9 @@ class InstallerReinstall(SimpleTestCase):
             config = os.path.join(tmp, "agent.yml")
             with open(config, "w") as fh:
                 fh.write(config_text)
-            line = self._reinstall_sed_line().replace("/etc/vigil/agent.yml", config)
+            # install.sh spells its config paths as $CONF_DIR (see the FreeBSD
+            # platform choice); point that at this scratch file.
+            line = self._reinstall_sed_line().replace("$CONF_DIR/agent.yml", config)
             proc = subprocess.run(
                 ["bash", "-c", line],
                 env={**os.environ, "VIGIL_TOKEN": token},
@@ -75,14 +77,14 @@ class InstallerReinstall(SimpleTestCase):
     def test_config_dir_is_made_traversable(self):
         lines = self.sh.splitlines()
         for i, line in enumerate(lines):
-            if line.strip() == "mkdir -p /etc/vigil":
+            if line.strip() == "mkdir -p $CONF_DIR":
                 next_code = lines[i + 1].strip()
                 while next_code.startswith("#"):
                     i += 1
                     next_code = lines[i + 1].strip()
-                self.assertEqual(next_code, "chmod 0755 /etc/vigil")
+                self.assertEqual(next_code, "chmod 0755 $CONF_DIR")
                 return
-        self.fail("no `mkdir -p /etc/vigil` in install.sh")
+        self.fail("no `mkdir -p $CONF_DIR` in install.sh")
 
     def test_a_running_agent_is_restarted(self):
         self.assertIn("systemctl restart vigil-agent", self.sh)

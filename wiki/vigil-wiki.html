@@ -1328,6 +1328,36 @@ cosign verify-blob vigil-agent-linux-amd64 \
 
       <h3>Agent builds</h3>
       <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Apple Silicon only; Intel Macs are not supported from 2026.15) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
+
+      <h3 id="agent-updates">How an agent updates itself safely</h3>
+      <p class="prose">An update replaces the one program that could report that the update went wrong, so the agent checks around the swap, on the host:</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">
+            <strong>The download is verified</strong><br>
+            Its SHA-256 must match the one inside the signed task.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>The new build proves itself before anything is replaced</strong><br>
+            The running agent starts it with its own config. It loads every module, runs a real collection and makes one authenticated round trip to Vigil. A build that cannot start on this machine, or cannot reach Vigil with this config, is never installed: the task ends with the reason and the old agent keeps running.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>The old build is kept until the new one checks in</strong><br>
+            The first check-in that succeeds confirms the update, and the old build is deleted.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>If check-ins keep failing, the agent goes back</strong><br>
+            After 3 failed check-ins in a row, and at least 5 minutes of running, the new agent puts the old build back and restarts into it. The old agent then tells Vigil the update was rolled back and why. Vigil marks that host's update task failed, so a staged rollout of a bad agent release halts at its failure threshold, and raises an alert that the next confirmed update resolves.
+          </div>
+        </div>
+      </div>
+      <p class="prose">The API shows the outcome on each host as <code>agent_update</code>: <code>confirmed</code>, <code>rolled_back</code> or <code>not_applied</code>, with the two versions and the reason. Putting the old build back is for Linux and macOS. A Windows install is a folder its own running service cannot replace, so there the proof before the swap is the protection, and the outcome is still reported. Agents from before 2026.17 update the old way; this starts with the first update a 2026.17 agent performs.</p>
     </section>
     <div class="divider"></div>
 
@@ -1352,6 +1382,12 @@ cosign verify-blob vigil-agent-linux-amd64 \
           </tbody>
         </table>
       </div>
+
+      <p class="prose">CPU usage is the average since the previous check-in, per core and in total, so a burst between two check-ins shows in the number. Only an agent's first reading after it starts is a one-second sample.</p>
+
+      <h3 id="agent-footprint">What the agent costs a host</h3>
+      <p class="prose">The agent can measure itself. <code>vigil-agent measure</code> runs the same local collection a check-in runs, and a software inventory scan, and reports its installed size, start-up time, memory at rest, the CPU and time of a check-in, and the scan's time and peak memory. It reads no config and sends nothing, so it is safe on any host. <code>--json</code> prints the numbers for a script. On a Debian 13 host the Linux agent is a 14.8 MB file, holds about 43 MB of memory between check-ins, and spends about 40 ms of CPU on each one. The table for each platform is in <code>docs/agent-footprint.md</code> in the repository.</p>
+      <p class="prose">The software scan's memory is mostly the package managers it asks. Flatpak needs about 500 MB for a moment to list available updates, so the agent skips that one lookup when no flatpak app is installed or when the host has less than 1 GB of memory available; the scan then says it was skipped, and the installed apps are still listed.</p>
 
       <h3>Reading the charts</h3>
       <p>The buttons above the gauges (<code>1h</code>, <code>6h</code>, <code>24h</code>, <code>7d</code>) set how far back every chart on the page looks. Changing the range animates rather than snapping, so you can see which way the window moved.</p>

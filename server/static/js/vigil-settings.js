@@ -118,6 +118,113 @@ async function loadAgentInfo() {
   } catch (_) {}
 }
 
+function fleetVersionLabel(version) {
+  return version ? `v${version}` : 'Unknown';
+}
+
+// Fleet versions under the Agent Binary pane. A viewer without access gets a
+// failed request, and then the block stays empty.
+async function loadFleetVersions() {
+  const el = document.getElementById('fleet-versions');
+  if (!el) return;
+  el.textContent = '';
+  let data;
+  try {
+    data = await apiJson('/api/v1/hosts/agent-versions/');
+  } catch (_) {
+    return;
+  }
+  const total = data.total || 0;
+  const expected = data.expected || '';
+  const outdated = data.outdated_hosts || 0;
+  const noun = total === 1 ? 'host' : 'hosts';
+
+  const label = document.createElement('div');
+  label.className = 'fleet-versions-label';
+  label.textContent = 'Fleet versions';
+  el.appendChild(label);
+
+  const summary = document.createElement('div');
+  summary.className = 'fleet-versions-summary';
+  el.appendChild(summary);
+  if (!total) {
+    summary.textContent = 'No approved hosts yet.';
+    return;
+  }
+  if (!expected) {
+    summary.textContent = `${total} ${noun}.`;
+  } else if (outdated > 0) {
+    summary.textContent = `${total} ${noun}. ${outdated} on an older agent than v${expected}.`;
+  } else {
+    summary.textContent = total === 1
+      ? `The only host runs v${expected}.`
+      : `All ${total} hosts run v${expected}.`;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'fleet-versions-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['Version', 'Hosts', 'Status'].forEach((text) => {
+    const th = document.createElement('th');
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  (data.versions || []).forEach((v) => {
+    const tr = document.createElement('tr');
+    const verCell = document.createElement('td');
+    verCell.className = 'mono';
+    verCell.textContent = fleetVersionLabel(v.version);
+    const hostsCell = document.createElement('td');
+    hostsCell.textContent = String(v.hosts);
+    const statusCell = document.createElement('td');
+    if (v.current) {
+      statusCell.className = 'fleet-status-current';
+      statusCell.textContent = 'Current';
+    } else if (v.outdated) {
+      statusCell.className = 'fleet-status-outdated';
+      statusCell.textContent = 'Outdated';
+    } else if (v.version && expected) {
+      // Ahead of the build this server ships: updated from elsewhere, or a
+      // server that has not been upgraded yet. Neither is a fault here.
+      statusCell.className = 'fleet-status-newer';
+      statusCell.textContent = 'Newer than this server';
+    }
+    tr.appendChild(verCell);
+    tr.appendChild(hostsCell);
+    tr.appendChild(statusCell);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
+
+  const rolled = data.rolled_back || [];
+  if (rolled.length) {
+    const title = document.createElement('div');
+    title.className = 'fleet-rollback-title';
+    title.textContent = 'Rolled back in the last 30 days';
+    el.appendChild(title);
+    const list = document.createElement('ul');
+    list.className = 'fleet-rollback-list';
+    rolled.forEach((r) => {
+      const li = document.createElement('li');
+      li.textContent = `${r.hostname}: ${fleetVersionLabel(r.to_version)} back to ${fleetVersionLabel(r.from_version)}`;
+      if (r.reason) {
+        const reason = document.createElement('span');
+        reason.className = 'fleet-rollback-reason';
+        reason.textContent = r.reason;
+        li.appendChild(reason);
+      }
+      list.appendChild(li);
+    });
+    el.appendChild(list);
+  }
+}
+
 function copyInstallCmd() {
   const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
   copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
@@ -152,6 +259,7 @@ async function uploadAgentBinary() {
     showToast(`Uploaded ${platform}${version ? ' v' + version : ''}`, 'success');
     fileInput.value = '';
     loadAgentInfo();
+    loadFleetVersions();
   } catch (e) {
     showToast('Upload failed: ' + e.message, 'error');
   }

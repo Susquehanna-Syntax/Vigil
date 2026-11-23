@@ -10,6 +10,7 @@ from .basic import collect_cpu, collect_disk, collect_memory, collect_network
 from .gpu import collect_gpu
 from .processes import collect_top_processes
 from .temperatures import collect_temperatures
+from .zfs import collect_zfs
 
 
 def collect_all(config=None) -> list[dict]:
@@ -32,6 +33,7 @@ def collect_all(config=None) -> list[dict]:
          lambda: collect_top_processes(watch=watch)),
         ("collect_temperatures", collect_temperatures),
         ("collect_gpu", lambda: collect_gpu(extended)),
+        ("collect_zfs", collect_zfs),
     ]
     for name, fn in collectors:
         try:

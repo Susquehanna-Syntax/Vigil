@@ -23,6 +23,7 @@ from . import (
     netmap,
     sessions,
     software,
+    update_guard,
     verify,
     windows_update,
 )
@@ -669,6 +670,21 @@ def main() -> None:
 
         sys.exit(_allowscript_main(sys.argv[2:], _cli_config_path))
 
+    # `measure` reports what the agent costs this machine. It reads no config
+    # and sends nothing, so it is dispatched before either is looked at.
+    if len(sys.argv) > 1 and sys.argv[1] == "measure":
+        from .measure import main as _measure_main
+
+        sys.exit(_measure_main(sys.argv[2:]))
+
+    # `preflight` is how a downloaded build proves itself before an update
+    # swaps it in (update_guard). It needs the agent's config, nothing else.
+    if len(sys.argv) > 1 and sys.argv[1] == "preflight":
+        from .update_guard import preflight_main
+
+        logging.basicConfig(level=logging.WARNING)
+        sys.exit(preflight_main(sys.argv[2:], _cli_config_path))
+
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
     parser.add_argument(
@@ -784,6 +800,10 @@ def run_agent() -> None:
     # so alerts fire/resolve promptly after remediation. Results are shipped
     # once per refresh — re-sending them on every checkin would only insert
     # duplicate points with stale timestamps the alert engine ignores.
+    # An update in flight (update_guard): confirmed by the first check-in
+    # that works, rolled back if they keep failing.
+    probation = update_guard.Probation(config.data_dir,
+                                       restart=update_guard.restart_service)
     consecutive_failures = 0
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
     docker_refresh_after = 0.0    # monotonic deadline; 0 → check now
@@ -867,6 +887,7 @@ def run_agent() -> None:
             # Bound as defaults so each attempt sends this iteration's
             # payloads. A plain closure would also do — failover.checkin calls
             # it before the loop re-binds — but defaults say it out loud.
+            update_report = probation.report()
             try:
                 response = failover.checkin(
                     endpoints,
@@ -874,7 +895,7 @@ def run_agent() -> None:
                            containers=docker_containers, resources=docker_resources,
                            updates=windows_updates, software=software_payload,
                            update_list=update_list, engines=engines,
-                           network=network_payload: client.checkin(
+                           network=network_payload, agent_update=update_report: client.checkin(
                         config, metrics,
                         inventory=inventory,
                         docker_containers=containers,
@@ -885,6 +906,7 @@ def run_agent() -> None:
                         windows_update_list=update_list,
                         container_engines=engines,
                         network=network,
+                        agent_update=agent_update,
                     ),
                 )
             except Exception:
@@ -897,6 +919,7 @@ def run_agent() -> None:
                         software._pending = software_payload
                 raise
             consecutive_failures = 0
+            probation.checkin_succeeded(reported=update_report is not None)
             docker_payload_pending = False
             server_software_digest = response.get("software_digest")
             if software_payload is not None:
@@ -935,8 +958,12 @@ def run_agent() -> None:
             status = response.get("status", "unknown")
             logger.debug("Checkin complete — status=%s tasks=%d", status, len(tasks))
 
-        except Exception:
+        except Exception as exc:
             consecutive_failures += 1
+            if probation.checkin_failed(exc):
+                # The previous agent is back on disk and a restart is coming.
+                logger.error("Stopping: the update was rolled back")
+                break
             # Back off on repeated failures, cap at 5 minutes
             backoff = min(consecutive_failures * config.checkin_interval, 300)
             logger.exception(
