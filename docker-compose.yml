@@ -145,7 +145,7 @@ services:
     # Apache Guacamole's RDP speaker. Vigil hands it a one-shot port back to
     # the agent and relays its instructions to the browser; nothing here
     # publishes a port, because only this container's peer is the web one.
-    image: guacamole/guacd:1.5.5
+    image: guacamole/guacd:1.6.0
     restart: unless-stopped
     profiles: ["rdp"]
     volumes:
