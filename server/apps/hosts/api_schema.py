@@ -713,7 +713,7 @@ class HostsDeviceCheckSerializer(serializers.Serializer):
     """One check on a device, as ``device_checks`` renders it."""
 
     id = serializers.CharField()
-    kind = serializers.CharField(help_text="icmp, tcp, http, dns or snmp.")
+    kind = serializers.CharField(help_text="icmp, tcp, http, dns, snmp or ssh.")
     params = serializers.DictField(help_text="Cleaned per kind; unknown keys are dropped.")
     has_community = serializers.BooleanField(
         help_text="Whether an SNMP community is stored. It is never returned.")
@@ -721,7 +721,10 @@ class HostsDeviceCheckSerializer(serializers.Serializer):
         help_text="SNMPv3 only: whether an auth password is stored. It is never returned.")
     has_priv_password = serializers.BooleanField(
         help_text="SNMPv3 only: whether a privacy password is stored. It is never returned.")
-    interval_seconds = serializers.IntegerField(help_text="30 to 86400.")
+    has_key = serializers.BooleanField(
+        help_text="SSH only: whether a private key is stored. It is never returned; the public "
+                  "half is params.public_key.")
+    interval_seconds = serializers.IntegerField(help_text="30 to 86400 (an SSH check: 900 or more).")
     enabled = serializers.BooleanField()
     poller = serializers.CharField(
         allow_null=True,
@@ -733,7 +736,7 @@ class HostsDeviceCheckSerializer(serializers.Serializer):
 class HostsDeviceCheckWriteSerializer(serializers.Serializer):
     """The body a device check is created or patched with. Every field is optional on PATCH."""
 
-    kind = serializers.CharField(required=False, help_text="icmp, tcp, http, dns or snmp.")
+    kind = serializers.CharField(required=False, help_text="icmp, tcp, http, dns, snmp or ssh (Business).")
     params = serializers.DictField(
         required=False,
         help_text="Cleaned per kind; unknown keys are dropped. For SNMP: host, port, oids, "
@@ -748,6 +751,9 @@ class HostsDeviceCheckWriteSerializer(serializers.Serializer):
     priv_password = serializers.CharField(
         required=False,
         help_text="SNMPv3 only. Stored encrypted and never returned.")
+    rotate_key = serializers.BooleanField(
+        required=False,
+        help_text="SSH only: make a new key pair. The new public key is in params.public_key.")
     interval_seconds = serializers.IntegerField(required=False)
     enabled = serializers.BooleanField(required=False)
     poller = serializers.CharField(
