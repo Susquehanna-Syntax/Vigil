@@ -287,8 +287,8 @@ jobs:
   # network (scripts/agent-in-container.sh); on macOS and Windows it runs on
   # the runner itself, as root / Administrator. The server is this commit on
   # SQLite: these jobs test the agent's path, the test job tests Postgres.
-  # New in sprint M2 and not yet required by publish: they become required
-  # once they have been green on a pull request.
+  # Required by publish since sprint M2, once they had been green on every
+  # sprint branch's run (M7, M8, M9).
   agents:
     name: Agent end-to-end — ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -368,7 +368,8 @@ jobs:
   # pass every healthcheck, serve the sign-in page, refuse the old default
   # database password, on a second boot keep the secrets it made, and restore
   # a backup into a brand-new install.
-  # New in sprint M3 and not yet required by publish.
+  # Required by publish since sprint M2, once it had been green on every
+  # sprint branch's run.
   compose-smoke:
     name: Compose from an empty .env
     runs-on: ubuntu-latest
@@ -990,8 +991,8 @@ jobs:
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, js-tests, e2e, upgrade, pip-audit, security-scan, build-agent,
-            smoke-macos-install]
+    needs: [test, js-tests, e2e, agents, compose-smoke, upgrade, pip-audit, security-scan,
+            build-agent, smoke-macos-install]
     # What a push publishes, once every check above has passed:
     #   v2026.17.0       -> 2026.17.0 and latest        (production)
     #   v2026.17.0-rc1   -> 2026.17.0-rc1 and rc-latest (release candidate)
