@@ -115,6 +115,7 @@
         <div id="ai-providers-list" class="ai-providers-list"></div>
         <div class="bl-editor set-editor-flush" id="ap-form" data-editing="">
           <h3 id="ap-form-title">{% translate "Add a provider" %}</h3>
+          <div class="setting-grid">
           <div class="setting-row"><label>{% translate "Name" %}</label><input type="text" class="form-control" id="ap-name" placeholder='{% translate "e.g. Homelab qwopus" %}'></div>
           <div class="setting-row"><label>{% translate "Kind" %}</label>
             <select class="form-control" id="ap-kind">
@@ -123,14 +124,15 @@
             </select></div>
           <div class="setting-row"><label>{% translate "Base URL" %}</label><input type="text" class="form-control" id="ap-url" placeholder='{% translate "http://10.0.0.108:11434/v1" %}'></div>
           <div class="setting-row"><label>{% translate "Model" %}</label><input type="text" class="form-control" id="ap-model" placeholder='{% translate "qwopus / gpt-4o-mini / claude-sonnet-..." %}'></div>
-          <div class="setting-row"><label>{% translate "Reasoning effort" %}</label>
+          <div class="setting-row setting-row-wide"><label>{% translate "Reasoning effort" %}</label>
             <select class="form-control" id="ap-effort">
               <option value="">{% translate "Model default" %}</option>
               <option value="low">{% translate "Low" %}</option>
               <option value="medium">{% translate "Medium" %}</option>
               <option value="high">{% translate "High" %}</option>
             </select><p class="bl-hint">{% blocktranslate %}For thinking models (Qwen, DeepSeek, o-series). Low answers in well under a minute where the default can take five. Leave on Model default for models that do not reason.{% endblocktranslate %}</p></div>
-          <div class="setting-row"><label>{% translate "API key" %}</label><input type="password" class="form-control" id="ap-key" placeholder='{% translate "blank = keyless local / keep current" %}'><p class="bl-hint" id="ap-key-note"></p></div>
+          <div class="setting-row setting-row-wide"><label>{% translate "API key" %}</label><input type="password" class="form-control" id="ap-key" placeholder='{% translate "blank = keyless local / keep current" %}'><p class="bl-hint" id="ap-key-note"></p></div>
+          </div>
           <div class="bl-editor-actions">
             <button class="btn btn-mint btn-sm" id="ap-save">{% translate "Save provider" %}</button>
             <button class="btn btn-peach btn-sm" id="ap-new">{% translate "Clear" %}</button>
@@ -145,6 +147,7 @@
         <h3>{% translate "Civil SSO" %}</h3>
         <p class="muted">{% blocktranslate %}Opt in to one account across every SQSY app (Vigil, Jackil, Sigil, Turnstil) via a Civil identity server. Local login always keeps working; when Civil is down, existing sessions are unaffected. Leave disabled for a standalone install.{% endblocktranslate %}</p>
         <p class="muted" id="civil-env-note" hidden>{% blocktranslate %}CIVIL_URL is set by an environment variable, which overrides anything here.{% endblocktranslate %}</p>
+        <div class="setting-grid">
         <div class="setting-row">
           <label>{% translate "Civil URL" %}</label>
           <input type="text" class="form-control" id="civil-url" placeholder='{% translate "http://civil.lan:8100" %}'>
@@ -152,6 +155,7 @@
         <div class="setting-row">
           <label>{% translate "This app's slug (as registered in Civil)" %}</label>
           <input type="text" class="form-control" id="civil-slug" placeholder='{% translate "vigil" %}'>
+        </div>
         </div>
         <label class="setting-check"><input type="checkbox" id="civil-enabled"> {% translate "Enable Civil sign-in" %}</label>
         <p class="muted" id="civil-state"></p>
@@ -326,12 +330,14 @@
 
       <div class="section-label settings-section-later">{% translate "Add a relay" %}</div>
       <div class="totp-card">
+        <div class="setting-grid">
         <div class="setting-row"><label for="relay-name">{% translate "Name" %}</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder='{% translate "Edge relay" %}'></div>
         <div class="setting-row"><label for="relay-location">{% translate "Location (optional)" %}</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder='{% translate "Frankfurt DC" %}'></div>
         <div class="setting-row"><label for="relay-url">{% translate "Address agents use" %}</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder='{% translate "https://relay.example.com" %}'></div>
-        <div class="setting-row"><label for="relay-priority">{% translate "Order" %}</label>
+        <div class="setting-row setting-row-wide"><label for="relay-priority">{% translate "Order" %}</label>
           <input type="number" class="form-control relay-priority-field" id="relay-priority" value="100" min="0" max="1000">
           <div class="totp-sub">{% translate "Agents try lower numbers first when their own address stops answering." %}</div>
+        </div>
         </div>
         <button class="btn btn-mint btn-sm" data-act="addRelay">{% translate "Add relay" %}</button>
       </div>
@@ -347,6 +353,7 @@
 
       <div class="section-label set-label-far">{% translate "Add a user" %}</div>
       <div class="totp-card">
+        <div class="setting-grid">
         <div class="setting-row"><label>{% translate "Username" %}</label><input type="text" class="form-control" id="nu-username" placeholder='{% translate "e.g. jsmith" %}' autocomplete="off"></div>
         <div class="setting-row"><label>{% translate "Email" %}</label><input type="email" class="form-control" id="nu-email" placeholder='{% translate "optional" %}' autocomplete="off"></div>
         <div class="setting-row"><label>{% translate "Password" %}</label><input type="password" class="form-control" id="nu-password" placeholder='{% translate "at least 8 characters" %}' autocomplete="new-password"></div>
@@ -356,6 +363,7 @@
             <option value="operator">{% translate "Operator (Business)" %}</option>
             <option value="admin">{% translate "Admin" %}</option>
           </select></div>
+        </div>
         <div class="set-actions-center">
           <button class="btn btn-mint btn-sm" id="nu-create" data-act="createUser">{% translate "Create user" %}</button>
           <span id="nu-result" class="muted"></span>
@@ -385,9 +393,11 @@
 
       <div class="section-label set-label-far">{% translate "Add a site" %}</div>
       <div class="totp-card">
+        <div class="setting-grid">
         <div class="setting-row"><label>{% translate "Name" %}</label><input type="text" class="form-control" id="ns-name" placeholder='{% translate "e.g. West Campus" %}' autocomplete="off"></div>
         <div class="setting-row"><label>{% translate "Slug" %}</label><input type="text" class="form-control" id="ns-slug" placeholder='{% translate "west-campus" %}' autocomplete="off"></div>
         <div class="setting-row"><label>{% translate "Description" %}</label><input type="text" class="form-control" id="ns-description" placeholder='{% translate "optional" %}' autocomplete="off"></div>
+        </div>
         <div class="set-actions-center">
           <button class="btn btn-mint btn-sm" id="ns-create" data-act="createSite">{% translate "Create site" %}</button>
           <span id="ns-note" class="muted"></span>
@@ -399,6 +409,7 @@
       <div class="section-label">{% translate "Branding" %}</div>
       <div class="totp-card">
         <div class="totp-sub ad-sub-flush">{% blocktranslate %}Replace the Vigil identity with your own across the dashboard and the sign-in page. Leave a field blank to keep the Vigil default.{% endblocktranslate %}</div>
+        <div class="setting-grid">
         <div class="setting-row"><label>{% translate "Product name" %}</label><input type="text" class="form-control" id="br-product" placeholder='{% translate "Vigil" %}' autocomplete="off" maxlength="60"></div>
         <div class="setting-row"><label>{% translate "Logo URL" %}</label><input type="url" class="form-control" id="br-logo" placeholder='{% translate "https://example.com/logo.png" %}' autocomplete="off"></div>
         <div class="setting-row"><label>{% translate "Accent color" %}</label>
@@ -409,6 +420,7 @@
         </div>
         <div class="setting-row"><label>{% translate "Footer text" %}</label><input type="text" class="form-control" id="br-footer" placeholder='{% translate "Vigil — A Susquehanna Syntax product" %}' autocomplete="off" maxlength="200"></div>
         <div class="setting-row"><label>{% translate "Support URL" %}</label><input type="url" class="form-control" id="br-support" placeholder='{% translate "https://example.com/support" %}' autocomplete="off"></div>
+        </div>
         <div class="set-actions-center">
           <button class="btn btn-mint btn-sm" id="br-save">{% translate "Save branding" %}</button>
           <p id="br-note" class="muted set-label-flush"></p>

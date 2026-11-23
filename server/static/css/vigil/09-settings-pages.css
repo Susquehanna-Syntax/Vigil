@@ -169,6 +169,13 @@ code.code-tight-sm {
 /* Settings rows / provider cards */
 .setting-row { margin-bottom: 14px; }
 .setting-row > label { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+/* Short fields side by side where there is room, one column on a narrow screen. */
+.setting-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 20px;
+}
+.setting-grid > .setting-row { min-width: 0; }
+.setting-grid > .setting-row-wide { grid-column: 1 / -1; }
 .setting-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
 .setting-check input { accent-color: var(--mint); }
 .provider-row { display: flex; justify-content: space-between; align-items: center;
