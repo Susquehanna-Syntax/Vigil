@@ -1,3 +1,3 @@
 """The Vigil relay container."""
 
-__version__ = "2026.16.0"
+__version__ = "2026.17.0"

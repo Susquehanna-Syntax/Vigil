@@ -20,7 +20,7 @@ async function loadStatusPages() {
     // rather than failing the whole list.
     try {
       _spDevices = await apiJson('/api/v1/status-pages/devices/');
-    } catch { _spDevices = []; }
+    } catch { _spDevices = []; /* state-ok: devices are optional on a page; the host list still draws */ }
     if (!pages.length) {
       list.innerHTML = `<div class="empty-block">
         <h4>${escHtml(t('No status pages yet'))}</h4>
@@ -60,7 +60,7 @@ function _spCard(p) {
       <span class="sp-host-status ${d.state === 'up' ? 'up' : d.state === 'down' ? 'down' : 'unknown'}">
         <span class="sp-device-dot ${d.state === 'up' || d.state === 'down' ? d.state : 'none'}"></span>${d.state || 'no checks'}</span>
     </div>`;
-  }).join('') || '<p class="muted-note">No devices yet. Add them on the Inventory page.</p>';
+  }).join('') || `<p class="muted-note">${escHtml(t('No devices yet. Add them on the Inventory page.'))}</p>`;
 
   const branding = p.is_primary ? '' : `
     <label class="setting-check sp-branding-check">
@@ -79,7 +79,7 @@ function _spCard(p) {
         : `<span class="muted-note">${escHtml(t('Enable to publish. Nobody can see it while off.'))}</span>`}</div>
     <div class="section-label sp-section-label-flush">${escHtml(t('Machines on this page'))} <span class="muted-note sp-note-plain">${escHtml(t('— none checked = all hosts'))}</span></div>
     <div class="sp-hosts">${hostRows}</div>
-    <div class="section-label">Devices <span class="muted-note" style="text-transform:none;letter-spacing:0;font-weight:400;">— only the ones checked</span></div>
+    <div class="section-label">${escHtml(t('Devices'))} <span class="muted-note sp-note-plain">${escHtml(t('— only the ones checked'))}</span></div>
     <div class="sp-hosts">${deviceRows}</div>
     ${branding}
     <div class="sp-card-actions">

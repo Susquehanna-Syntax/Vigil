@@ -196,7 +196,7 @@ async function refreshDeviceAlerts() {
     _renderDeviceAlerts(alerts);
   } catch (e) {
     // A failed device block must not take the host alert list down with it.
-    showToast('Failed to load device alerts: ' + e.message, 'error');
+    showToast(t('Failed to load device alerts: {message}', { message: e.message }), 'error');
   }
 }
 
@@ -242,7 +242,7 @@ function _deviceAlertRow(alert) {
     const ack = document.createElement('button');
     ack.className = 'btn btn-sm btn-outline';
     ack.type = 'button';
-    ack.textContent = 'Acknowledge';
+    ack.textContent = t('Acknowledge');
     // data-act, not onclick: the page's CSP allows no inline handlers.
     ack.dataset.act = 'acknowledgeDeviceAlert';
     ack.dataset.a1 = alert.id;
@@ -254,10 +254,10 @@ function _deviceAlertRow(alert) {
 async function acknowledgeDeviceAlert(alertId) {
   try {
     await apiJson(`/api/v1/alerts/devices/${alertId}/acknowledge/`, { method: 'POST' });
-    showToast('Device alert acknowledged', 'success');
+    showToast(t('Device alert acknowledged'), 'success');
     refreshAlerts();
   } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
+    showToast(t('Failed: {message}', { message: e.message }), 'error');
   }
 }
 

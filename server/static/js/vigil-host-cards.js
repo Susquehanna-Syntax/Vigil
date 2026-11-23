@@ -269,14 +269,14 @@ function _renderDetailAgentUpdate(u) {
     // An old success is not news.
     if (_isStaleUpdateStamp(u.at)) { el.hidden = true; return; }
     el.classList.add('detail-agent-update--ok');
-    head.textContent = `Updated to v${u.to_version || '?'}` + (when ? ` ${when}` : '');
+    head.textContent = t('Updated to v{version}', { version: u.to_version || '?' }) + (when ? ` ${when}` : '');
   } else if (u.state === 'rolled_back') {
     el.classList.add('detail-agent-update--bad');
-    head.textContent = `Update to v${u.to_version || '?'} rolled back to v${u.from_version || '?'}`
+    head.textContent = t('Update to v{to} rolled back to v{from}', { to: u.to_version || '?', from: u.from_version || '?' })
       + (when ? ` ${when}` : '');
   } else if (u.state === 'not_applied') {
     el.classList.add('detail-agent-update--bad');
-    head.textContent = `Update to v${u.to_version || '?'} did not take effect`
+    head.textContent = t('Update to v{version} did not take effect', { version: u.to_version || '?' })
       + (when ? ` ${when}` : '');
   } else {
     el.hidden = true;
@@ -379,7 +379,7 @@ const _detailDependsState = { hostId: null, value: '' };
 
 async function _loadDetailDependsOn(hostId) {
   _detailDependsState.hostId = hostId;
-  const select = document.getElementById('detail-depends-on');
+  const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('detail-depends-on'));
   if (!select) return;
   // Never leave the previous host's choice showing while this one loads.
   const placeholder = (text) => {
@@ -388,14 +388,15 @@ async function _loadDetailDependsOn(hostId) {
     opt.textContent = text;
     select.replaceChildren(opt);
   };
-  placeholder('Loading...');
+  // A select cannot hold the shared loading block, so its one option says it.
+  placeholder(t('Fetching the hosts…'));
   select.disabled = true;
   let host;
   let all;
   try {
     [host, all] = await Promise.all([apiJson(`/api/v1/hosts/${hostId}/`), fetchAllHosts()]);
   } catch (e) {
-    if (_detailDependsState.hostId === hostId) placeholder('Could not load the hosts');
+    if (_detailDependsState.hostId === hostId) placeholder(t('Could not load the hosts'));
     return;
   }
   if (_detailDependsState.hostId !== hostId) return;
@@ -406,7 +407,7 @@ async function _loadDetailDependsOn(hostId) {
   select.replaceChildren();
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = 'Nothing';
+  none.textContent = t('Nothing');
   select.appendChild(none);
   for (const h of choices) {
     const opt = document.createElement('option');
@@ -426,6 +427,7 @@ async function _loadDetailDependsOn(hostId) {
   select.disabled = false;
 }
 
+/** @param {HTMLSelectElement} select */
 async function saveDetailDependsOn(select) {
   const hostId = _detailDependsState.hostId;
   if (!hostId) return;
@@ -438,10 +440,10 @@ async function saveDetailDependsOn(select) {
       body: JSON.stringify({ depends_on: wanted }),
     });
     _detailDependsState.value = host.depends_on ? String(host.depends_on) : '';
-    showToast(wanted ? 'Dependency saved' : 'Dependency cleared', 'success');
+    showToast(wanted ? t('Dependency saved') : t('Dependency cleared'), 'success');
   } catch (e) {
     select.value = before;
-    showToast('Could not save: ' + e.message, 'error');
+    showToast(t('Could not save: {message}', { message: e.message }), 'error');
   } finally {
     select.disabled = false;
   }

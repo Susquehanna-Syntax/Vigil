@@ -13,7 +13,7 @@
 /** One sample from a metrics endpoint, as this page reads it. `time` is the API's
  *  timestamp — epoch ms — but it reaches a Date constructor below, so it is the
  *  same TimeLike vigil-utils.js types its metric helpers with. */
-/** @typedef {{labels?: Record<string, string>, time: number|string, value: number}} MonitorMetricPoint */
+/** @typedef {{labels?: Record<string, string>, time: number|string, value: number, min?: number, max?: number}} MonitorMetricPoint */
 /** A pinned host (vigil-host-cards.js, localStorage). */
 /** @typedef {{id: string, hostname: string, status: string}} Pin */
 

@@ -127,7 +127,7 @@ async function loadAgentInfo() {
 }
 
 function fleetVersionLabel(version) {
-  return version ? `v${version}` : 'Unknown';
+  return version ? `v${version}` : t('Unknown');
 }
 
 // Fleet versions under the Agent Binary pane. A viewer without access gets a
@@ -140,33 +140,33 @@ async function loadFleetVersions() {
   try {
     data = await apiJson('/api/v1/hosts/agent-versions/');
   } catch (_) {
-    return;
+    return; // state-ok: the fleet table is an extra; a viewer without access sees the pane without it
   }
   const total = data.total || 0;
   const expected = data.expected || '';
   const outdated = data.outdated_hosts || 0;
-  const noun = total === 1 ? 'host' : 'hosts';
 
   const label = document.createElement('div');
   label.className = 'fleet-versions-label';
-  label.textContent = 'Fleet versions';
+  label.textContent = t('Fleet versions');
   el.appendChild(label);
 
   const summary = document.createElement('div');
   summary.className = 'fleet-versions-summary';
   el.appendChild(summary);
   if (!total) {
-    summary.textContent = 'No approved hosts yet.';
+    summary.textContent = t('No approved hosts yet.');
     return;
   }
   if (!expected) {
-    summary.textContent = `${total} ${noun}.`;
+    summary.textContent = tn('{n} host.', '{n} hosts.', total);
   } else if (outdated > 0) {
-    summary.textContent = `${total} ${noun}. ${outdated} on an older agent than v${expected}.`;
+    summary.textContent = tn('{n} host.', '{n} hosts.', total) + ' '
+      + t('{outdated} on an older agent than v{expected}.', { outdated, expected });
   } else {
     summary.textContent = total === 1
-      ? `The only host runs v${expected}.`
-      : `All ${total} hosts run v${expected}.`;
+      ? t('The only host runs v{expected}.', { expected })
+      : t('All {total} hosts run v{expected}.', { total, expected });
   }
 
   const table = document.createElement('table');
@@ -192,15 +192,15 @@ async function loadFleetVersions() {
     const statusCell = document.createElement('td');
     if (v.current) {
       statusCell.className = 'fleet-status-current';
-      statusCell.textContent = 'Current';
+      statusCell.textContent = t('Current');
     } else if (v.outdated) {
       statusCell.className = 'fleet-status-outdated';
-      statusCell.textContent = 'Outdated';
+      statusCell.textContent = t('Outdated');
     } else if (v.version && expected) {
       // Ahead of the build this server ships: updated from elsewhere, or a
       // server that has not been upgraded yet. Neither is a fault here.
       statusCell.className = 'fleet-status-newer';
-      statusCell.textContent = 'Newer than this server';
+      statusCell.textContent = t('Newer than this server');
     }
     tr.appendChild(verCell);
     tr.appendChild(hostsCell);
@@ -214,13 +214,13 @@ async function loadFleetVersions() {
   if (rolled.length) {
     const title = document.createElement('div');
     title.className = 'fleet-rollback-title';
-    title.textContent = 'Rolled back in the last 30 days';
+    title.textContent = t('Rolled back in the last 30 days');
     el.appendChild(title);
     const list = document.createElement('ul');
     list.className = 'fleet-rollback-list';
     rolled.forEach((r) => {
       const li = document.createElement('li');
-      li.textContent = `${r.hostname}: ${fleetVersionLabel(r.to_version)} back to ${fleetVersionLabel(r.from_version)}`;
+      li.textContent = t('{host}: {to} back to {from}', { host: r.hostname, to: fleetVersionLabel(r.to_version), from: fleetVersionLabel(r.from_version) });
       if (r.reason) {
         const reason = document.createElement('span');
         reason.className = 'fleet-rollback-reason';

@@ -17,11 +17,19 @@ function _canEditChecks(deviceId) {
 }
 
 async function loadDevices() {
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('dev-content'));
+  if (wrap) showLoading(wrap);
   let rows;
   try {
     rows = await apiJson('/api/v1/hosts/devices/');
   } catch (e) {
-    rows = [];
+    // A failed load is never an empty list: the block says what did not load.
+    _devices = [];
+    _editableDevices = new Set();
+    const countEl = document.getElementById('dev-count');
+    if (countEl) countEl.textContent = '';
+    if (wrap) showLoadFailure(wrap, t('unmanaged devices'), e, loadDevices);
+    return;
   }
   _devices = Array.isArray(rows) ? rows : [];
   _editableDevices = new Set(_devices.filter((d) => d && d.can_edit_checks).map((d) => String(d.id)));
@@ -35,16 +43,15 @@ function renderDevices() {
 
   if (!_devices.length) {
     if (countEl) countEl.textContent = '';
-    wrap.innerHTML = '<div class="dev-empty">No unmanaged devices yet. Add routers, switches, '
-      + 'printers and other gear to keep a full picture of the network.</div>';
+    wrap.innerHTML = `<div class="dev-empty">${escHtml(t('No unmanaged devices yet. Add routers, switches, printers and other gear to keep a full picture of the network.'))}</div>`;
     return;
   }
-  if (countEl) countEl.textContent = _devices.length === 1 ? '1 device' : `${_devices.length} devices`;
+  if (countEl) countEl.textContent = tn('{n} device', '{n} devices', _devices.length);
 
   let html = `<div class="dev-card"><table class="ctr-table dev-table">
     <thead><tr>
-      <th>Name</th><th>Type</th><th>IP Address</th><th>MAC</th><th>Serial</th>
-      <th>Vendor</th><th>Location</th><th>Owner</th><th class="num"></th>
+      <th>${escHtml(t('Name'))}</th><th>${escHtml(t('Type'))}</th><th>${escHtml(t('IP Address'))}</th><th>${escHtml(t('MAC'))}</th><th>${escHtml(t('Serial'))}</th>
+      <th>${escHtml(t('Vendor'))}</th><th>${escHtml(t('Location'))}</th><th>${escHtml(t('Owner'))}</th><th class="num"></th>
     </tr></thead><tbody>`;
   for (const d of _devices) {
     // The dot comes from check_state, which the list query computes for every
@@ -60,7 +67,7 @@ function renderDevices() {
       <td>${escHtml(d.vendor || '—')}</td>
       <td>${escHtml(d.location || '—')}</td>
       <td>${escHtml(d.owner || '—')}</td>
-      <td class="num"><button class="btn btn-ghost btn-sm" data-device-edit="${escAttr(d.id)}">Edit</button></td>
+      <td class="num"><button class="btn btn-ghost btn-sm" data-device-edit="${escAttr(d.id)}">${escHtml(t('Edit'))}</button></td>
     </tr>`;
   }
   html += `</tbody></table></div>`;
@@ -69,21 +76,21 @@ function renderDevices() {
 
 function openDeviceModal(id) {
   const d = id ? _devices.find(x => x.id === id) : null;
-  document.getElementById('device-modal-title').textContent = d ? 'Edit Device' : 'Add Device';
-  document.getElementById('device-id').value = d ? d.id : '';
-  document.getElementById('device-name').value = d ? (d.name || '') : '';
-  sitePickFill(document.getElementById('device-site'), document.getElementById('device-site-field'),
+  document.getElementById('device-modal-title').textContent = d ? t('Edit Device') : t('Add Device');
+  /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value = d ? d.id : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-name')).value = d ? (d.name || '') : '';
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('device-site')), document.getElementById('device-site-field'),
     d ? d.site_id : null, { editing: !!d });
-  document.getElementById('device-type').value = d ? (d.device_type || 'other') : 'other';
-  document.getElementById('device-ip').value = d ? (d.ip_address || '') : '';
-  document.getElementById('device-mac').value = d ? (d.mac_address || '') : '';
-  document.getElementById('device-vendor').value = d ? (d.vendor || '') : '';
-  document.getElementById('device-location').value = d ? (d.location || '') : '';
-  document.getElementById('device-serial').value = d ? (d.serial || '') : '';
-  document.getElementById('device-warranty').value = d ? (d.warranty_end || '') : '';
-  document.getElementById('device-owner').value = d ? (d.owner || '') : '';
-  document.getElementById('device-extra').value = d ? _extraToLines(d.extra) : '';
-  document.getElementById('device-notes').value = d ? (d.notes || '') : '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('device-type')).value = d ? (d.device_type || 'other') : 'other';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-ip')).value = d ? (d.ip_address || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-mac')).value = d ? (d.mac_address || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-vendor')).value = d ? (d.vendor || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-location')).value = d ? (d.location || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-serial')).value = d ? (d.serial || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-warranty')).value = d ? (d.warranty_end || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-owner')).value = d ? (d.owner || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-extra')).value = d ? _extraToLines(d.extra) : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-notes')).value = d ? (d.notes || '') : '';
   document.getElementById('device-delete-btn').style.display = d ? 'inline-flex' : 'none';
   document.getElementById('device-overlay').classList.add('open');
   document.getElementById('device-modal').classList.add('open');
@@ -98,8 +105,11 @@ function closeDeviceModal() {
 
 /* ── Checks: what a poller reports about this device (S9) ─────────────────── */
 
-const DEVICE_CHECK_KINDS = { icmp: 'Ping', tcp: 'TCP', http: 'HTTP', dns: 'DNS', snmp: 'SNMP', ssh: 'SSH backup' };
-const NO_POLLER_HINT = 'No results yet: is a poller assigned? See Settings > Agents for hosts with poller: true';
+/** A check kind as a person reads it. The protocol acronyms are names, not words. */
+function _checkKindName(kind) {
+  const names = { icmp: t('Ping'), tcp: 'TCP', http: 'HTTP', dns: 'DNS', snmp: 'SNMP', ssh: t('SSH backup') };
+  return names[kind] || null;
+}
 
 let _checkDeviceId = null;
 // One expanded row at a time, and one Chart.js instance to go with it.
@@ -153,7 +163,7 @@ function _checkLabel(check) {
   if (check.kind === 'ssh') {
     const port = (p.port !== undefined && p.port !== null && p.port !== '' && Number(p.port) !== 22)
       ? `:${p.port}` : '';
-    return `${DEVICE_CHECK_KINDS.ssh} ${String(p.username || '').trim()}@${String(p.host || '').trim()}${port}`;
+    return `${_checkKindName('ssh')} ${String(p.username || '').trim()}@${String(p.host || '').trim()}${port}`;
   }
   if (check.kind === 'tcp') target = [p.host, p.port].filter(x => x !== undefined && x !== null && x !== '').join(':');
   else if (check.kind === 'http') target = p.url || '';
@@ -165,8 +175,8 @@ function _checkLabel(check) {
   // A v3 check says so, and whether it is encrypted: that is what an operator
   // checks first when a device refuses it.
   const kind = check.kind === 'snmp' && p.version === '3'
-    ? `SNMPv3${p.priv === false ? ' (not encrypted)' : ''}`
-    : (DEVICE_CHECK_KINDS[check.kind] || check.kind);
+    ? `SNMPv3${p.priv === false ? ` ${t('(not encrypted)')}` : ''}`
+    : (_checkKindName(check.kind) || check.kind);
   return `${kind}${target ? ` ${target}` : ''}`;
 }
 
@@ -178,7 +188,7 @@ function _checkRow(check) {
   const row = document.createElement('div');
   row.className = 'device-check-row';
   row.dataset.deviceCheckToggle = String(check.id);
-  row.title = 'Show the last 24 hours';
+  row.title = t('Show the last 24 hours');
 
   const dot = document.createElement('span');
   dot.className = 'device-check-dot' + (check.latest
@@ -191,7 +201,7 @@ function _checkRow(check) {
   // from a poller must land as the text it is.
   const label = document.createElement('span');
   label.className = 'device-check-label';
-  label.textContent = _checkLabel(check) + (check.enabled ? '' : ' (off)');
+  label.textContent = _checkLabel(check) + (check.enabled ? '' : ` ${t('(off)')}`);
   row.appendChild(label);
 
   const latency = document.createElement('span');
@@ -219,8 +229,8 @@ function _checkRow(check) {
     toggle.className = 'toggle device-check-toggle';
     toggle.setAttribute('role', 'switch');
     toggle.setAttribute('aria-checked', String(!!check.enabled));
-    toggle.setAttribute('aria-label', check.enabled ? 'Disable check' : 'Enable check');
-    toggle.title = check.enabled ? 'Enabled — click to stop polling it' : 'Disabled — click to poll it again';
+    toggle.setAttribute('aria-label', check.enabled ? t('Disable check') : t('Enable check'));
+    toggle.title = check.enabled ? t('Enabled — click to stop polling it') : t('Disabled — click to poll it again');
     toggle.dataset.act = 'toggleDeviceCheck';
     toggle.dataset.a1 = String(check.id);
     toggle.dataset.a2 = check.enabled ? '$false' : '$true';
@@ -229,7 +239,7 @@ function _checkRow(check) {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'btn btn-ghost btn-sm device-check-delete';
-    del.textContent = 'Delete';
+    del.textContent = t('Delete');
     del.dataset.act = 'deleteDeviceCheck';
     del.dataset.a1 = String(check.id);
     actions.appendChild(del);
@@ -252,7 +262,7 @@ function parseSnmpOids(text) {
     if (!line || line.startsWith('#')) continue;
     const at = line.indexOf('=');
     // Only the first '=' splits; anything after it belongs to the OID.
-    if (at < 0) return { oids: [], error: `Line ${i + 1}: write label = OID` };
+    if (at < 0) return { oids: [], error: t('Line {n}: write label = OID', { n: i + 1 }) };
     oids.push({ label: line.slice(0, at).trim(), oid: line.slice(at + 1).trim() });
   }
   return { oids, error: null };
@@ -274,7 +284,7 @@ function _snmpUptime(seconds) {
  *  ever with textContent: every one of these values comes back from a device. */
 function _snmpValuesList(extra) {
   const ORDER = ['sys_name', 'uptime_s'];
-  const NAMES = { sys_name: 'Name', uptime_s: 'Uptime' };
+  const NAMES = { sys_name: t('Name'), uptime_s: t('Uptime') };
   // 'kind' and 'target' repeat what the row itself already says.
   const keys = Object.keys(extra || {}).filter((k) => k !== 'kind' && k !== 'target');
   const ordered = ORDER.filter((k) => keys.includes(k)).concat(keys.filter((k) => !ORDER.includes(k)));
@@ -306,14 +316,14 @@ async function loadDeviceChecks(deviceId) {
   } catch (e) {
     const note = document.createElement('div');
     note.className = 'device-check-note';
-    note.textContent = e.message || 'Could not load checks';
+    note.textContent = e.message || t('Could not load checks');
     list.appendChild(note);
     return;
   }
   if (!Array.isArray(checks) || !checks.length) {
     const note = document.createElement('div');
     note.className = 'device-check-note';
-    note.textContent = 'No checks yet. A check is run by a poller at this device\'s site.';
+    note.textContent = t('No checks yet. A check is run by a poller at this device\'s site.');
     list.appendChild(note);
     return;
   }
@@ -377,14 +387,14 @@ async function toggleDeviceCheckChart(row) {
   } catch (e) {
     const note = document.createElement('div');
     note.className = 'device-check-note';
-    note.textContent = e.message || 'Could not load results';
+    note.textContent = e.message || t('Could not load results');
     holder.appendChild(note);
     return;
   }
   if (!Array.isArray(results) || !results.length) {
     const note = document.createElement('div');
     note.className = 'device-check-note';
-    note.textContent = NO_POLLER_HINT;
+    note.textContent = t('No results yet: is a poller assigned? See Settings > Agents for hosts with poller: true');
     holder.appendChild(note);
     return;
   }
@@ -419,7 +429,7 @@ async function toggleDeviceCheckChart(row) {
     type: 'line',
     data: {
       datasets: [{
-        label: 'Latency',
+        label: t('Latency'),
         data: results.map(r => ({ x: new Date(r.time).getTime(), y: r.ok ? r.latency_ms : null })),
         borderColor: tok('--mint'), borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: false, spanGaps: false,
       }],
@@ -474,7 +484,7 @@ function _interfaceTable(rows) {
   table.className = 'device-check-ifaces';
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
-  for (const title of ['Interface', 'State', 'Speed', 'In', 'Out']) {
+  for (const title of [t('Interface'), t('State'), t('Speed'), t('In'), t('Out')]) {
     const cell = document.createElement('th');
     cell.textContent = title;
     headRow.appendChild(cell);
@@ -487,7 +497,7 @@ function _interfaceTable(rows) {
     const tr = document.createElement('tr');
     // The interface's own number, as the detail endpoint wants it back.
     tr.dataset.ifIndex = String(row.index);
-    const state = row.up === true ? 'Up' : row.up === false ? 'Down' : '-';
+    const state = row.up === true ? t('Up') : row.up === false ? t('Down') : '-';
     // The state's colour class hangs on a span so the td stays plain. Names
     // come back off the device, so every cell here is a text node.
     tr.appendChild(_ifaceCell('', row.name || `if${row.index}`));
@@ -529,7 +539,7 @@ async function _loadCheckInterfaces(checkId, anchor) {
   if (_openCheckId !== checkId || !anchor.parentElement) return;
   const box = document.createElement('div');
   box.className = 'device-check-if-box';
-  box.appendChild(rows && rows.length ? _interfaceTable(rows) : _interfaceNote(failed || 'No interface data yet'));
+  box.appendChild(rows && rows.length ? _interfaceTable(rows) : _interfaceNote(failed || t('No interface data yet')));
   _checkInterfaces = box;
   anchor.after(box);
 }
@@ -565,12 +575,12 @@ async function _selectInterface(table, tr) {
   // a box it can measure.
   host.appendChild(document.createElement('canvas'));
   box.appendChild(host);
-  _interfaceChart = new Chart(host.children[0].getContext('2d'), {
+  _interfaceChart = new Chart(/** @type {HTMLCanvasElement} */ (host.children[0]).getContext('2d'), {
     type: 'line',
     data: {
       datasets: [
-        { label: 'In', data: series.map((p) => ({ x: new Date(p.time).getTime(), y: p.in_bps ?? null })), borderColor: tok('--sky'), backgroundColor: 'transparent', tension: 0.2, borderWidth: 1.6, pointRadius: 0, spanGaps: false },
-        { label: 'Out', data: series.map((p) => ({ x: new Date(p.time).getTime(), y: p.out_bps ?? null })), borderColor: tok('--lavender'), backgroundColor: 'transparent', tension: 0.2, borderWidth: 1.6, pointRadius: 0, spanGaps: false },
+        { label: t('In'), data: series.map((p) => ({ x: new Date(p.time).getTime(), y: p.in_bps ?? null })), borderColor: tok('--sky'), backgroundColor: 'transparent', tension: 0.2, borderWidth: 1.6, pointRadius: 0, spanGaps: false },
+        { label: t('Out'), data: series.map((p) => ({ x: new Date(p.time).getTime(), y: p.out_bps ?? null })), borderColor: tok('--lavender'), backgroundColor: 'transparent', tension: 0.2, borderWidth: 1.6, pointRadius: 0, spanGaps: false },
       ],
     },
     options: {
@@ -641,7 +651,7 @@ function _sshKeyLine(publicKey) {
   const wrap = document.createElement('div');
   const lead = document.createElement('div');
   lead.className = 'device-check-ssh-line';
-  lead.textContent = "Public key: add it to the device's authorized keys";
+  lead.textContent = t("Public key: add it to the device's authorized keys");
   wrap.appendChild(lead);
 
   // The key on a line of its own, wide as the panel and broken anywhere it has
@@ -656,7 +666,7 @@ function _sshKeyLine(publicKey) {
   copy.type = 'button';
   copy.className = 'btn btn-sky btn-sm device-check-ssh-copy';
   copy.dataset.sshCopy = publicKey;
-  copy.textContent = 'Copy';
+  copy.textContent = t('Copy');
   row.appendChild(copy);
   wrap.appendChild(row);
   return wrap;
@@ -667,13 +677,13 @@ function _sshHostKeyLine(hostKey, canEdit) {
   const line = document.createElement('div');
   line.className = 'device-check-ssh-line';
   const label = document.createElement('span');
-  label.textContent = 'Host key:';
+  label.textContent = t('Host key:');
   line.appendChild(label);
   if (!hostKey) {
     // Nothing to forget, so the sentence says why the panel offers no such button.
     const pending = document.createElement('span');
     pending.className = 'device-check-ssh-unpinned';
-    pending.textContent = 'not pinned yet: the first run learns it';
+    pending.textContent = t('not pinned yet: the first run learns it');
     line.appendChild(pending);
     return line;
   }
@@ -686,7 +696,7 @@ function _sshHostKeyLine(hostKey, canEdit) {
     forget.type = 'button';
     forget.className = 'btn btn-ghost btn-sm device-check-ssh-forget';
     forget.dataset.sshUnpin = '';
-    forget.textContent = 'Forget host key';
+    forget.textContent = t('Forget host key');
     line.appendChild(forget);
   }
   return line;
@@ -708,7 +718,7 @@ function _configBackupPanel(check, canEdit) {
     rotate.type = 'button';
     rotate.className = 'btn btn-ghost btn-sm device-check-ssh-rotate';
     rotate.dataset.sshRotate = '';
-    rotate.textContent = 'New key pair';
+    rotate.textContent = t('New key pair');
     panel.appendChild(rotate);
   }
   // Left empty for the list to fill, so a slow answer cannot leave its table
@@ -736,7 +746,7 @@ function _backupRow(backup) {
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.dataset.backupPick = String(backup.id);
-  box.setAttribute('aria-label', 'Select this configuration to compare with another');
+  box.setAttribute('aria-label', t('Select this configuration to compare with another'));
   pick.appendChild(box);
   tr.appendChild(pick);
 
@@ -748,7 +758,7 @@ function _backupRow(backup) {
 
   const size = document.createElement('td');
   size.className = 'device-check-backup-size';
-  size.textContent = `${(Number(backup.size || 0) / 1024).toFixed(1)} KB`;
+  size.textContent = t('{kb} KB', { kb: (Number(backup.size || 0) / 1024).toFixed(1) });
   tr.appendChild(size);
 
   const view = document.createElement('td');
@@ -756,7 +766,7 @@ function _backupRow(backup) {
   viewBtn.type = 'button';
   viewBtn.className = 'btn btn-sky btn-sm device-check-backup-view';
   viewBtn.dataset.backupView = String(backup.id);
-  viewBtn.textContent = 'View';
+  viewBtn.textContent = t('View');
   view.appendChild(viewBtn);
   tr.appendChild(view);
 
@@ -767,7 +777,7 @@ function _backupRow(backup) {
   link.className = 'btn btn-ghost btn-sm device-check-backup-download';
   link.href = `${_configBackupDetailPath(backup.id)}download/`;
   link.download = '';
-  link.textContent = 'Download';
+  link.textContent = t('Download');
   saved.appendChild(link);
   tr.appendChild(saved);
   return tr;
@@ -778,7 +788,7 @@ function _backupsTable(rows) {
   table.className = 'device-check-backups';
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
-  for (const title of ['Compare', 'Taken', 'Size', '', '']) {
+  for (const title of [t('Compare'), t('Taken'), t('Size'), '', '']) {
     const cell = document.createElement('th');
     cell.textContent = title;
     headRow.appendChild(cell);
@@ -799,7 +809,7 @@ function _compareButton() {
   compare.className = 'btn btn-ghost btn-sm device-check-backup-compare';
   compare.dataset.backupCompare = '';
   compare.disabled = true;
-  compare.textContent = 'Compare';
+  compare.textContent = t('Compare');
   return compare;
 }
 
@@ -826,11 +836,11 @@ function _pickedRows() {
 function _compareLine() {
   const picked = _pickedRows();
   if (picked.length === 2) return _compareButton();
-  const line = _backupHeading('Tick two configurations to compare them.');
+  const line = _backupHeading(t('Tick two configurations to compare them.'));
   if (picked.length === 1) {
     // Its own time cell, so the sentence cannot name a row that is not there.
     const only = document.createElement('span');
-    only.textContent = ` One so far: ${new Date(picked[0].taken_at).toLocaleString()}.`;
+    only.textContent = ' ' + t('One so far: {when}.', { when: new Date(picked[0].taken_at).toLocaleString() });
     line.appendChild(only);
   }
   return line;
@@ -879,7 +889,7 @@ async function _loadConfigBackups(checkId) {
     if (!list) return;
     list.replaceChildren();
     if (e.status === 402) {
-      list.appendChild(_backupHeading('Config backups need a Business license.'));
+      list.appendChild(_backupHeading(t('Config backups need a Business license.')));
     }
     return;
   }
@@ -891,10 +901,10 @@ async function _loadConfigBackups(checkId) {
   _dropBackupViewer();
   list.replaceChildren();
   if (!rows.length) {
-    list.appendChild(_backupHeading('No configuration kept yet: the first successful run keeps one.'));
+    list.appendChild(_backupHeading(t('No configuration kept yet: the first successful run keeps one.')));
     return;
   }
-  list.appendChild(_backupHeading('Configurations kept'));
+  list.appendChild(_backupHeading(t('Configurations kept')));
   list.appendChild(_backupsTable(rows));
   const compareLine = document.createElement('div');
   compareLine.className = 'device-check-backup-compare-line';
@@ -913,7 +923,7 @@ async function _showBackup(el) {
     _openPanel = panel;
     _showBackupText(answer && answer.content);
   } catch (e) {
-    showToast(e.message || 'Could not read that configuration', 'error');
+    showToast(e.message || t('Could not read that configuration'), 'error');
   }
 }
 
@@ -930,14 +940,14 @@ async function _compareBackups(el) {
     _openPanel = panel;
     _showBackupText(answer && answer.diff);
   } catch (e) {
-    showToast(e.message || 'Could not compare those configurations', 'error');
+    showToast(e.message || t('Could not compare those configurations'), 'error');
   }
 }
 
 /** Copy, forget or rotate: the three things a key pair needs of a page. */
 async function _copySshKey(el) {
   await copyText(String(el.dataset.sshCopy || ''));
-  showToast('Copied', 'success');
+  showToast(t('Copied'), 'success');
 }
 
 /** The check as it stands, less the public half the server writes alone, plus
@@ -950,28 +960,28 @@ function _sshParamsPatch(check) {
 }
 
 async function _rotateSshKey() {
-  if (!confirm('Make a new key pair? The device refuses the poller until the new public key is installed on it.')) return;
+  if (!confirm(t('Make a new key pair? The device refuses the poller until the new public key is installed on it.'))) return;
   const check = _loadedChecks.get(_panelOwner);
   if (!check) return;
   try {
     await apiJson(_checkPath(check.id), { method: 'PATCH', body: JSON.stringify({ rotate_key: true }) });
-    showToast('New key pair made. Install the public key on the device.', 'success');
+    showToast(t('New key pair made. Install the public key on the device.'), 'success');
     await loadDeviceChecks(_checkDeviceId);   // the new key is in the list's params
   } catch (e) {
-    showToast((e.body && e.body.error) || e.message || 'Could not make a new key pair', 'error');
+    showToast((e.body && e.body.error) || e.message || t('Could not make a new key pair'), 'error');
   }
 }
 
 async function _unpinSshHostKey() {
-  if (!confirm('Forget the pinned host key? The next run trusts whatever key the device presents.')) return;
+  if (!confirm(t('Forget the pinned host key? The next run trusts whatever key the device presents.'))) return;
   const check = _loadedChecks.get(_panelOwner);
   if (!check) return;
   try {
     await apiJson(_checkPath(check.id), { method: 'PATCH', body: _sshParamsPatch(check) });
-    showToast('Host key forgotten. The next run learns it again.', 'success');
+    showToast(t('Host key forgotten. The next run learns it again.'), 'success');
     await loadDeviceChecks(_checkDeviceId);
   } catch (e) {
-    showToast((e.body && e.body.error) || e.message || 'Could not forget the host key', 'error');
+    showToast((e.body && e.body.error) || e.message || t('Could not forget the host key'), 'error');
   }
 }
 
@@ -986,14 +996,14 @@ function _pickBackup(box) {
 /** The add row is one flex line, so the SSH boxes take a line to themselves. */
 function setDeviceCheckKind(select) {
   const kind = select && 'value' in select ? select.value : (select || 'icmp');
-  const port = _deviceEl('device-check-port');
+  const port = /** @type {HTMLInputElement|null} */ (_deviceEl('device-check-port'));
   if (port) {
     // SSH reaches the device on a real TCP port, and it is nearly always 22 —
     // the placeholder says so instead of leaving the box blank and required.
     port.hidden = kind !== 'tcp' && kind !== 'snmp' && kind !== 'ssh';
-    port.placeholder = kind === 'snmp' ? 'Port (161)' : (kind === 'ssh' ? 'Port (22)' : 'Port');
+    port.placeholder = kind === 'snmp' ? t('Port (161)') : (kind === 'ssh' ? t('Port (22)') : t('Port'));
   }
-  const version = _deviceEl('device-check-snmp-version');
+  const version = /** @type {HTMLSelectElement|null} */ (_deviceEl('device-check-snmp-version'));
   if (version) version.hidden = kind !== 'snmp';
   _showSnmpSecretFields(kind === 'snmp' ? (version ? version.value : '2c') : null);
   const oids = _deviceEl('device-check-oids');
@@ -1004,7 +1014,7 @@ function setDeviceCheckKind(select) {
   if (ssh) ssh.hidden = kind !== 'ssh';
   // A config is worth keeping, not polling every minute, and the server would
   // refuse anything under fifteen: nudge the pick instead of the operator.
-  const interval = _deviceEl('device-check-interval');
+  const interval = /** @type {HTMLSelectElement|null} */ (_deviceEl('device-check-interval'));
   if (kind === 'ssh' && interval && parseInt(interval.value, 10) < 900) interval.value = '86400';
 }
 
@@ -1029,13 +1039,13 @@ async function _configBackupActive() {
 async function _applyConfigBackupLicense() {
   const option = document.getElementById('device-check-kind-ssh');
   if (!option || await _configBackupActive()) return;
-  option.disabled = true;
-  option.textContent = 'SSH config backup (Business)';
+  /** @type {HTMLOptionElement} */ (option).disabled = true;
+  option.textContent = t('SSH config backup (Business)');
 }
 
 /** The community box for v2c, the user/protocol/password row for v3, neither otherwise. */
 function _showSnmpSecretFields(version) {
-  const community = _deviceEl('device-check-community');
+  const community = /** @type {HTMLInputElement|null} */ (_deviceEl('device-check-community'));
   if (community) community.hidden = version !== '2c';
   const v3 = _deviceEl('device-check-v3');
   if (v3) v3.hidden = version !== '3';
@@ -1047,19 +1057,20 @@ function setDeviceCheckSnmpVersion(select) {
 
 async function addDeviceCheck() {
   if (!_checkDeviceId) return;
-  const kind = _deviceEl('device-check-kind').value;
-  const target = _deviceEl('device-check-target').value.trim();
-  const portRaw = _deviceEl('device-check-port').value.trim();
-  const communityBox = _deviceEl('device-check-community');
-  const oidsBox = _deviceEl('device-check-oids');
-  const walkBox = _deviceEl('device-check-interfaces');
-  const interval = parseInt(_deviceEl('device-check-interval').value, 10);
+  const kind = /** @type {HTMLSelectElement} */ (_deviceEl('device-check-kind')).value;
+  const target = /** @type {HTMLInputElement} */ (_deviceEl('device-check-target')).value.trim();
+  const portRaw = /** @type {HTMLInputElement} */ (_deviceEl('device-check-port')).value.trim();
+  const communityBox = /** @type {HTMLInputElement} */ (_deviceEl('device-check-community'));
+  const oidsBox = /** @type {HTMLTextAreaElement} */ (_deviceEl('device-check-oids'));
+  const walkBox = /** @type {HTMLInputElement|null} */ (_deviceEl('device-check-interfaces'));
+  const interval = parseInt(/** @type {HTMLSelectElement} */ (_deviceEl('device-check-interval')).value, 10);
 
+  /** @type {Record<string, any>} */
   let params;
   if (kind === 'http') params = { url: target };
   else if (kind === 'dns') params = { name: target };
   else if (kind === 'tcp') params = { host: target, port: parseInt(portRaw, 10) };
-  else if (kind === 'ssh') params = { host: target, username: _deviceEl('device-check-ssh-user').value.trim(), command: _deviceEl('device-check-ssh-command').value.trim() };
+  else if (kind === 'ssh') params = { host: target, username: /** @type {HTMLInputElement} */ (_deviceEl('device-check-ssh-user')).value.trim(), command: /** @type {HTMLInputElement} */ (_deviceEl('device-check-ssh-command')).value.trim() };
   else params = { host: target };
 
   const body = { kind, params, interval_seconds: interval };
@@ -1071,15 +1082,15 @@ async function addDeviceCheck() {
     if (parsed.error) { showToast(parsed.error, 'error'); return; }
     if (parsed.oids.length) params.oids = parsed.oids;
     if (walkBox && walkBox.checked) params.interfaces = true;
-    const version = _deviceEl('device-check-snmp-version');
+    const version = /** @type {HTMLSelectElement|null} */ (_deviceEl('device-check-snmp-version'));
     if (version && version.value === '3') {
       // Passwords untrimmed, like the community: their spaces are the operator's.
-      const privPassword = _deviceEl('device-check-v3-priv-password').value;
+      const privPassword = /** @type {HTMLInputElement} */ (_deviceEl('device-check-v3-priv-password')).value;
       params.version = '3';
-      params.user = _deviceEl('device-check-v3-user').value.trim();
-      params.auth = _deviceEl('device-check-v3-auth').value;
+      params.user = /** @type {HTMLInputElement} */ (_deviceEl('device-check-v3-user')).value.trim();
+      params.auth = /** @type {HTMLInputElement} */ (_deviceEl('device-check-v3-auth')).value;
       params.priv = privPassword !== '';
-      body.auth_password = _deviceEl('device-check-v3-auth-password').value;
+      body.auth_password = /** @type {HTMLInputElement} */ (_deviceEl('device-check-v3-auth-password')).value;
       if (privPassword) body.priv_password = privPassword;
     } else if (communityBox.value) {
       // Untrimmed: a community's spaces are the operator's, not ours to drop.
@@ -1092,65 +1103,65 @@ async function addDeviceCheck() {
       method: 'POST',
       body: JSON.stringify(body),
     });
-    showToast('Check added', 'success');
-    _deviceEl('device-check-target').value = '';
-    _deviceEl('device-check-port').value = '';
+    showToast(t('Check added'), 'success');
+    /** @type {HTMLInputElement} */ (_deviceEl('device-check-target')).value = '';
+    /** @type {HTMLInputElement} */ (_deviceEl('device-check-port')).value = '';
     communityBox.value = '';
     for (const id of ['device-check-v3-user', 'device-check-v3-auth-password', 'device-check-v3-priv-password']) {
-      const box = _deviceEl(id);
+      const box = /** @type {HTMLInputElement|null} */ (_deviceEl(id));
       if (box) box.value = '';
     }
     oidsBox.value = '';
     if (walkBox) walkBox.checked = false;
     for (const id of ['device-check-ssh-user', 'device-check-ssh-command']) {
-      const box = _deviceEl(id);
+      const box = /** @type {HTMLInputElement|null} */ (_deviceEl(id));
       if (box) box.value = '';
     }
     loadDeviceChecks(_checkDeviceId);
   } catch (e) {
     // The server refuses a bad target with one sentence in `error`.
-    showToast((e.body && e.body.error) || e.message || 'Could not add check', 'error');
+    showToast((e.body && e.body.error) || e.message || t('Could not add check'), 'error');
   }
 }
 
 async function toggleDeviceCheck(checkId, enabled) {
   try {
     await apiJson(_checkPath(checkId), { method: 'PATCH', body: JSON.stringify({ enabled }) });
-    showToast(enabled ? 'Check enabled' : 'Check disabled', 'success');
+    showToast(enabled ? t('Check enabled') : t('Check disabled'), 'success');
     if (_checkDeviceId) loadDeviceChecks(_checkDeviceId);
   } catch (e) {
-    showToast(e.message || 'Could not change the check', 'error');
+    showToast(e.message || t('Could not change the check'), 'error');
   }
 }
 
 async function deleteDeviceCheck(checkId) {
-  if (!await confirmModal('Delete this check and its results?',
-    { title: 'Delete check', confirmText: 'Delete', danger: true })) return;
+  if (!await confirmModal(t('Delete this check and its results?'),
+    { title: t('Delete check'), confirmText: t('Delete'), danger: true })) return;
   try {
     await apiJson(_checkPath(checkId), { method: 'DELETE' });
-    showToast('Check deleted', 'success');
+    showToast(t('Check deleted'), 'success');
     if (_checkDeviceId) loadDeviceChecks(_checkDeviceId);
   } catch (e) {
-    showToast(e.message || 'Could not delete the check', 'error');
+    showToast(e.message || t('Could not delete the check'), 'error');
   }
 }
 
 /* ── The rest of the device form ─────────────────────────────────────────── */
 
 function _deviceFormBody() {
-  const ip = document.getElementById('device-ip').value.trim();
+  const ip = /** @type {HTMLInputElement} */ (document.getElementById('device-ip')).value.trim();
   return {
-    name: document.getElementById('device-name').value.trim(),
-    device_type: document.getElementById('device-type').value,
+    name: /** @type {HTMLInputElement} */ (document.getElementById('device-name')).value.trim(),
+    device_type: /** @type {HTMLSelectElement} */ (document.getElementById('device-type')).value,
     ip_address: ip || null,
-    mac_address: document.getElementById('device-mac').value.trim(),
-    vendor: document.getElementById('device-vendor').value.trim(),
-    location: document.getElementById('device-location').value.trim(),
-    serial: document.getElementById('device-serial').value.trim(),
-    warranty_end: document.getElementById('device-warranty').value || null,
-    owner: document.getElementById('device-owner').value.trim(),
-    extra: _extraFromBody(document.getElementById('device-extra').value),
-    notes: document.getElementById('device-notes').value.trim(),
+    mac_address: /** @type {HTMLInputElement} */ (document.getElementById('device-mac')).value.trim(),
+    vendor: /** @type {HTMLInputElement} */ (document.getElementById('device-vendor')).value.trim(),
+    location: /** @type {HTMLInputElement} */ (document.getElementById('device-location')).value.trim(),
+    serial: /** @type {HTMLInputElement} */ (document.getElementById('device-serial')).value.trim(),
+    warranty_end: /** @type {HTMLInputElement} */ (document.getElementById('device-warranty')).value || null,
+    owner: /** @type {HTMLInputElement} */ (document.getElementById('device-owner')).value.trim(),
+    extra: _extraFromBody(/** @type {HTMLInputElement} */ (document.getElementById('device-extra')).value),
+    notes: /** @type {HTMLInputElement} */ (document.getElementById('device-notes')).value.trim(),
   };
 }
 
@@ -1173,42 +1184,42 @@ function _extraFromBody(text) {
 }
 
 async function saveDevice() {
-  const id = document.getElementById('device-id').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value;
   const body = _deviceFormBody();
-  if (!body.name) { showToast('Name is required', 'error'); return; }
+  if (!body.name) { showToast(t('Name is required'), 'error'); return; }
   const siteId = sitePickValue(document.getElementById('device-site'), document.getElementById('device-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
   try {
     if (id) {
       await apiJson(`/api/v1/hosts/devices/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });
-      showToast('Device updated', 'success');
+      showToast(t('Device updated'), 'success');
     } else {
       await apiJson('/api/v1/hosts/devices/', { method: 'POST', body: JSON.stringify(body) });
-      showToast('Device added', 'success');
+      showToast(t('Device added'), 'success');
     }
     closeDeviceModal();
     loadDevices();
   } catch (e) {
-    showToast(e.message || 'Could not save device — check the IP and MAC format', 'error');
+    showToast(e.message || t('Could not save device — check the IP and MAC format'), 'error');
   }
 }
 
 async function deleteDeviceFromModal() {
-  const id = document.getElementById('device-id').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value;
   if (!id) return;
-  if (!confirm('Delete this device from the inventory?')) return;
+  if (!confirm(t('Delete this device from the inventory?'))) return;
   try {
     await apiJson(`/api/v1/hosts/devices/${id}/`, { method: 'DELETE' });
-    showToast('Device deleted', 'success');
+    showToast(t('Device deleted'), 'success');
     closeDeviceModal();
     loadDevices();
   } catch (e) {
-    showToast(e.message || 'Delete failed', 'error');
+    showToast(e.message || t('Delete failed'), 'error');
   }
 }
 
 const _origNavForDevices = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavForDevices(pageName);
   if (pageName === 'inventory') loadDevices();
 };

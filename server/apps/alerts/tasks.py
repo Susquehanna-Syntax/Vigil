@@ -427,6 +427,14 @@ def prune_old_metric_points():
     retention policy handles expiry (and frees disk per chunk), so this no-ops.
     """
     retention_days = getattr(settings, "VIGIL_METRIC_RETENTION_DAYS", 30)
+    cutoff = now() - timedelta(days=retention_days)
+    # Device check results (S9) follow the metrics' retention. They are an
+    # ordinary table even on TimescaleDB, so they are pruned here first, before
+    # any of the hypertable branches below return.
+    from apps.hosts.models import CheckResult, InterfaceSample
+    CheckResult.objects.filter(time__lt=cutoff).delete()
+    # Interface samples are the same history at a finer grain (S9 05d).
+    InterfaceSample.objects.filter(time__lt=cutoff).delete()
     if _metricpoint_is_hypertable():
         if _metricpoint_has_retention_policy():
             return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
@@ -439,15 +447,6 @@ def prune_old_metric_points():
                         [timedelta(days=retention_days)])
             dropped = len(cur.fetchall())
         return f"Dropped {dropped} metric chunks older than {retention_days} days"
-    cutoff = now() - timedelta(days=retention_days)
-    # Device check results (S9) follow the metrics' retention. They are an
-    # ordinary table even on TimescaleDB, so they are pruned here either way.
-    from apps.hosts.models import CheckResult, InterfaceSample
-    CheckResult.objects.filter(time__lt=cutoff).delete()
-    # Interface samples are the same history at a finer grain (S9 05d).
-    InterfaceSample.objects.filter(time__lt=cutoff).delete()
-    if _metricpoint_is_hypertable():
-        return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()
     if deleted:
         logger.info("Pruned %d metric points older than %d days", deleted, retention_days)

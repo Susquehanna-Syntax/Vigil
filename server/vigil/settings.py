@@ -666,7 +666,7 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.16.0"
+VIGIL_VERSION = "2026.17.0"
 SPECTACULAR_SETTINGS["VERSION"] = VIGIL_VERSION
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted

@@ -274,3 +274,8 @@
 .empty-state-icon.empty-state-lemon { background: rgba(var(--rgb-lemon), var(--tint-a)); }
 .empty-state-icon svg.empty-state-svg-mint { stroke: var(--mint); }
 .empty-state-icon svg.empty-state-svg-lemon { stroke: var(--lemon); }
+
+/* Depends on, in the host drawer (M7): the select and its hint, as the inline
+   styles they replaced had them. */
+.detail-depends-select { font-size: 12px; padding: 7px 10px; }
+.confirm-hint.detail-depends-hint { margin-top: 6px; }

@@ -193,7 +193,7 @@ async function fetchAllHosts() {
       const next = Array.isArray(r) ? null : r.next;
       url = next ? (() => { const u = new URL(next, location.href); return u.pathname + u.search; })() : null;
     }
-  } catch (e) { /* keep what was read */ }
+  } catch (e) { /* state-ok: a failed page keeps the hosts already read; callers fill pickers */ }
   return rows;
 }
 

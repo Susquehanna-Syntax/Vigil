@@ -289,3 +289,8 @@ declare function loadTerminalAssets(): Promise<void>;
 // in the node tests, so t() and tn() check for them before calling.
 declare var gettext: ((msgid: string) => string) | undefined;
 declare var ngettext: ((singular: string, plural: string, count: number) => string) | undefined;
+
+/** vigil-channels.js (M7): the Notifications pane's channel list. */
+declare function loadChannels(): unknown;
+/** vigil-maintenance.js (M7): the Notifications pane's maintenance windows. */
+declare function loadMaintenance(): unknown;

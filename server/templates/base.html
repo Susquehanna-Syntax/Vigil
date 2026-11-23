@@ -716,8 +716,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <div class="device-check-add" id="device-check-add" hidden>
       <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind" data-a1="$el" aria-label="{% translate "Check kind" %}">
         <option value="icmp">{% translate "Ping" %}</option><option value="tcp">{% translate "TCP port" %}</option>
-        <option value="http">HTTP(S)</option><option value="dns">DNS</option>
-        <option value="snmp">SNMP</option>
+        <option value="http">{% translate "HTTP(S)" %}</option><option value="dns">{% translate "DNS" %}</option>
+        <option value="snmp">{% translate "SNMP" %}</option>
         <option value="ssh" id="device-check-kind-ssh">{% translate "SSH config backup" %}</option>
       </select>
       <input class="form-control" id="device-check-target" placeholder="{% translate "Address, URL or name" %}" aria-label="{% translate "Check target" %}">
@@ -729,7 +729,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <div class="device-check-v3" id="device-check-v3" hidden>
         <input class="form-control" id="device-check-v3-user" autocomplete="off" placeholder="{% translate "User" %}" aria-label="{% translate "SNMPv3 user" %}">
         <select class="form-control" id="device-check-v3-auth" aria-label="{% translate "SNMPv3 authentication" %}">
-          <option value="sha256">SHA-256</option><option value="sha">SHA-1</option>
+          <option value="sha256">{% translate "SHA-256" %}</option><option value="sha">{% translate "SHA-1" %}</option>
         </select>
         <input class="form-control" id="device-check-v3-auth-password" type="password" autocomplete="off" placeholder="{% translate "Auth password" %}" aria-label="{% translate "SNMPv3 auth password" %}">
         <input class="form-control" id="device-check-v3-priv-password" type="password" autocomplete="off" placeholder="{% translate "Privacy password (optional)" %}" title="{% translate "Leave blank to authenticate without encrypting" %}" aria-label="{% translate "SNMPv3 privacy password, optional: blank means not encrypted" %}">
@@ -766,25 +766,25 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="discovery-overlay" data-act="closeDiscovery"></div>
 <div class="modal modal-wide discovery-modal" id="discovery-modal">
   <div class="modal-title">
-    <span>Discover devices</span>
+    <span>{% translate "Discover devices" %}</span>
     <button class="modal-close" data-act="closeDiscovery">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <form id="discovery-form" class="discovery-form" data-submit="startDiscoveryScan" data-a1="$event" hidden>
-    <label class="form-label discovery-sr" for="discovery-poller">Poller</label>
+    <label class="form-label discovery-sr" for="discovery-poller">{% translate "Poller" %}</label>
     <select class="form-control" id="discovery-poller"></select>
-    <label class="form-label discovery-sr" for="discovery-cidr">Network</label>
+    <label class="form-label discovery-sr" for="discovery-cidr">{% translate "Network" %}</label>
     <input class="form-control" id="discovery-cidr" placeholder="10.0.0.0/24" autocomplete="off">
-    <label class="form-label discovery-sr" for="discovery-ports">Ports</label>
-    <input class="form-control" id="discovery-ports" placeholder="Ports (optional)" autocomplete="off">
-    <label class="form-label discovery-sr" for="discovery-community">SNMP community</label>
-    <input class="form-control" id="discovery-community" type="password" autocomplete="off" placeholder="Community (optional)">
-    <button class="btn btn-sm btn-mint" type="submit">Scan</button>
+    <label class="form-label discovery-sr" for="discovery-ports">{% translate "Ports" %}</label>
+    <input class="form-control" id="discovery-ports" placeholder="{% translate "Ports (optional)" %}" autocomplete="off">
+    <label class="form-label discovery-sr" for="discovery-community">{% translate "SNMP community" %}</label>
+    <input class="form-control" id="discovery-community" type="password" autocomplete="off" placeholder="{% translate "Community (optional)" %}">
+    <button class="btn btn-sm btn-mint" type="submit">{% translate "Scan" %}</button>
   </form>
-  <div class="discovery-help" id="discovery-help" hidden>Private IPv4 networks only, up to 1024 addresses.
+  <div class="discovery-help" id="discovery-help" hidden>{% blocktranslate %}Private IPv4 networks only, up to 1024 addresses.
     Without ports it tries 22, 23, 80, 443, 445, 3389, 8080 and 8443; with an SNMP community it also reads each
-    host's name. The poller scans on its next check-in.</div>
+    host's name. The poller scans on its next check-in.{% endblocktranslate %}</div>
   <div id="discovery-scans" class="discovery-scans"></div>
   <div id="discovery-result" class="discovery-result" hidden></div>
 </div>

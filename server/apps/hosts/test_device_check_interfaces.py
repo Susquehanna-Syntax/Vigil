@@ -275,7 +275,8 @@ class InterfaceRetentionTests(TestCase):
         CheckResult.objects.create(device_check=check, time=old_time, ok=True)
         for hypertable in (False, True):
             with self.subTest(hypertable=hypertable), mock.patch.object(
-                    alert_tasks, "_metricpoint_is_hypertable", return_value=hypertable):
+                    alert_tasks, "_metricpoint_is_hypertable", return_value=hypertable), \
+                mock.patch.object(alert_tasks, "_metricpoint_has_retention_policy", return_value=True):
                 alert_tasks.prune_old_metric_points()
                 self.assertFalse(InterfaceSample.objects.filter(pk=old.pk).exists())
                 self.assertTrue(InterfaceSample.objects.filter(pk=fresh.pk).exists())

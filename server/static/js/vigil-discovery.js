@@ -10,7 +10,7 @@ const DISCOVERY_POLL_MS = 5000;
 // The scan states the dialog names. Anything else — a state the server learned
 // after this script was written — shows its own word, which is honest and needs
 // no change here to stay readable.
-const SCAN_STATES = { queued: 'Waiting', sent: 'Running', done: 'Done', failed: 'Failed' };
+const SCAN_STATES = { queued: t('Waiting'), sent: t('Running'), done: t('Done'), failed: t('Failed') };
 
 let _discoveryPollers = [];
 let _discoveryScans = [];
@@ -62,7 +62,7 @@ function discoveryScanRowText(scan) {
 
 /** The count a finished scan reports, or the sentence a failed one left behind. */
 function discoveryScanTailText(scan) {
-  if (scan.state === 'done') return `${scan.found} found of ${scan.scanned}`;
+  if (scan.state === 'done') return t('{found} found of {scanned}', { found: scan.found, scanned: scan.scanned });
   if (scan.state === 'failed') return scan.error || '';
   return '';
 }
@@ -105,8 +105,8 @@ async function _loadDiscoveryPollers() {
   } catch (e) {
     // The scans below still say something useful, so this block says only that
     // one of its two sources is missing.
-    _discoveryNote('discovery-scans', 'Could not load pollers.');
-    showToast(`Could not load pollers: ${e.message}`, 'error');
+    _discoveryNote('discovery-scans', t('Could not load pollers.'));
+    showToast(t('Could not load pollers: {message}', { message: e.message }), 'error');
     return;
   }
   _discoveryPollers = Array.isArray(pollers) ? pollers : [];
@@ -114,7 +114,7 @@ async function _loadDiscoveryPollers() {
   if (!_discoveryPollers.length) {
     if (form) form.hidden = true;
     if (help) help.hidden = true;
-    _discoveryNote('discovery-scans', 'No poller yet. Turn on "Poll devices" on a host\'s agent profile to scan from it.');
+    _discoveryNote('discovery-scans', t('No poller yet. Turn on "Poll devices" on a host\'s agent profile to scan from it.'));
     return;
   }
   const select = _discoveryEl('discovery-poller');
@@ -125,7 +125,7 @@ async function _loadDiscoveryPollers() {
     for (const p of _discoveryPollers) {
       const option = document.createElement('option');
       option.value = p.id;
-      option.textContent = p.hostname + (p.online ? '' : ' (offline)');
+      option.textContent = p.online ? p.hostname : t('{hostname} (offline)', { hostname: p.hostname });
       option.disabled = !p.can_scan;
       select.appendChild(option);
     }
@@ -143,8 +143,8 @@ async function _loadDiscoveryScans() {
   try {
     scans = await apiJson(DISCOVERY_SCAN_BASE);
   } catch (e) {
-    _discoveryNote('discovery-scans', 'Could not load scans.');
-    showToast(`Could not load scans: ${e.message}`, 'error');
+    _discoveryNote('discovery-scans', t('Could not load scans.'));
+    showToast(t('Could not load scans: {message}', { message: e.message }), 'error');
     return;
   }
   _discoveryScans = Array.isArray(scans) ? scans : [];
@@ -162,7 +162,7 @@ function renderDiscoveryScans() {
   const list = _discoveryEl('discovery-scans');
   if (!list) return;
   if (!_discoveryScans.length) {
-    _discoveryNote('discovery-scans', 'No scans yet.');
+    _discoveryNote('discovery-scans', t('No scans yet.'));
     return;
   }
   // The answer is newest first and stays that way: a row is a button, so the
@@ -254,7 +254,7 @@ async function _startDiscoveryScan(ev) {
   const body = { poller, cidr: cidrBox.value.trim() };
   const ports = parseDiscoveryPorts(portsBox.value);
   if (ports === null) {
-    showToast('Ports must be numbers, separated by commas', 'error');
+    showToast(t('Ports must be numbers, separated by commas'), 'error');
     return;
   }
   if (ports.length) body.ports = ports;
@@ -274,7 +274,7 @@ async function _startDiscoveryScan(ev) {
   cidrBox.value = '';
   portsBox.value = '';
   communityBox.value = '';
-  showToast('Scan queued', 'success');
+  showToast(t('Scan queued'), 'success');
   await _loadDiscoveryScans();
 }
 
@@ -299,8 +299,8 @@ async function _loadDiscoveryScan(scanId) {
   } catch (e) {
     // The dialog keeps holding whatever it was showing: half a new scan is worse
     // than the last whole one, so the id moves only with something to draw.
-    _discoveryNote('discovery-result', 'Could not load this scan.');
-    showToast(`Could not load this scan: ${e.message}`, 'error');
+    _discoveryNote('discovery-result', t('Could not load this scan.'));
+    showToast(t('Could not load this scan: {message}', { message: e.message }), 'error');
     return;
   }
   // A poll re-reads a scan that finished while the dialog was open under its own
@@ -325,7 +325,7 @@ function renderDiscoveryScan(scan) {
   header.className = 'discovery-result-header';
   const headline = document.createElement('span');
   headline.className = 'discovery-result-title';
-  headline.textContent = [scan.cidr, _discoveryStateWord(scan), scan.truncated ? 'Stopped at 1024 hosts' : '']
+  headline.textContent = [scan.cidr, _discoveryStateWord(scan), scan.truncated ? t('Stopped at 1024 hosts') : '']
     .filter(Boolean).join(' · ');
   header.appendChild(headline);
   if (_discoveryCanScan()) {
@@ -333,14 +333,14 @@ function renderDiscoveryScan(scan) {
     del.type = 'button';
     del.className = 'btn btn-ghost btn-sm discovery-delete';
     del.dataset.act = 'deleteDiscoveryScan';
-    del.textContent = 'Delete scan';
+    del.textContent = t('Delete scan');
     header.appendChild(del);
   }
   result.appendChild(header);
 
   const hosts = Array.isArray(scan.hosts) ? scan.hosts : [];
   if (!hosts.length) {
-    _discoveryAppendNote(result, scan.state === 'done' ? 'Nothing answered.' : 'Nothing to show yet.');
+    _discoveryAppendNote(result, scan.state === 'done' ? t('Nothing answered.') : t('Nothing to show yet.'));
     return;
   }
   result.appendChild(_discoveryTable(hosts));
@@ -365,9 +365,9 @@ function _discoveryTable(hosts) {
   table.className = 'ctr-table discovery-table';
   const head = document.createElement('thead');
   head.appendChild(_discoveryRow('tr', [
-    _discoveryCell('th', ''), _discoveryCell('th', 'IP'), _discoveryCell('th', 'Name'),
-    _discoveryCell('th', 'Answered by'), _discoveryCell('th', 'Open ports'),
-    _discoveryCell('th', 'Latency'),
+    _discoveryCell('th', ''), _discoveryCell('th', 'IP'), _discoveryCell('th', t('Name')),
+    _discoveryCell('th', t('Answered by')), _discoveryCell('th', t('Open ports')),
+    _discoveryCell('th', t('Latency')),
   ]));
   const body = document.createElement('tbody');
   for (const host of hosts) {
@@ -396,7 +396,7 @@ function _discoveryHostRow(host) {
   if (host.known) {
     const known = document.createElement('div');
     known.className = 'discovery-known';
-    known.textContent = `Already a device: ${host.known.name}`;
+    known.textContent = t('Already a device: {name}', { name: host.known.name });
     name.appendChild(known);
   }
 
@@ -435,7 +435,7 @@ function _discoveryAdoptRow(scan) {
   // two selects then cannot drift apart when a device type is added.
   const type = document.createElement('select');
   type.id = 'discovery-type';
-  type.setAttribute('aria-label', 'Device type for the hosts to add');
+  type.setAttribute('aria-label', t('Device type for the hosts to add'));
   type.className = 'form-control discovery-type';
   const source = document.getElementById('device-type');
   if (source) {
@@ -449,7 +449,7 @@ function _discoveryAdoptRow(scan) {
   all.type = 'button';
   all.className = 'btn btn-ghost btn-sm';
   all.dataset.act = 'selectAllDiscoveryHosts';
-  all.textContent = 'Select all new';
+  all.textContent = t('Select all new');
 
   const adopt = document.createElement('button');
   adopt.type = 'button';
@@ -457,7 +457,7 @@ function _discoveryAdoptRow(scan) {
   adopt.dataset.act = 'adoptDiscoveryHosts';
   adopt.dataset.scanId = scan.id;
   adopt.disabled = true;
-  adopt.textContent = 'Add as devices';
+  adopt.textContent = t('Add as devices');
 
   row.append(type, all, adopt);
   return row;
@@ -478,7 +478,7 @@ function _updateDiscoveryAdopt() {
   if (!adopt) return;
   const count = _selectedDiscoveryHostIds().length;
   adopt.disabled = count === 0;
-  adopt.textContent = count ? `Add ${count} as devices` : 'Add as devices';
+  adopt.textContent = count ? t('Add {count} as devices', { count }) : t('Add as devices');
 }
 
 async function selectAllDiscoveryHosts() {
@@ -515,8 +515,8 @@ async function _adoptDiscoveryHosts(ev, el) {
   }
   const n = created && Array.isArray(created.created) ? created.created.length : 0;
   const skipped = created ? created.skipped : 0;
-  const added = `Added ${n} device${n === 1 ? '' : 's'}`;
-  showToast(skipped ? `${added}, ${skipped} already known` : added, 'success');
+  const added = tn('Added {n} device', 'Added {n} devices', n);
+  showToast(skipped ? `${added}, ${t('{skipped} already known', { skipped })}` : added, 'success');
   await loadDiscoveryScan(scanId);
   // The Inventory table beside this dialog is vigil-devices.js's to draw.
   if (typeof loadDevices === 'function') await loadDevices();
