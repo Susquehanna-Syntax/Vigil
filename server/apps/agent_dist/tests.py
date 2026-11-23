@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+from pathlib import Path
 
 from django.test import TestCase, override_settings
 
@@ -48,6 +49,33 @@ class BinarySha256Tests(TestCase):
         self.assertEqual(digests["linux-amd64"], "c" * 64)
         self.assertEqual(digests["darwin-arm64"], "d" * 64)
         self.assertNotIn("windows-amd64", digests)
+
+    def test_all_binary_sha256_includes_a_bundled_freebsd_build(self):
+        """A FreeBSD binary in the dist dir reaches update_agent's digest map.
+
+        update_agent refuses to self-update unless the signed task carries a
+        verified SHA-256 for its own platform, so a freebsd-amd64 build the
+        server has but does not report leaves every FreeBSD host un-updatable.
+        """
+        content = b"fake-freebsd-agent-binary"
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "vigil-agent-freebsd-amd64"), "wb") as fh:
+                fh.write(content)
+            with override_settings(VIGIL_AGENT_DIST_DIR=d):
+                digests = all_binary_sha256()
+        self.assertEqual(
+            digests.get("freebsd-amd64"), hashlib.sha256(content).hexdigest())
+
+    def test_all_platform_choices_iterate_the_enum(self):
+        """Every list of platforms must be built from the enum, not written out.
+
+        A Platform member no view enumerates is a binary nothing serves or
+        lists. These are the loops that make freebsd-amd64 reachable: the
+        digest map, the upload's platform validation and the listing endpoint.
+        The installer that asks for the name is covered by test_install_freebsd.
+        """
+        views = (Path(__file__).resolve().parent / "views.py").read_text()
+        self.assertEqual(views.count("AgentBinary.Platform.choices"), 4)
 
 
 @override_settings(VIGIL_AGENT_DIST_DIR="/nonexistent-vigil-test-dist")

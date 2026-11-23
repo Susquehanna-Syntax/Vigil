@@ -1,13 +1,17 @@
+// @ts-check
 /* Sign-in second step: tap a passkey or security key (login_mfa.py).
  *
  * Runs on the pre-auth page, so it carries its own base64url helpers rather
  * than loading vigil-utils.js and the dashboard it assumes. */
 (function () {
-  const btn = document.getElementById('login-key-btn');
+  const btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('login-key-btn'));
   if (!btn) return;
-  const errBox = document.getElementById('login-key-error');
-  const csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
+  const errBox = /** @type {HTMLElement} */ (document.getElementById('login-key-error'));
+  const csrfInput = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name=csrfmiddlewaretoken]'));
   const csrf = csrfInput ? csrfInput.value : '';
+  // vigil-utils.js and its t() are not loaded here; the catalog (/jsi18n/) is.
+  /** @param {string} msg */
+  const t = (msg) => (typeof gettext === 'function' ? gettext(msg) : msg);
 
   function b64urlToBytes(value) {
     const s = String(value).replace(/-/g, '+').replace(/_/g, '/');
@@ -37,7 +41,7 @@
       body: JSON.stringify(body || {}),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || 'The key could not be checked. Try again.');
+    if (!r.ok) throw new Error(data.error || t('The key could not be checked. Try again.'));
     return data;
   }
 
@@ -46,7 +50,7 @@
     btn.disabled = true;
     try {
       const opts = await post(btn.dataset.options);
-      const cred = await navigator.credentials.get({ publicKey: {
+      const cred = /** @type {PublicKeyCredential} */ (await navigator.credentials.get({ publicKey: {
         challenge: b64urlToBytes(opts.challenge).buffer,
         timeout: opts.timeout || 60000,
         rpId: opts.rpId,
@@ -54,11 +58,11 @@
         allowCredentials: (opts.allowCredentials || []).map((c) => ({
           type: c.type || 'public-key', id: b64urlToBytes(c.id).buffer,
         })),
-      } });
-      const r = cred.response;
+      } }));
+      const r = /** @type {AuthenticatorAssertionResponse} */ (cred.response);
       const result = await post(btn.dataset.verify, { credential: {
-        id: cred.id || bytesToB64url(cred.rawId),
-        rawId: bytesToB64url(cred.rawId),
+        id: cred.id || bytesToB64url(/** @type {ArrayBuffer} */ (cred.rawId)),
+        rawId: bytesToB64url(/** @type {ArrayBuffer} */ (cred.rawId)),
         type: cred.type || 'public-key',
         response: {
           clientDataJSON: bytesToB64url(r.clientDataJSON),
@@ -71,15 +75,15 @@
     } catch (e) {
       // NotAllowedError is the browser's word for "cancelled or timed out".
       showError(e && e.name === 'NotAllowedError'
-        ? 'The key request was cancelled or timed out.'
-        : (e && e.message) || 'The key could not be checked. Try again.');
+        ? t('The key request was cancelled or timed out.')
+        : (e && e.message) || t('The key could not be checked. Try again.'));
       btn.disabled = false;
     }
   }
 
   if (!window.PublicKeyCredential) {
     btn.disabled = true;
-    showError('This browser does not support passkeys or security keys.');
+    showError(t('This browser does not support passkeys or security keys.'));
     return;
   }
   btn.addEventListener('click', useKey);

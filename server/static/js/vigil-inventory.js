@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-inventory.js
 // Owns: Inventory page — hardware snapshot table with sortable/filterable
 //   columns, drag-to-reorder, custom column support, CSV export.
@@ -8,6 +9,8 @@
 //   vigil-host-cards.js (openHostDetail invoked from inventory row click).
 // API: GET /api/v1/hosts/inventory/, GET/POST /api/v1/hosts/ad/{,sync/}
 
+/** @typedef {{id: string, label: string, dv: boolean, fn: (row: any) => HTMLElement, val: (row: any) => string}} InvColumn */
+/** @type {{rows: any[], customColumns: string[], sortCol: (string|null), sortDir: string, colFilters: Record<string, string>, dragSrcColId: (string|null)}} */
 const inventoryState = {
   rows: [], customColumns: [],
   sortCol: null, sortDir: 'asc',
@@ -17,55 +20,56 @@ const inventoryState = {
 
 // ── Column definitions ──────────────────────────────────────────────────────
 // fn(row) → <td>   val(row) → string used for sort/filter
+/** @type {InvColumn[]} */
 const INV_COLUMNS = [
-  { id: 'hostname',        label: 'Host',         dv: true,
+  { id: 'hostname',        label: t('Host'),         dv: true,
     fn: r => _hostCell(r),                                              val: r => r.hostname || '' },
-  { id: 'ip_address',      label: 'IP',           dv: true,
+  { id: 'ip_address',      label: t('IP'),           dv: true,
     fn: r => _cellText(r.ip_address || '', 'mono'),                     val: r => r.ip_address || '' },
-  { id: 'os',              label: 'OS (agent)',   dv: true,
+  { id: 'os',              label: t('OS (agent)'),   dv: true,
     fn: r => _cellText(r.os || ''),                                     val: r => r.os || '' },
-  { id: 'os_name',         label: 'OS Name',      dv: false,
+  { id: 'os_name',         label: t('OS Name'),      dv: false,
     fn: r => _osNameCell(r.os_name || ''),                              val: r => r.os_name || '' },
-  { id: 'os_version',      label: 'OS Version',   dv: false,
+  { id: 'os_version',      label: t('OS Version'),   dv: false,
     fn: r => _cellText(r.os_version || '', 'mono'),                     val: r => r.os_version || '' },
-  { id: 'kernel_version',  label: 'Kernel',       dv: false,
+  { id: 'kernel_version',  label: t('Kernel'),       dv: false,
     fn: r => _cellText(r.kernel_version || '', 'mono'),                 val: r => r.kernel_version || '' },
-  { id: 'architecture',    label: 'Arch',         dv: false,
+  { id: 'architecture',    label: t('Arch'),         dv: false,
     fn: r => _cellText(r.architecture || ''),                           val: r => r.architecture || '' },
-  { id: 'uptime',          label: 'Uptime',       dv: false,
+  { id: 'uptime',          label: t('Uptime'),       dv: false,
     fn: r => _cellText(r.uptime_seconds ? _formatUptime(r.uptime_seconds) : ''),
     val: r => r.uptime_seconds != null ? String(r.uptime_seconds) : '' },
-  { id: 'last_logged_user',label: 'Last User',    dv: false,
+  { id: 'last_logged_user',label: t('Last User'),    dv: false,
     fn: r => _cellText(r.last_logged_user || ''),                       val: r => r.last_logged_user || '' },
-  { id: 'manufacturer',    label: 'Manufacturer', dv: true,
+  { id: 'manufacturer',    label: t('Manufacturer'), dv: true,
     fn: r => _cellText(r.manufacturer || ''),                           val: r => r.manufacturer || '' },
-  { id: 'model_name',      label: 'Model',        dv: true,
+  { id: 'model_name',      label: t('Model'),        dv: true,
     fn: r => _cellText(r.model_name || ''),                             val: r => r.model_name || '' },
-  { id: 'service_tag',     label: 'Service Tag',  dv: true,
+  { id: 'service_tag',     label: t('Service Tag'),  dv: true,
     fn: r => _cellText(r.service_tag || '', 'mono'),                    val: r => r.service_tag || '' },
-  { id: 'cpu_model',       label: 'CPU',          dv: true,
+  { id: 'cpu_model',       label: t('CPU'),          dv: true,
     fn: r => _cellText(r.cpu_model || ''),                              val: r => r.cpu_model || '' },
-  { id: 'cpu_cores',       label: 'Cores',        dv: true,
+  { id: 'cpu_cores',       label: t('Cores'),        dv: true,
     fn: r => _cellText(r.cpu_cores ? String(r.cpu_cores) : ''),        val: r => r.cpu_cores != null ? String(r.cpu_cores) : '' },
-  { id: 'ram',             label: 'RAM',          dv: true,
+  { id: 'ram',             label: t('RAM'),          dv: true,
     fn: r => _cellText(r.ram_total_bytes ? _formatBytes(r.ram_total_bytes) : '', 'mono'),
     val: r => r.ram_total_bytes != null ? String(r.ram_total_bytes) : '' },
-  { id: 'mac',             label: 'MAC',          dv: true,
+  { id: 'mac',             label: t('MAC'),          dv: true,
     fn: r => _cellText(_firstMac(r.mac_addresses) || '', 'mono'),       val: r => _firstMac(r.mac_addresses) || '' },
-  { id: 'bios_version',    label: 'BIOS',         dv: false,
+  { id: 'bios_version',    label: t('BIOS'),         dv: false,
     fn: r => _cellText(r.bios_version || '', 'mono'),                   val: r => r.bios_version || '' },
-  { id: 'bios_date',       label: 'BIOS Date',    dv: false,
+  { id: 'bios_date',       label: t('BIOS Date'),    dv: false,
     fn: r => _cellText(r.bios_date || ''),                              val: r => r.bios_date || '' },
-  { id: 'system_timezone', label: 'Timezone',     dv: false,
+  { id: 'system_timezone', label: t('Timezone'),     dv: false,
     fn: r => _cellText(r.system_timezone || ''),                        val: r => r.system_timezone || '' },
-  { id: 'containers',      label: 'Containers',   dv: true,
+  { id: 'containers',      label: t('Containers'),   dv: true,
     fn: r => _containersCell(r),                                        val: r => String(r.containers || 0) },
-  { id: 'stacks',          label: 'Stacks',       dv: true,
+  { id: 'stacks',          label: t('Stacks'),       dv: true,
     fn: r => _cellText((r.stacks || []).map(_stackLabel).join(', ')),  val: r => (r.stacks || []).map(s => s.project).join(', ') },
-  { id: 'tags',            label: 'Tags',         dv: false,
+  { id: 'tags',            label: t('Tags'),         dv: false,
     fn: r => _cellText((r.tags || []).join(', ')),                      val: r => (r.tags || []).join(', ') },
-  { id: 'last_seen',       label: 'Last Seen',    dv: true,
-    fn: r => _cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : 'Never', 'mono'),
+  { id: 'last_seen',       label: t('Last Seen'),    dv: true,
+    fn: r => _cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : t('Never'), 'mono'),
     val: r => r.last_checkin || '' },
 ];
 
@@ -76,7 +80,7 @@ function _invVisibleIds() {
   try {
     const saved = localStorage.getItem('vigil_inv_cols');
     if (saved) ids = new Set(JSON.parse(saved));
-  } catch { ids = null; }   // storage can throw in a private window
+  } catch { ids = null; /* state-ok: storage can throw in a private window */ }
   if (!ids) ids = new Set(INV_COLUMNS.filter(c => c.dv).map(c => c.id));
   ids.add('hostname');
   return ids;
@@ -87,7 +91,7 @@ function _invSaveVisible(ids) {
 
 function _invColOrder() {
   const saved = localStorage.getItem('vigil_inv_col_order');
-  if (saved) { try { return JSON.parse(saved); } catch {} }
+  if (saved) { try { return JSON.parse(saved); } catch { /* state-ok: unreadable settings fall back to the default column order */ } }
   return INV_COLUMNS.map(c => c.id);
 }
 function _invSaveOrder(ids) {
@@ -183,17 +187,13 @@ async function refreshInventory() {
     inventoryState.customColumns = data.custom_columns || [];
     renderInventory();
   } catch (e) {
-    const content = document.getElementById('inv-content');
-    const msg = document.createElement('div');
-    msg.className = 'inv-empty';
-    msg.textContent = 'Failed to load inventory: ' + e.message;
-    content.replaceChildren(msg);
+    showLoadFailure(document.getElementById('inv-content'), t('the inventory'), e, () => refreshInventory());
   }
 }
 
 function renderInventory() {
   const content = document.getElementById('inv-content');
-  const q = (document.getElementById('inv-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('inv-search'))?.value || '').trim().toLowerCase();
   let rows = inventoryState.rows;
 
   // Global search across all text fields
@@ -243,7 +243,7 @@ function renderInventory() {
   if (!rows.length) {
     const msg = document.createElement('div');
     msg.className = 'inv-empty';
-    msg.textContent = anyFilter ? 'No matching inventory rows.' : 'No agents have reported inventory yet.';
+    msg.textContent = anyFilter ? t('No matching inventory rows.') : t('No agents have reported inventory yet.');
     content.replaceChildren(msg);
     return;
   }
@@ -346,7 +346,7 @@ function renderInventory() {
     // No click on the row itself (user, 2026-10-16): a cell is for selecting
     // and copying. The host's name is the way into its detail panel.
     const row = document.createElement('tr');
-    for (const col of allCols) row.appendChild(col.fn(r));
+    for (const col of allCols) row.appendChild(col.fn(/** @type {any} */ (r)));
     tbody.appendChild(row);
   }
   table.appendChild(tbody);
@@ -417,7 +417,7 @@ function _cellText(text, extraClass) {
 
 function exportInventoryCsv() {
   if (!inventoryState.rows.length) {
-    showToast('No inventory data to export', 'info');
+    showToast(t('No inventory data to export'), 'info');
     return;
   }
   const customCols = inventoryState.customColumns;
@@ -458,12 +458,13 @@ function exportInventoryCsv() {
   URL.revokeObjectURL(url);
 }
 
+/** @param {any} row @returns {void} */
 function openInventoryDetail(row) {
   // Reuse the existing host detail panel by synthesizing a card-like dataset.
   const fakeCard = { dataset: {
     id: row.host_id,
     hostname: row.hostname || '',
-    os: row.os || 'Unknown OS',
+    os: row.os || t('Unknown OS'),
     ip: row.ip_address || '—',
     status: row.status || '',
     mode: row.mode || '',
@@ -477,7 +478,7 @@ function openInventoryDetail(row) {
 
 // Auto-load inventory the first time the page is shown
 const _origNavForInv = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavForInv(pageName);
   if (pageName === 'inventory' && !inventoryState.rows.length) {
     refreshInventory();
@@ -491,55 +492,55 @@ navigateTo = function(pageName) {
 async function adLoadConfig() {
   try {
     const cfg = await apiJson('/api/v1/hosts/ad/');
-    document.getElementById('ad-ldap-url').value = cfg.ldap_url || '';
-    document.getElementById('ad-bind-dn').value = cfg.bind_dn || '';
-    document.getElementById('ad-base-dn').value = cfg.base_dn || '';
-    document.getElementById('ad-computer-ou').value = cfg.computer_ou || '';
-    document.getElementById('ad-enabled').checked = !!cfg.enabled;
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-ldap-url')).value = cfg.ldap_url || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-dn')).value = cfg.bind_dn || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-base-dn')).value = cfg.base_dn || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-computer-ou')).value = cfg.computer_ou || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-enabled')).checked = !!cfg.enabled;
     const status = document.getElementById('ad-status');
     if (cfg.last_sync) {
-      status.textContent = `Last sync: ${new Date(cfg.last_sync).toLocaleString()} — ${cfg.last_sync_status || ''}`;
+      status.textContent = t('Last sync: {time} — {status}', { time: new Date(cfg.last_sync).toLocaleString(), status: cfg.last_sync_status || '' });
     } else {
-      status.textContent = cfg.has_password ? 'Configured but never synced.' : 'Not yet configured.';
+      status.textContent = cfg.has_password ? t('Configured but never synced.') : t('Not yet configured.');
     }
-  } catch (e) { /* settings page may load before login */ }
+  } catch (e) { /* state-ok: the settings page may load before login */ }
 }
 
 async function adSaveConfig() {
   const body = {
-    ldap_url: document.getElementById('ad-ldap-url').value.trim(),
-    bind_dn: document.getElementById('ad-bind-dn').value.trim(),
-    base_dn: document.getElementById('ad-base-dn').value.trim(),
-    computer_ou: document.getElementById('ad-computer-ou').value.trim(),
-    enabled: document.getElementById('ad-enabled').checked,
+    ldap_url: /** @type {HTMLInputElement} */ (document.getElementById('ad-ldap-url')).value.trim(),
+    bind_dn: /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-dn')).value.trim(),
+    base_dn: /** @type {HTMLInputElement} */ (document.getElementById('ad-base-dn')).value.trim(),
+    computer_ou: /** @type {HTMLInputElement} */ (document.getElementById('ad-computer-ou')).value.trim(),
+    enabled: /** @type {HTMLInputElement} */ (document.getElementById('ad-enabled')).checked,
   };
-  const pwd = document.getElementById('ad-bind-password').value;
+  const pwd = /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-password')).value;
   if (pwd) body.bind_password = pwd;
   try {
     await apiJson('/api/v1/hosts/ad/', { method: 'POST', body: JSON.stringify(body) });
-    document.getElementById('ad-bind-password').value = '';
-    showToast('AD settings saved', 'success');
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-password')).value = '';
+    showToast(t('AD settings saved'), 'success');
     adLoadConfig();
   } catch (e) {
-    showToast('Failed to save: ' + e.message, 'error');
+    showToast(t('Failed to save: {reason}', { reason: e.message }), 'error');
   }
 }
 
 async function adSyncNow() {
-  const btn = event.target;
+  const btn = /** @type {HTMLButtonElement} */ (event.target);
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
     const result = await apiJson('/api/v1/hosts/ad/sync/', { method: 'POST' });
     if (result.queued) {
-      showToast('AD sync queued', 'success');
+      showToast(t('AD sync queued'), 'success');
     } else if (result.result && result.result.error) {
-      showToast('AD sync failed: ' + result.result.error, 'error');
+      showToast(t('AD sync failed: {reason}', { reason: result.result.error }), 'error');
     } else if (result.result) {
-      showToast(`AD sync complete: ${result.result.created} created, ${result.result.updated} updated`, 'success');
+      showToast(t('AD sync complete: {created} created, {updated} updated', { created: result.result.created, updated: result.result.updated }), 'success');
     }
     adLoadConfig();
   } catch (e) {
-    showToast('Failed to start sync: ' + e.message, 'error');
+    showToast(t('Failed to start sync: {reason}', { reason: e.message }), 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '';
   }

@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-playbooks.js
 // Owns: the Playbooks page — a sequence editor for playbooks (ordered task
 // definitions that auto-dispatch on host enrollment and are callable from any
@@ -6,14 +7,35 @@
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml),
 //             vigil-playbook-flow.js (the flow tree: editor, read-only view, analysis).
 
-let _playbookDefs = [];   // all task definitions, for the picker (id -> def)
-let _editingTree = [];    // the playbook being edited: a flow tree (see vigil-playbook-flow.js)
+/** One task definition from /api/v1/tasks/definitions/. The playbook editor only
+ *  reads `name`, the risk field and `parsed_spec`; the index signature keeps the
+ *  rest of the row it re-renders untouched. */
+/** @typedef {{id: string|number, name: string, risk_level?: string, risk?: string,
+ *  parsed_spec?: {actions?: any[], inputs?: any}, [k: string]: any}} TaskDef */
+/** The inspector's flow fields and the guided builder's controls inside it: the
+ *  `[data-flow-*]` and `[data-fb-*]` elements the delegated handlers read a
+ *  dataset key and the field's text off. `dataset` stays the plain DOMStringMap —
+ *  its keys are already `string | undefined`, so listing only some of them would
+ *  turn an unlisted one into an error instead of undefined. `value` is what the
+ *  element itself always carries (these are inputs, selects and textareas);
+ *  HTMLElement does not name it on HTMLElement, so this shape adds it back. */
+/** @typedef {HTMLElement & {dataset: DOMStringMap & {value?: string}, value: string}} FlowFieldEl */
+/** The box the guided condition builder writes its rows into. `data-flow-builder`
+ *  is a div, so unlike FlowFieldEl this one has no `value`. */
+/** @typedef {HTMLElement & {dataset: DOMStringMap}} BuilderBox */
+
+/* ── Playbooks page (Playbooks tab) ──────────────────────────────────── */
+
+let _playbookDefs = /** @type {TaskDef[]} */ ([]);   // all task definitions, for the picker (id -> def)
+let _editingTree = /** @type {object[]} */ ([]);    // the playbook being edited: a flow tree (see vigil-playbook-flow.js)
+/** @type {any[]} */
 let _allPlaybooks = [];   // cached, for client-side search
 
+/** @returns {Promise<void>} */
 async function loadPlaybooks() {
   const list = document.getElementById('playbooks-list');
   if (!list) return;
-  list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
+  list.innerHTML = loadingHtml();
   try {
     // Steps may name your own tasks or shared ones (the built-ins a template
     // playbook uses), so both lists feed the names, risks and outputs.
@@ -30,12 +52,13 @@ async function loadPlaybooks() {
     _renderDefPicker();
     _renderPlaybookList(_filterPlaybooks());
   } catch (e) {
-    list.innerHTML = `<div class="empty-block"><h4>Couldn't load playbooks</h4><p>${escHtml(e.message)}</p></div>`;
+    list.innerHTML = `<div class="empty-block"><h4>${escHtml(t("Couldn't load playbooks"))}</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
+/** @returns {any[]} */
 function _filterPlaybooks() {
-  const q = (document.getElementById('bl-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('bl-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allPlaybooks;
   return _allPlaybooks.filter(b =>
     b.name.toLowerCase().includes(q) ||
@@ -52,6 +75,7 @@ let _blHighRiskWasOn = false;
 // The TOTP prompt appears only while the box is being ticked for the first
 // time. Re-rendering the steps too: a high-risk step is ineligible or not
 // depending on this box, and the list has to say so as soon as it changes.
+/** @returns {void} */
 function _blSyncHighRiskWarning() {
   const warn = document.getElementById('bl-highrisk-warn');
   if (warn) {
@@ -63,11 +87,13 @@ function _blSyncHighRiskWarning() {
 // Whether the playbook being edited has opted in to high-risk steps. Read
 // from the checkbox rather than passed around, so the picker and the save
 // path cannot disagree about it.
+/** @returns {boolean} */
 function _blAllowsHighRisk() {
-  const box = document.getElementById('bl-allow-high-risk');
+  const box = /** @type {HTMLInputElement|null} */ (document.getElementById('bl-allow-high-risk'));
   return !!(box && box.checked);
 }
 
+/** @param {TaskDef|null|undefined} def @returns {string|null} */
 function _blIneligible(def) {
   // Mirrors apps/playbooks/models.py eligible(): playbooks auto-run without
   // per-dispatch 2FA, so update_agent always stays out, and high-risk stays
@@ -82,59 +108,64 @@ function _blIneligible(def) {
   return null;
 }
 
+/** @param {string|number} id @returns {string} */
 function _defName(id) {
   const d = _playbookDefs.find(x => String(x.id) === String(id));
-  return d ? d.name : id;
+  return /** @type {string} */ (d ? d.name : id);
 }
+/** @param {string|number} id @returns {string} */
 function _defRisk(id) {
   const d = _playbookDefs.find(x => String(x.id) === String(id));
   return d ? (d.risk_level || d.risk || 'standard') : 'standard';
 }
+/** @param {string|number} id @returns {number|null} */
 function _defActionCount(id) {
   const d = _playbookDefs.find(x => String(x.id) === String(id));
   const acts = d && d.parsed_spec && d.parsed_spec.actions;
   return Array.isArray(acts) ? acts.length : null;
 }
 
+const BL_INLINE_CODE = '<code class="inline">type: playbook</code>'; // i18n-ignore
+/** @param {any[]} playbooks @returns {void} */
 function _renderPlaybookList(playbooks) {
   const list = document.getElementById('playbooks-list');
   if (!playbooks.length) {
     list.innerHTML = `<div class="empty-block">
-      <h4>No playbooks yet</h4>
-      <p>A playbook is a named sequence of tasks that runs automatically when a matching host is approved — and can be called from any task with <code class="inline">type: playbook</code>. Create one to standardise how new machines get set up.</p></div>`;
+      <h4>${escHtml(t('No playbooks yet'))}</h4>
+      <p>${t('A playbook is a named sequence of tasks that runs automatically when a matching host is approved — and can be called from any task with {code}. Create one to standardise how new machines get set up.', { code: BL_INLINE_CODE })}</p></div>`;
     return;
   }
   list.innerHTML = playbooks.map(b => {
     const steps = flowReadOnlyHtml(flowTreeFromRow(b));
     const tags = (b.target_tags || []).length
-      ? (b.target_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
-      : '<span class="muted-note">every approved host</span>';
+      ? (b.target_tags || []).map(tag => `<span class="chip">${escHtml(tag)}</span>`).join(' ')
+      : `<span class="muted-note">${escHtml(t('every approved host'))}</span>`;
     return `<div class="bl-card">
       <div class="bl-card-head">
         <div>
           <span class="bl-name">${escHtml(b.name)}</span>
-          <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? 'auto-enroll on' : 'auto-enroll off'}</span>
-          ${b.completion_tag ? `<span class="chip">done: ${escHtml(b.completion_tag)}</span>` : ''}
-          ${b.failing_hosts ? `<span class="chip chip-rose">held back on ${b.failing_hosts} host${b.failing_hosts === 1 ? '' : 's'}</span>` : ''}
-          ${b.description ? `<div class="muted-note" style="margin-top:4px;">${escHtml(b.description)}</div>` : ''}
+          <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? escHtml(t('auto-enroll on')) : escHtml(t('auto-enroll off'))}</span>
+          ${b.completion_tag ? `<span class="chip">${escHtml(t('done: {tag}', { tag: b.completion_tag }))}</span>` : ''}
+          ${b.failing_hosts ? `<span class="chip chip-rose">${escHtml(tn('held back on {n} host', 'held back on {n} hosts', b.failing_hosts))}</span>` : ''}
+          ${b.description ? `<div class="muted-note bl-desc-line">${escHtml(b.description)}</div>` : ''}
         </div>
         <div class="card-actions">
-          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>
-          ${b.failing_hosts ? `<button class="btn btn-rose btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">Review failures</button>` : ''}
-          <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">Duplicate</button>
-          <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">Edit</button>
-          <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">Archive</button>
-          <button class="btn btn-rose btn-xs" data-bl-del="${b.id}">Delete</button>
+          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? escHtml(t('Turn auto-enroll off')) : escHtml(t('Turn auto-enroll on'))}</button>
+          ${b.failing_hosts ? `<button class="btn btn-rose btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">${escHtml(t('Review failures'))}</button>` : ''}
+          <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">${escHtml(t('Duplicate'))}</button>
+          <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">${escHtml(t('Edit'))}</button>
+          <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">${escHtml(t('Archive'))}</button>
+          <button class="btn btn-rose btn-xs" data-bl-del="${b.id}">${escHtml(t('Delete'))}</button>
         </div>
       </div>
       <div class="bl-seq">${steps}</div>
       <div class="bl-meta">
-        <span><b>${b.steps.length}</b> step${b.steps.length === 1 ? '' : 's'}</span>
-        <span>Runs on: ${tags}</span>
+        <span>${tn('{n} step', '{n} steps', b.steps.length, { n: `<b>${b.steps.length}</b>` })}</span>
+        <span>${escHtml(t('Runs on:'))} ${tags}</span>
       </div>
       <div class="bl-call">
-        <div class="bl-call-label">Call from a task:</div>
-        <pre>${yamlToHtml('- type: playbook\n  params: { name: "' + b.name + '" }')}</pre>
+        <div class="bl-call-label">${escHtml(t('Call from a task:'))}</div>
+        <pre>${yamlToHtml(blCallSnippet(b.name))}</pre>
       </div>
     </div>`;
   }).join('');
@@ -143,36 +174,35 @@ function _renderPlaybookList(playbooks) {
 
 function _wireCards(playbooks) {
   const list = document.getElementById('playbooks-list');
-  list.querySelectorAll('[data-bl-del]').forEach(btn => btn.addEventListener('click', async () => {
-    if (!(await confirmModal('Delete this playbook? Tasks that call it by name will start failing.', { danger: true, confirmText: 'Delete' }))) return;
+  list.querySelectorAll('[data-bl-del]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
+    if (!(await confirmModal(t('Delete this playbook? Tasks that call it by name will start failing.'), { danger: true, confirmText: t('Delete') }))) return;
     await fetch(`/api/v1/playbooks/${btn.dataset.blDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
     loadPlaybooks();
   }));
-  list.querySelectorAll('[data-bl-toggle]').forEach(btn => btn.addEventListener('click', async () => {
+  list.querySelectorAll('[data-bl-toggle]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
     const turningOn = btn.dataset.enabled !== 'true';
     if (turningOn && !(await _confirmAutoEnroll(btn.dataset))) return;
     try {
       await apiJson(`/api/v1/playbooks/${btn.dataset.blToggle}/`, {
         method: 'PATCH', body: JSON.stringify({ auto_enroll: turningOn }) });
     } catch (e) {
-      showToast(e.message || 'Could not change auto-enroll', 'error');
+      showToast(e.message || t('Could not change auto-enroll'), 'error');
       return;
     }
     loadPlaybooks();
   }));
-  list.querySelectorAll('[data-bl-archive]').forEach(btn => btn.addEventListener('click', async () => {
+  list.querySelectorAll('[data-bl-archive]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', async () => {
     if (!(await confirmModal(
-      'Archive this playbook? It stops auto-enrolling and leaves the list. ' +
-      'Anything already referencing it keeps working, and its run history stays.',
-      { confirmText: 'Archive', danger: false }))) return;
+      t('Archive this playbook? It stops auto-enrolling and leaves the list. Anything already referencing it keeps working, and its run history stays.'),
+      { confirmText: t('Archive'), danger: false }))) return;
     await apiJson(`/api/v1/playbooks/${btn.dataset.blArchive}/archive/`, {
       method: 'POST', body: JSON.stringify({}) });
     loadPlaybooks();
   }));
-  list.querySelectorAll('[data-bl-failures]').forEach(btn => btn.addEventListener(
+  list.querySelectorAll('[data-bl-failures]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener(
     'click', () => _openFailures(btn.dataset.blFailures, btn.dataset.name)));
-  list.querySelectorAll('[data-bl-edit]').forEach(btn => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
-  list.querySelectorAll('[data-bl-dup]').forEach(btn => btn.addEventListener('click', () => {
+  list.querySelectorAll('[data-bl-edit]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
+  list.querySelectorAll('[data-bl-dup]').forEach((/** @type {HTMLButtonElement} */ btn) => btn.addEventListener('click', () => {
     const b = playbooks.find(x => x.id === btn.dataset.blDup);
     _openEditor({ name: b.name + ' (copy)', description: b.description,
       target_tags: b.target_tags, completion_tag: b.completion_tag,
@@ -189,19 +219,19 @@ function _wireCards(playbooks) {
 async function _openFailures(playbookId, name) {
   const m = mountModal('bl-failures', { wide: true });
   const head = `<div class="modal-title">
-      <span>Held back — ${escHtml(name || 'playbook')}</span>
-      <button class="modal-close" data-blf-close aria-label="Close">
+      <span>${escHtml(t('Held back — {name}', { name: name || t('playbook') }))}</span>
+      <button class="modal-close" data-blf-close aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>`;
-  m.setBody(head + '<p class="muted-note">Loading…</p>');
+  m.setBody(head + loadingHtml());
   m.open();
 
   let rows = [];
   try {
     rows = await apiJson(`/api/v1/playbooks/${playbookId}/failures/`);
   } catch (e) {
-    m.setBody(head + `<p class="muted-note">Could not read the failures: ${escHtml(String(e.message || e))}</p>`);
+    m.setBody(head + `<p class="muted-note">${escHtml(t('Could not read the failures: {message}', { message: String(e.message || e) }))}</p>`);
     m.modal.querySelectorAll('[data-blf-close]').forEach(b => b.addEventListener('click', m.close));
     return;
   }
@@ -212,21 +242,19 @@ async function _openFailures(playbookId, name) {
           <span class="blf-host">${escHtml(r.hostname)}</span>
           <span class="chip chip-muted">${escHtml(r.state || 'failed')}</span>
           ${r.at ? `<span class="muted-note">${escHtml(new Date(r.at).toLocaleString())}</span>` : ''}
-          <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">Retry here</button>
+          <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">${escHtml(t('Retry here'))}</button>
         </div>
         ${r.output ? `<pre class="blf-output term term-wrap">${termHtml(r.output)}</pre>`
-                   : '<p class="muted-note">The agent reported no output.</p>'}
+                   : `<p class="muted-note">${escHtml(t('The agent reported no output.'))}</p>`}
       </div>`).join('')
-    : '<p class="muted-note">Nothing is held back any more.</p>';
+    : `<p class="muted-note">${escHtml(t('Nothing is held back any more.'))}</p>`;
 
   m.setBody(head
-    + '<p class="muted-note">Auto-enrolment stops on a host when its last run of this '
-    + 'playbook failed there, so one broken playbook cannot redispatch to the same machine '
-    + 'every five minutes. Retrying dispatches it again — that new run is what clears this.</p>'
+    + `<p class="muted-note">${escHtml(t('Auto-enrolment stops on a host when its last run of this playbook failed there, so one broken playbook cannot redispatch to the same machine every five minutes. Retrying dispatches it again — that new run is what clears this.'))}</p>`
     + `<div class="blf-list">${body}</div>`
     + `<div class="modal-actions">
-         ${rows.length ? `<button class="btn btn-mint" data-blf-retry-all>Retry all ${rows.length}</button>` : ''}
-         <button class="btn btn-outline" data-blf-close>Close</button>
+         ${rows.length ? `<button class="btn btn-mint" data-blf-retry-all>${escHtml(t('Retry all {count}', { count: rows.length }))}</button>` : ''}
+         <button class="btn btn-outline" data-blf-close>${escHtml(t('Close'))}</button>
        </div>`);
 
   const retry = async (payload) => {
@@ -236,16 +264,17 @@ async function _openFailures(playbookId, name) {
     loadPlaybooks();
   };
   m.modal.querySelectorAll('[data-blf-close]').forEach(b => b.addEventListener('click', m.close));
-  m.modal.querySelectorAll('[data-blf-retry]').forEach(b => b.addEventListener(
+  m.modal.querySelectorAll('[data-blf-retry]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener(
     'click', () => retry({ host: b.dataset.blfRetry })));
   m.modal.querySelector('[data-blf-retry-all]')?.addEventListener('click', () => retry({}));
 }
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
+/** @returns {void} */
 function _renderDefPicker() {
   const sel = document.getElementById('bl-def-picker');
   if (!sel) return;
-  sel.innerHTML = '<option value="">+ Add a task to the sequence…</option>' +
+  sel.innerHTML = `<option value="">${escHtml(t('+ Add a task to the sequence…'))}</option>` +
     _playbookDefs.map(d => `<option value="${d.id}">${escHtml(d.name)} · ${escHtml(d.risk_level || d.risk || 'standard')}</option>`).join('');
 }
 
@@ -295,7 +324,7 @@ function _refreshAnalysis() {
 
 function _blSelect(at) {
   _blSel = at;
-  document.querySelectorAll('#bl-editor-steps [data-flow-sel]').forEach(n =>
+  document.querySelectorAll('#bl-editor-steps [data-flow-sel]').forEach((/** @type {HTMLElement} */ n) =>
     n.classList.toggle('is-sel', n.dataset.flowSel === at));
   _renderInspector();
 }
@@ -327,7 +356,7 @@ function _blInsert(at, node) {
 }
 
 function _blAddTask(at) {
-  openPicker({ type: 'task', title: 'Add a task to the playbook',
+  openPicker({ type: 'task', title: t('Add a task to the playbook'),
     ineligible: (item) => _blIneligible(item.raw),
     onSelect: (item) => {
       // The task may have been created inside the picker, after the page's defs were loaded.
@@ -351,9 +380,9 @@ function _blInsertMenu(btn) {
   // and once a lane ends in one, that "+" is gone (its edge carries no
   // insert), which is how "nothing after a go to" holds on the canvas too.
   const atLaneEnd = +i === flowLane(_editingTree, lane).length;
-  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">Task</button>
-    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`
-    + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">Go to</button>` : '');
+  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">${escHtml(t('Task'))}</button>
+    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">${escHtml(t('If / else'))}</button>`
+    + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">${escHtml(t('Go to'))}</button>` : '');
   const vr = vp.getBoundingClientRect();
   const br = btn.getBoundingClientRect();
   menu.style.left = `${br.left - vr.left + br.width / 2}px`;
@@ -376,7 +405,7 @@ function _blInsertMenu(btn) {
 }
 
 function _wireFlowCanvas(wrap) {
-  wrap.querySelectorAll('[data-flow-sel]').forEach(el => {
+  wrap.querySelectorAll('[data-flow-sel]').forEach((/** @type {HTMLElement} */ el) => {
     el.addEventListener('click', () => _blSelect(el.dataset.flowSel));
     el.addEventListener('keydown', (e) => {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -401,7 +430,7 @@ function _renderInspector() {
   const box = document.getElementById('bl-inspector');
   if (!box) return;
   box.innerHTML = flowInspectorHtml(_editingTree, _blSel, _blFlowCtx);
-  const on = (sel, ev, fn) => box.querySelectorAll(sel).forEach(el => el.addEventListener(ev, () => fn(el)));
+  const on = (/** @type {string} */ sel, /** @type {string} */ ev, /** @type {(el: FlowFieldEl) => void} */ fn) => box.querySelectorAll(sel).forEach((/** @type {FlowFieldEl} */ el) => el.addEventListener(ev, () => fn(el)));
   on('[data-flow-rm]', 'click', el => _blRemove(el.dataset.flowRm));
   on('[data-flow-elif-add]', 'click', el => _blElifAdd(el.dataset.flowElifAdd));
   on('[data-flow-elif-rm]', 'click', el => _blElifRemove(el.dataset.flowElifRm));
@@ -453,15 +482,15 @@ function _renderInspector() {
   on('[data-flow-inp-ins]', 'change', el => {
     const field = box.querySelector(`[data-flow-inp="${CSS.escape(el.dataset.flowInpIns)}"][data-inp-id="${CSS.escape(el.dataset.inpId)}"]`);
     if (!field || !el.value) return;
-    field.value += `\${{ inputs.${el.value} }}`;
+    /** @type {FlowFieldEl} */ (field).value += `\${{ inputs.${el.value} }}`;
     field.dispatchEvent(new Event('input', { bubbles: true }));
     el.value = '';
-    field.focus();
+    /** @type {FlowFieldEl} */ (field).focus();
   });
   on('[data-flow-inputs]', 'click', el => {
     const { node } = _blAt(el.dataset.flowInputs);
     const def = _playbookDefs.find(d => String(d.id) === node.def);
-    if (!def) return showToast('Task not loaded yet', 'error');
+    if (!def) return showToast(t('Task not loaded yet'), 'error');
     openInputsModal({ def, override: node.ov, onSave: (ov) => { node.ov = ov; _renderEditorSteps(); } });
   });
   on('[data-flow-view]', 'click', el => {
@@ -472,7 +501,7 @@ function _renderInspector() {
       _renderEditorSteps();
     } });
   });
-  box.querySelectorAll('[data-flow-builder]').forEach(b => {
+  box.querySelectorAll('[data-flow-builder]').forEach((/** @type {BuilderBox} */ b) => {
     if (b.querySelector('[data-fb-rows]')) _blSetupBuilder(b, b.dataset.flowBuilder);
   });
 }
@@ -507,10 +536,10 @@ function _blSetupBuilder(box, at) {
   const whatOptions = (sid, what) => {
     const step = stepBySid(sid);
     const outputs = step ? _blDefOutputs(step.def) : [];
-    const opts = ['<option value="status">its result (ok, failed, …)</option>']
-      .concat(outputs.map(o => `<option value="${escAttr(o)}">output: ${escHtml(o)}</option>`));
+    const opts = [`<option value="status">${escHtml(t('its result (ok, failed, …)'))}</option>`]
+      .concat(outputs.map(o => `<option value="${escAttr(o)}">${escHtml(t('output: {name}', { name: o }))}</option>`));
     if (what !== 'status' && !outputs.includes(what)) {
-      opts.push(`<option value="${escAttr(what)}">output: ${escHtml(what)}</option>`);
+      opts.push(`<option value="${escAttr(what)}">${escHtml(t('output: {name}', { name: what }))}</option>`);
     }
     return opts.join('');
   };
@@ -524,7 +553,7 @@ function _blSetupBuilder(box, at) {
       <div class="fb-line">
         <select data-fb-op data-row="${i}">${opOptions(r.what)}</select>
         <span data-fb-value-wrap data-row="${i}"></span>
-        <button type="button" class="btn btn-rose btn-xs" data-fb-rm data-row="${i}" aria-label="Remove this condition">×</button>
+        <button type="button" class="btn btn-rose btn-xs" data-fb-rm data-row="${i}" aria-label="${escAttr(t('Remove this condition'))}">×</button>
       </div>
     </div>`).join('');
     rowsBox.querySelectorAll('[data-fb-step]').forEach(el => {
@@ -599,6 +628,19 @@ function _blSetupBuilder(box, at) {
 // step inspector offers their ids for ${{ inputs.<id> }}.
 let _blInputs = [];
 
+// A step's expression syntax is a technical sample rather than words, so the
+// placeholder keeps it out of the sentence a translator reads.
+const _BL_INPUT_ID_SAMPLE = 'restart_window'; // i18n-ignore
+const _BL_INPUT_EXPR_SAMPLE = '${{ inputs.<id> }}'; // i18n-ignore
+const _BL_INPUT_ID_HINT = t('Letters, digits and underscores, starting with a letter or underscore. A step uses it as {expr}, and a task input with the same id takes this value by itself.', { expr: _BL_INPUT_EXPR_SAMPLE });
+// The sample lines of the choices field: a value format, not a sentence.
+const _BL_CHOICE_SAMPLE_1 = 'nightly = Nightly maintenance'; // i18n-ignore
+const _BL_CHOICE_SAMPLE_2 = 'weekend = Weekend window'; // i18n-ignore
+// The auto-enrolment target is bolded, so both its halves are built apart.
+function _blEveryHostText() {
+  return `<strong>${escHtml(t('EVERY approved host'))}</strong>`;
+}
+
 function _blInputChoices(inp) {
   return String(inp.choicesText || '')
     .split('\n')
@@ -612,29 +654,36 @@ function _blInputChoices(inp) {
 }
 
 function _blInputTypeMeta(type) {
-  return { text: 'Text', number: 'Number', boolean: 'Yes / no', choice: 'Choice' }[type] || type;
+  return { text: t('Text'), number: t('Number'), boolean: t('Yes / no'), choice: t('Choice') }[type] || type;
+}
+
+const BL_CALL_SNIPPET_HEAD = '- type: playbook\n  params: { name: "'; // i18n-ignore
+const BL_CALL_SNIPPET_TAIL = '" }'; // i18n-ignore
+/** The YAML a task uses to call the playbook `name`. */
+function blCallSnippet(name) {
+  return BL_CALL_SNIPPET_HEAD + name + BL_CALL_SNIPPET_TAIL;
 }
 
 function _renderBlInputs() {
   const box = document.getElementById('bl-inputs');
   if (!box) return;
   if (!_blInputs.length) {
-    box.innerHTML = '<div class="bl-inputs-empty">This playbook asks for no inputs.</div>';
+    box.innerHTML = `<div class="bl-inputs-empty">${escHtml(t('This playbook asks for no inputs.'))}</div>`;
     return;
   }
   box.innerHTML = _blInputs.map((inp, i) => {
     const bits = [escHtml(inp.id), escHtml(_blInputTypeMeta(inp.type))];
-    if (inp.type !== 'boolean') bits.push(escHtml(`${inp.default === '' || inp.default == null ? '(no default)' : inp.default}`));
-    if (inp.required) bits.push('<span class="bl-inputs-flag">required</span>');
+    if (inp.type !== 'boolean') bits.push(escHtml(`${inp.default === '' || inp.default == null ? t('(no default)') : inp.default}`));
+    if (inp.required) bits.push(`<span class="bl-inputs-flag">${escHtml(t('required'))}</span>`);
     return `<div class="bl-inputs-row">
       <span class="bl-inputs-bits">${bits.join(' · ')}</span>
-      <button type="button" class="btn btn-sky btn-xs" data-bl-input-edit="${i}">Edit</button>
-      <button type="button" class="btn btn-rose btn-xs" data-bl-input-rm="${i}">Remove</button>
+      <button type="button" class="btn btn-sky btn-xs" data-bl-input-edit="${i}">${escHtml(t('Edit'))}</button>
+      <button type="button" class="btn btn-rose btn-xs" data-bl-input-rm="${i}">${escHtml(t('Remove'))}</button>
     </div>`;
   }).join('');
-  box.querySelectorAll('[data-bl-input-edit]').forEach(b => b.addEventListener(
+  box.querySelectorAll('[data-bl-input-edit]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener(
     'click', () => _editBlInput(+b.dataset.blInputEdit)));
-  box.querySelectorAll('[data-bl-input-rm]').forEach(b => b.addEventListener('click', () => {
+  box.querySelectorAll('[data-bl-input-rm]').forEach((/** @type {HTMLButtonElement} */ b) => b.addEventListener('click', () => {
     _blInputs.splice(+b.dataset.blInputRm, 1);
     _renderBlInputs();
   }));
@@ -647,56 +696,54 @@ function _editBlInput(index) {
   const editing = index != null ? _blInputs[index] : null;
   const m = mountModal('bl-input', { variant: 'm-pop' });
   m.setBody(`<div class="modal-title">
-      <span>${editing ? 'Edit playbook input' : 'Add playbook input'}</span>
-      <button class="modal-close" data-bli-close aria-label="Close">
+      <span>${escHtml(editing ? t('Edit playbook input') : t('Add playbook input'))}</span>
+      <button class="modal-close" data-bli-close aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-id">Id</label>
+      <label class="form-label" for="bli-id">${escHtml(t('Id'))}</label>
       <input class="form-control" id="bli-id" maxlength="60" spellcheck="false"
-             placeholder="restart_window" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
-      <div class="muted-note bli-hint">Letters, digits and underscores, starting with a letter or underscore.
-        A step uses it as \${{ inputs.&lt;id&gt; }}, and a task input with the
-        same id takes this value by itself.</div>
+             placeholder="${_BL_INPUT_ID_SAMPLE}" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
+      <div class="muted-note bli-hint">${escHtml(_BL_INPUT_ID_HINT)}</div>
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-label">Label</label>
-      <input class="form-control" id="bli-label" maxlength="120" placeholder="Restart window">
+      <label class="form-label" for="bli-label">${escHtml(t('Label'))}</label>
+      <input class="form-control" id="bli-label" maxlength="120" placeholder="${escAttr(t('Restart window'))}">
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-type">Type</label>
+      <label class="form-label" for="bli-type">${escHtml(t('Type'))}</label>
       <select class="form-control" id="bli-type">
-        <option value="text">Text</option>
-        <option value="number">Number</option>
-        <option value="boolean">Yes / no</option>
-        <option value="choice">Choice</option>
+        <option value="text">${escHtml(t('Text'))}</option>
+        <option value="number">${escHtml(t('Number'))}</option>
+        <option value="boolean">${escHtml(t('Yes / no'))}</option>
+        <option value="choice">${escHtml(t('Choice'))}</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="bli-desc">Description</label>
-      <input class="form-control" id="bli-desc" maxlength="255" placeholder="Says what the person starting the run should type here">
+      <label class="form-label" for="bli-desc">${escHtml(t('Description'))}</label>
+      <input class="form-control" id="bli-desc" maxlength="255" placeholder="${escAttr(t('Says what the person starting the run should type here'))}">
     </div>
     <div class="form-group" id="bli-required-wrap">
-      <label class="setting-check"><input type="checkbox" id="bli-required"> Required — nobody may start a run without it</label>
+      <label class="setting-check"><input type="checkbox" id="bli-required"> ${escHtml(t('Required — nobody may start a run without it'))}</label>
     </div>
     <div class="form-group" id="bli-default-wrap">
-      <label class="form-label" for="bli-default">Default</label>
+      <label class="form-label" for="bli-default">${escHtml(t('Default'))}</label>
       <input class="form-control" id="bli-default" maxlength="500">
     </div>
     <div class="form-group" id="bli-default-choice-wrap">
-      <label class="form-label" for="bli-default-choice">Default</label>
+      <label class="form-label" for="bli-default-choice">${escHtml(t('Default'))}</label>
       <select class="form-control" id="bli-default-choice"></select>
     </div>
     <div class="form-group" id="bli-choices-wrap">
-      <label class="form-label" for="bli-choices">Choices</label>
+      <label class="form-label" for="bli-choices">${escHtml(t('Choices'))}</label>
       <textarea class="form-control" id="bli-choices" rows="4" spellcheck="false"
-                placeholder="nightly = Nightly maintenance&#10;weekend = Weekend window"></textarea>
-      <div class="muted-note bli-hint">One per line: value, or value = label.</div>
+                placeholder="${escAttr(_BL_CHOICE_SAMPLE_1)}&#10;${escAttr(_BL_CHOICE_SAMPLE_2)}"></textarea>
+      <div class="muted-note bli-hint">${escHtml(t('One per line: value, or value = label.'))}</div>
     </div>
     <div class="confirm-actions">
-      <button class="btn btn-outline btn-sm" data-bli-close>Cancel</button>
-      <button class="btn btn-mint btn-sm" data-bli-save>${editing ? 'Save input' : 'Add input'}</button>
+      <button class="btn btn-outline btn-sm" data-bli-close>${escHtml(t('Cancel'))}</button>
+      <button class="btn btn-mint btn-sm" data-bli-save>${escHtml(editing ? t('Save input') : t('Add input'))}</button>
     </div>`);
 
   const q = (id) => m.modal.querySelector(id);
@@ -717,14 +764,14 @@ function _editBlInput(index) {
   }
 
   const sync = () => {
-    const t = typeEl.value;
-    reqWrap.hidden = t !== 'text';
-    reqEl.disabled = t !== 'text';
-    if (t !== 'text') reqEl.checked = false;
-    choicesWrap.hidden = t !== 'choice';
-    defChoiceWrap.hidden = t !== 'choice';
-    defWrap.hidden = t === 'choice' || t === 'boolean';
-    if (t === 'choice') {
+    const type = typeEl.value;
+    reqWrap.hidden = type !== 'text';
+    reqEl.disabled = type !== 'text';
+    if (type !== 'text') reqEl.checked = false;
+    choicesWrap.hidden = type !== 'choice';
+    defChoiceWrap.hidden = type !== 'choice';
+    defWrap.hidden = type === 'choice' || type === 'boolean';
+    if (type === 'choice') {
       const keep = (editing && editing.type === 'choice') ? editing.default : '';
       defChoiceEl.replaceChildren();
       for (const c of _blInputChoices({ choicesText: choicesEl.value })) {
@@ -744,17 +791,17 @@ function _editBlInput(index) {
   m.modal.querySelector('[data-bli-save]').addEventListener('click', () => {
     const id = idEl.value.trim();
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) {
-      showToast('An input id is letters, digits and underscores, starting with a letter or underscore', 'error');
+      showToast(t('An input id is letters, digits and underscores, starting with a letter or underscore'), 'error');
       return;
     }
     if (_blInputs.some((x, i) => x.id === id && i !== index)) {
-      showToast(`The playbook already has an input named ${id}`, 'error');
+      showToast(t('The playbook already has an input named {id}', { id }), 'error');
       return;
     }
     const type = typeEl.value;
     const choices = type === 'choice' ? _blInputChoices({ choicesText: choicesEl.value }) : [];
     if (type === 'choice' && !choices.length) {
-      showToast('A choice input needs at least one choice', 'error');
+      showToast(t('A choice input needs at least one choice'), 'error');
       return;
     }
     let def;
@@ -782,27 +829,29 @@ function _editBlInput(index) {
 function _openEditor(data, editingId) {
   const modal = document.getElementById('bl-editor-modal');
   modal.dataset.editing = editingId || '';
-  document.getElementById('bl-editor-title').textContent = editingId ? 'Edit playbook' : (data && data.name ? 'Duplicate playbook' : 'New playbook');
-  document.getElementById('bl-name').value = data ? (data.name || '') : '';
-  document.getElementById('bl-desc').value = data ? (data.description || '') : '';
-  document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
-  document.getElementById('bl-completion-tag').value = data ? (data.completion_tag || '') : '';
+  /** @type {HTMLElement} */ (document.getElementById('bl-editor-title')).textContent = editingId ? t('Edit playbook') : (data && data.name ? t('Duplicate playbook') : t('New playbook'));
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-name')).value = data ? (data.name || '') : '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('bl-desc')).value = data ? (data.description || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-tags')).value = data ? (data.target_tags || []).join(', ') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-completion-tag')).value = data ? (data.completion_tag || '') : '';
   // Where it lives (S1 04e-5): editing shows its site; a new or duplicated
   // playbook picks one the user may create in.
-  sitePickFill(document.getElementById('bl-site'), document.getElementById('bl-site-field'),
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('bl-site')), document.getElementById('bl-site-field'),
     editingId && data ? data.site_id : null, { editing: !!editingId });
   // Pinned task versions (S1 decisions-06 item 16).
-  document.getElementById('bl-auto-sync').checked = !!(editingId && data && data.tasks_auto_sync);
+  /** @type {HTMLInputElement} */ (document.getElementById('bl-auto-sync')).checked = !!(editingId && data && data.tasks_auto_sync);
   const stale = (editingId && data && data.stale_steps) || [];
   document.getElementById('bl-stale-note').hidden = !stale.length;
   document.getElementById('bl-stale-text').textContent = stale.length
-    ? `Changed since this playbook was given ${stale.length === 1 ? 'it' : 'them'}: ${stale.join(', ')}. Steps still run the earlier version.`
+    ? tn('Changed since this playbook was given it: {names}. Steps still run the earlier version.',
+         'Changed since this playbook was given them: {names}. Steps still run the earlier version.',
+         stale.length, { names: stale.join(', ') })
     : '';
   // Duplicating a playbook does not inherit the authorization: editingId is
   // null there, so the flag starts off and has to be re-confirmed. The
   // original's TOTP authorized that playbook, not a copy of it.
   _blHighRiskWasOn = !!(editingId && data && data.allow_high_risk);
-  const allowBox = document.getElementById('bl-allow-high-risk');
+  const allowBox = /** @type {HTMLInputElement|null} */ (document.getElementById('bl-allow-high-risk'));
   if (allowBox) allowBox.checked = _blHighRiskWasOn;
   _blSyncHighRiskWarning();
   _blInputs = JSON.parse(JSON.stringify((data && data.inputs) || []));
@@ -827,37 +876,37 @@ function _startEdit(id) {
 async function _savePlaybook() {
   const allowHighRisk = _blAllowsHighRisk();
   const body = {
-    name: document.getElementById('bl-name').value.trim(),
-    description: document.getElementById('bl-desc').value.trim(),
-    target_tags: document.getElementById('bl-tags').value.split(',').map(t => t.trim()).filter(Boolean),
-    completion_tag: document.getElementById('bl-completion-tag').value.trim(),
+    name: /** @type {HTMLInputElement} */ (document.getElementById('bl-name')).value.trim(),
+    description: /** @type {HTMLTextAreaElement} */ (document.getElementById('bl-desc')).value.trim(),
+    target_tags: /** @type {HTMLInputElement} */ (document.getElementById('bl-tags')).value.split(',').map(t => t.trim()).filter(Boolean),
+    completion_tag: /** @type {HTMLInputElement} */ (document.getElementById('bl-completion-tag')).value.trim(),
     allow_high_risk: allowHighRisk,
     inputs: _blInputs,
     flow_steps: flowSerialize(_editingTree),
-    tasks_auto_sync: document.getElementById('bl-auto-sync').checked,
+    tasks_auto_sync: /** @type {HTMLInputElement} */ (document.getElementById('bl-auto-sync')).checked,
   };
   const siteId = sitePickValue(document.getElementById('bl-site'), document.getElementById('bl-site-field'));
   if (siteId !== undefined) body.site_id = siteId;
-  if (!body.name) return showToast('Give the playbook a name', 'error');
+  if (!body.name) return showToast(t('Give the playbook a name'), 'error');
   const allSteps = flowSteps(_editingTree);
-  if (!allSteps.length) return showToast('Add at least one task', 'error');
+  if (!allSteps.length) return showToast(t('Add at least one task'), 'error');
   for (const s of allSteps) {
     const why = _blIneligible(_playbookDefs.find(d => String(d.id) === String(s.def)));
-    if (why) return showToast(`Fix ineligible steps first: ${_defName(s.def)} — ${why}`, 'error');
+    if (why) return showToast(t('Fix ineligible steps first: {name} — {why}', { name: _defName(s.def), why }), 'error');
   }
   const findings = flowFindings(_editingTree);
   if (findings.some(f => f.text.startsWith('A branch has no condition'))) {
-    return showToast('Give every branch a condition before saving', 'error');
+    return showToast(t('Give every branch a condition before saving'), 'error');
   }
   if (findings.some(f => f.text.startsWith('A go to has no target'))) {
-    return showToast('Choose a step for every go to before saving', 'error');
+    return showToast(t('Choose a step for every go to before saving'), 'error');
   }
   // Only asked when the flag is being turned on — the server ignores it
   // otherwise, and a code spent on a no-op change is a code burned for
   // nothing (they are single-use within their validity window).
   if (allowHighRisk && !_blHighRiskWasOn) {
-    const totp = await totpPrompt('High-risk steps will run unattended on every host this playbook matches.',
-      { title: 'Allow high-risk steps', confirmText: 'Authorize and save' });
+    const totp = await totpPrompt(t('High-risk steps will run unattended on every host this playbook matches.'),
+      { title: t('Allow high-risk steps'), confirmText: t('Authorize and save') });
     if (!totp) return;
     body.totp = totp;
   }
@@ -865,10 +914,10 @@ async function _savePlaybook() {
   try {
     if (editing) await apiJson(`/api/v1/playbooks/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
     else await apiJson('/api/v1/playbooks/', { method: 'POST', body: JSON.stringify(body) });
-    showToast('Playbook saved', 'success');
+    showToast(t('Playbook saved'), 'success');
     _closeBlEditor();
     loadPlaybooks();
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+  } catch (e) { showToast(t('Save failed: {message}', { message: e.message }), 'error'); }
 }
 
 /* ── Template playbooks ──────────────────────────────────────────────── */
@@ -882,34 +931,34 @@ async function _openPlaybookTemplatePicker() {
   try {
     templates = (await apiJson('/api/v1/playbooks/library/')).results || [];
   } catch (e) {
-    showToast('Could not load the templates: ' + e.message, 'error');
+    showToast(t('Could not load the templates: {message}', { message: e.message }), 'error');
     return;
   }
   if (!templates.length) {
-    showToast('No template playbooks are available.', 'info');
+    showToast(t('No template playbooks are available.'), 'info');
     return;
   }
   openPicker({
     type: 'playbook_template',
-    title: 'Start from a template playbook',
+    title: t('Start from a template playbook'),
     allowAdd: false,
-    items: templates.map(t => ({ key: t.id, name: t.name, meta: t.steps.join(' → ') })),
+    items: templates.map(tpl => ({ key: tpl.id, name: tpl.name, meta: tpl.steps.join(' → ') })),
     onSelect: async (item) => {
-      const tpl = templates.find(t => t.id === item.key);
+      const tpl = templates.find(tpl => tpl.id === item.key);
       let totp = '';
       if (tpl && tpl.allow_high_risk) {
-        const code = await totpPrompt('This template runs high-risk steps.',
-          { title: 'Use template', confirmText: 'Create playbook' });
+        const code = await totpPrompt(t('This template runs high-risk steps.'),
+          { title: t('Use template'), confirmText: t('Create playbook') });
         if (!code) return;
         totp = code;
       }
       try {
         const row = await apiJson(`/api/v1/playbooks/library/${encodeURIComponent(item.key)}/use/`,
           { method: 'POST', body: JSON.stringify({ totp }) });
-        showToast(`Created “${row.name}”`, 'success');
+        showToast(t('Created “{name}”', { name: row.name }), 'success');
         await loadPlaybooks();
         _startEdit(row.id);
-      } catch (e) { showToast('Could not create the playbook: ' + e.message, 'error'); }
+      } catch (e) { showToast(t('Could not create the playbook: {message}', { message: e.message }), 'error'); }
     },
   });
 }
@@ -930,12 +979,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (search) search.addEventListener('input', () => _renderPlaybookList(_filterPlaybooks()));
 
   // Sub-tab switching (Playbooks / Automation)
-  document.querySelectorAll('#page-playbooks .sub-tab').forEach(tab => {
+  document.querySelectorAll('#page-playbooks .sub-tab').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#page-playbooks .sub-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('#page-playbooks .sub-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById(tab.dataset.subtab).classList.add('active');
+      /** @type {HTMLElement} */ (document.getElementById(tab.dataset.subtab)).classList.add('active');
       if (tab.dataset.subtab === 'auto-panel' && typeof loadAutomations === 'function') loadAutomations();
     });
   });
@@ -943,7 +992,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 if (typeof navigateTo === 'function') {
   const _origNavPlaybooks = navigateTo;
-  navigateTo = function (p) { _origNavPlaybooks(p); if (p === 'playbooks') loadPlaybooks(); };
+  window.navigateTo = function (p) { _origNavPlaybooks(p); if (p === 'playbooks') loadPlaybooks(); };
 }
 
 
@@ -952,48 +1001,48 @@ if (typeof navigateTo === 'function') {
    and how many hosts that is. */
 async function _confirmAutoEnroll(data) {
   const tags = (data.tags || '').trim();
-  const target = tags
-    ? `every host tagged <strong>${escHtml(tags)}</strong>`
-    : '<strong>EVERY approved host</strong>';
   if (!(data.done || '').trim()) {
-    showToast('Set a completion tag first — without one the playbook would '
-              + 'run again on every pass.', 'error');
+    showToast(t('Set a completion tag first — without one the playbook would run again on every pass.'), 'error');
     return false;
   }
+  // Each piece is bolded or set as code, so it is built apart and reaches the
+  // sentence as a placeholder value.
+  const strongTags = `<strong>${escHtml(tags)}</strong>`; // i18n-ignore
+  const doneTag = `<code>${escHtml(data.done)}</code>`; // i18n-ignore
+  const target = tags ? t('every host tagged {tags}', { tags: strongTags }) : _blEveryHostText(); // i18n-ignore
   let count = '';
   try {
     const hosts = await apiJson('/api/v1/hosts/');
-    const wanted = tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    const wanted = tags.split(',').map(tg => tg.trim().toLowerCase()).filter(Boolean);
     const done = (data.done || '').trim().toLowerCase();
     const matching = (hosts.results || hosts || []).filter((h) => {
-      const ht = (h.tags || []).map(t => String(t).toLowerCase());
+      const ht = (h.tags || []).map(tg => String(tg).toLowerCase());
       if (ht.includes(done)) return false;
-      return wanted.length ? wanted.some(t => ht.includes(t)) : true;
+      return wanted.length ? wanted.some(tg => ht.includes(tg)) : true;
     });
-    count = `<p><strong>${matching.length}</strong> host${matching.length === 1 ? '' : 's'} `
-          + `match right now and would start running it within five minutes.</p>`;
-  } catch (e) { /* the warning stands without a count */ }
+    count = `<p>${tn('{n} host matches right now and would start running it within five minutes.',
+                     '{n} hosts match right now and would start running it within five minutes.',
+                     matching.length, { n: `<strong>${matching.length}</strong>` })}</p>`;
+  } catch (e) { /* state-ok: an optional count on a confirmation; the warning still stands without it */ }
 
   return confirmModal(
-    `<p><strong>${escHtml(data.name)}</strong> will run unattended on ${target}.</p>`
+    `<p>${t('{name} will run unattended on {target}.', { name: `<strong>${escHtml(data.name)}</strong>`, target })}</p>` // i18n-ignore
     + count
-    + `<p>Each host is tagged <code>${escHtml(data.done)}</code> when it finishes, `
-    + `and is not run again while it carries that tag.</p>`
-    + `<p class="muted-note">Rollouts are the staged alternative: they cover the `
-    + `same machines a wave at a time and stop at the first wave that fails.</p>`,
-    { title: 'Run this on every matching host?',
-      confirmText: 'Yes, turn auto-enroll on', danger: true, html: true });
+    + `<p>${t('Each host is tagged {done} when it finishes, and is not run again while it carries that tag.', { done: doneTag })}</p>`
+    + `<p class="muted-note">${t('Rollouts are the staged alternative: they cover the same machines a wave at a time and stop at the first wave that fails.')}</p>`,
+    { title: t('Run this on every matching host?'),
+      confirmText: t('Yes, turn auto-enroll on'), danger: true, html: true });
 }
 
 /* Sync latest (S1 decisions-06 item 16): every step takes its task's
  * current version, after the same checks a save runs. */
 document.addEventListener('click', async (e) => {
-  if (!e.target.closest('#bl-sync-latest')) return;
+  if (!/** @type {HTMLElement} */ (e.target).closest('#bl-sync-latest')) return;
   const id = document.getElementById('bl-editor-modal').dataset.editing;
   if (!id) return;
   try {
     const row = await apiJson(`/api/v1/playbooks/${id}/sync-tasks/`, { method: 'POST', body: '{}' });
     document.getElementById('bl-stale-note').hidden = !(row.stale_steps || []).length;
-    showToast('Steps now run the latest version of their tasks', 'success');
-  } catch (err) { showToast('Sync failed: ' + err.message, 'error'); }
+    showToast(t('Steps now run the latest version of their tasks'), 'success');
+  } catch (err) { showToast(t('Sync failed: {message}', { message: err.message }), 'error'); }
 });

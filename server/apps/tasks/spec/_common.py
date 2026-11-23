@@ -118,7 +118,7 @@ _SCRIPT_MAX_LEN = 65536
 
 
 _APP_SOURCE_CHOICES = frozenset({
-    "dpkg", "rpm", "apk", "pacman", "flatpak", "snap",
+    "dpkg", "rpm", "apk", "pacman", "pkg", "flatpak", "snap",
     "winget", "chocolatey", "scoop", "registry",
 })
 

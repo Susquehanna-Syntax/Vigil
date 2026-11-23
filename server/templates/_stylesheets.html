@@ -1,0 +1,21 @@
+{% load static %}
+{% comment %}Every page's stylesheets, in cascade order: the tokens first, then the parts of the
+   design in the numbered order they were cut from the single design stylesheet. A
+   later file wins a tie, so keep the numbers in order (vigil/test_stylesheets.py
+   checks).{% endcomment %}
+<link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/01-base.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/02-hosts-alerts.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/03-tasks-deploy.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/04-settings-cards.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/05-detail-feedback.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/06-monitor-inventory.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/07-auth-a11y.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/08-containers.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/09-settings-pages.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/10-history-firewall-reprovision.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/11-hints-dashboards.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/12-playbooks-apps-stacks.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/13-search-store-topology.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/14-reports-profiles-terminal.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil/15-ui-kit.css' %}">

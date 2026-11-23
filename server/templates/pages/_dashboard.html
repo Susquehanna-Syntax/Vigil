@@ -1,16 +1,16 @@
-{# Dashboard page section #}
+{% load i18n %}{# Dashboard page section #}
 {# The header sub-line (host / online / alert counts) is server-side from     #}
 {# dashboard(); everything else on this page is the client-side widget grid.  #}
     <section id="page-dashboard" class="page active">
 
       <div class="page-header fade-in d1">
         <div>
-          <div class="page-title">Dashboard<span>.</span></div>
-          <div class="page-sub">{{ host_count }} host{{ host_count|pluralize }} · {{ online_count }} online · {{ alert_count }} active alert{{ alert_count|pluralize }}</div>
+          <div class="page-title">{% translate "Dashboard" %}<span>.</span></div>
+          <div class="page-sub">{% blocktranslate count n=host_count %}{{ n }} host{% plural %}{{ n }} hosts{% endblocktranslate %} · {% blocktranslate count n=online_count %}{{ n }} online{% plural %}{{ n }} online{% endblocktranslate %} · {% blocktranslate count n=alert_count %}{{ n }} active alert{% plural %}{{ n }} active alerts{% endblocktranslate %}</div>
         </div>
         <button class="btn btn-mint" data-act="openEnrollWizard">
           <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Host
+          {% translate "Add Host" %}
         </button>
       </div>
 

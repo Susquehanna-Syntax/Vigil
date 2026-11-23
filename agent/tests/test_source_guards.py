@@ -12,6 +12,7 @@ GUARDS = {
     "rpm": 'agent.pkg_manager in ["dnf", "yum", "zypper"]',
     "apk": 'agent.pkg_manager == "apk"',
     "pacman": 'agent.pkg_manager == "pacman"',
+    "pkg": 'agent.pkg_manager == "pkg"',
     "flatpak": 'agent.os == "linux"',
     "snap": 'agent.os == "linux"',
     "winget": 'agent.os == "windows"',
@@ -25,6 +26,7 @@ HOSTS = {   # agent context → the sources whose steps should run there
     "fedora": ({"os": "linux", "pkg_manager": "dnf"}, {"rpm", "flatpak", "snap"}),
     "alpine": ({"os": "linux", "pkg_manager": "apk"}, {"apk", "flatpak", "snap"}),
     "arch": ({"os": "linux", "pkg_manager": "pacman"}, {"pacman", "flatpak", "snap"}),
+    "freebsd": ({"os": "freebsd", "pkg_manager": "pkg"}, {"pkg"}),
     "windows": ({"os": "windows", "pkg_manager": "winget"}, {"winget", "chocolatey", "scoop", "registry"}),
     "mac": ({"os": "darwin", "pkg_manager": "brew"}, set()),
 }

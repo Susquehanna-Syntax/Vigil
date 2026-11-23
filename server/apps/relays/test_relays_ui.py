@@ -15,11 +15,11 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.accounts.models import Role, UserProfile
+from vigil.css_text import design_css
 
 REPO = Path(__file__).resolve().parents[3]
 TEMPLATE = REPO / "server" / "templates" / "pages" / "_settings.html"
 SETTINGS_JS = REPO / "server" / "static" / "js" / "vigil-settings.js"
-CSS = REPO / "server" / "static" / "css" / "vigil.css"
 
 #: Everything the pane's buttons name.
 HANDLERS = ("loadRelays", "addRelay", "toggleRelay", "editRelay", "rotateRelayKey",
@@ -112,13 +112,13 @@ class RelaysJsWiringTests(TestCase):
 
 class RelaysCssTests(TestCase):
     def test_the_pane_has_styles_and_they_are_appended(self):
-        css = CSS.read_text(encoding="utf-8")
+        css = design_css()
         for selector in (".relay-row", ".relay-status", ".relay-code"):
             self.assertIn(selector, css)
         self.assertGreater(len(css.splitlines()), 4400)
 
     def test_no_coloured_side_border_on_relay_rows(self):
-        css = CSS.read_text(encoding="utf-8")
+        css = design_css()
         for block in re.findall(r"\.relay-[a-z-]+[^{]*\{[^}]*\}", css):
             self.assertNotIn("border-left", block, block)
             self.assertNotIn("border-right", block, block)

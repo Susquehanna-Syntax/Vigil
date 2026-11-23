@@ -28,9 +28,11 @@ class HostSerializer(serializers.ModelSerializer):
             "agent_allowlist",
             "agent_allow_reprovision",
             "agent_runs_as_root",
+            "agent_update",
             "reboot_required",
             "last_checkin",
             "created_at",
+            "depends_on",
             "site",
             "site_name",
         ]

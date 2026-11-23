@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static %}{% load i18n %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
-  <style>
+  <style nonce="{{ request.csp_nonce }}">
     :root {
       --surface: #1E1E2E;
       --card: #27273A;
@@ -77,14 +77,17 @@
                display: flex; align-items: center; gap: 14px;
                animation: rise .7s .08s var(--ease-out-expo) both; }
     .overall--up   { background: rgba(166, 227, 161, .12); }
+    .overall--maint { background: rgba(130, 196, 238, .12); }
     .overall--down { background: rgba(243, 139, 168, .12); }
     .overall-title { font-family: "Fraunces", serif; font-size: 1.25rem; font-weight: 500; }
     .overall--up .overall-title   { color: var(--mint); }
+    .overall--maint .overall-title { color: var(--sky); }
     .overall--down .overall-title { color: var(--rose); }
-    .overall-count { margin-left: auto; font-family: "IBM Plex Mono", monospace;
+    .overall-count { margin-left: auto; white-space: nowrap; font-family: "IBM Plex Mono", monospace;
                      font-size: .85rem; color: var(--text-2); }
     .up-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
     .overall--up .up-dot   { background: var(--mint); animation: breathe 3s ease-in-out infinite; }
+    .overall--maint .up-dot { background: var(--sky); }
     .overall--down .up-dot { background: var(--rose); }
     @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(166,227,161,.35); }
                          50%      { box-shadow: 0 0 0 7px rgba(166,227,161,0); } }
@@ -97,8 +100,9 @@
             border: 1px solid rgba(255, 255, 255, .04);
             transition: background .5s var(--ease-out-expo);
             animation: rise .6s var(--ease-out-expo) both; }
-    .card--up   { background: rgba(166, 227, 161, .11); }
-    .card--down { background: rgba(243, 139, 168, .12); }
+    .card--up    { background: rgba(166, 227, 161, .11); }
+    .card--maint { background: rgba(130, 196, 238, .11); }
+    .card--down  { background: rgba(243, 139, 168, .12); }
     .card-top { display: flex; align-items: center; gap: 14px; }
     .card-name { font-weight: 500; font-size: 1rem; }
     .card-uptime { margin-left: auto; font-family: "IBM Plex Mono", monospace;
@@ -106,7 +110,12 @@
     .card-state { font-family: "IBM Plex Mono", monospace;
                   font-size: .82rem; padding: 4px 12px; border-radius: 999px; }
     .card-state--up   { color: var(--mint); background: rgba(166, 227, 161, .14); }
+    .card-state--maint { color: var(--sky); background: rgba(130, 196, 238, .14); }
     .card-state--down { color: var(--rose); background: rgba(243, 139, 168, .14); }
+    .notices { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+    .notice { border-radius: 14px; padding: 14px 18px; background: rgba(130, 196, 238, .10); }
+    .notice-when { color: var(--sky); font-weight: 500; }
+    .notice-hosts { margin-top: 4px; font-size: .85rem; color: var(--text-2); }
     .card-empty { color: var(--muted); text-align: center;
                   background: rgba(186, 168, 232, .08); }
 
@@ -156,26 +165,35 @@
       <img class="logo" src="{% if logo_url %}{{ logo_url }}{% else %}{% static 'img/vigil-logo.png' %}{% endif %}" alt="">
       <div>
         <h1>{{ page.title }}</h1>
-        <div class="subtitle">live status · refreshes every minute</div>
+        <div class="subtitle">{% translate "live status · refreshes every minute" %}</div>
       </div>
     </header>
 
-    <div class="overall overall--{% if all_up %}up{% else %}down{% endif %}" id="overall">
+    <div class="overall overall--{% if all_up and maintenance_count %}maint{% elif all_up %}up{% else %}down{% endif %}" id="overall">
       <span class="up-dot"></span>
       <span class="overall-title" id="overall-title">
-        {% if all_up %}All systems operational{% else %}Some systems are down{% endif %}
+        {% if all_up and maintenance_count %}{% translate "Scheduled maintenance in progress" %}{% elif all_up %}{% translate "All systems operational" %}{% else %}{% translate "Some systems are down" %}{% endif %}
       </span>
-      <span class="overall-count" id="overall-count">{{ up_count }}/{{ hosts|length }} up</span>
+      <span class="overall-count" id="overall-count">{% blocktranslate with count=up_count total=hosts|length %}{{ count }}/{{ total }} up{% endblocktranslate %}</span>
     </div>
+
+    <section class="notices" id="notices"{% if not notices %} hidden{% endif %}>
+      {% for notice in notices %}
+      <div class="notice">
+        <div class="notice-when">{% if notice.active %}{% translate "Maintenance in progress, until" %} <time datetime="{{ notice.ends_at }}">{{ notice.end|date:"M j, H:i" }} {% translate "UTC" %}</time>{% else %}{% translate "Scheduled maintenance:" %} <time datetime="{{ notice.starts_at }}">{{ notice.start|date:"M j, H:i" }} {% translate "UTC" %}</time> {% translate "to" %} <time datetime="{{ notice.ends_at }}">{{ notice.end|date:"M j, H:i" }} {% translate "UTC" %}</time>{% endif %}</div>
+        <div class="notice-hosts">{{ notice.hosts|join:", " }}</div>
+      </div>
+      {% endfor %}
+    </section>
 
     <ul id="cards">
       {% for h in hosts %}
-      <li class="card card--{% if h.up %}up{% else %}down{% endif %}" data-host-id="{{ h.id }}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
+      <li class="card card--{% if h.state == 'maintenance' %}maint{% else %}{{ h.state }}{% endif %}" data-host-id="{{ h.id }}">
         <div class="card-top">
           <span class="card-name">{{ h.hostname }}</span>
-          <span class="card-uptime">{% if h.uptime_pct %}{{ h.uptime_pct }}% uptime{% endif %}</span>
-          <span class="card-state card-state--{% if h.up %}up{% else %}down{% endif %}">
-            {% if h.up %}operational{% else %}down{% endif %}
+          <span class="card-uptime">{% if h.uptime_pct %}{% blocktranslate with pct=h.uptime_pct %}{{ pct }}% uptime{% endblocktranslate %}{% endif %}</span>
+          <span class="card-state card-state--{% if h.state == 'maintenance' %}maint{% else %}{{ h.state }}{% endif %}">
+            {% if h.state == "up" %}{% translate "operational" %}{% elif h.state == "maintenance" %}{% translate "maintenance" %}{% else %}{% translate "down" %}{% endif %}
           </span>
         </div>
         {% if h.bars %}
@@ -184,14 +202,14 @@
             {% for bar in h.bars %}<span class="ubar ubar--{{ bar.state }}" title="{{ bar.label }}"></span>{% endfor %}
           </div>
           <div class="uptime-axis">
-            <span>{{ window_days }} days ago</span>
-            <span>today</span>
+            <span>{% blocktranslate with days=window_days %}{{ days }} days ago{% endblocktranslate %}</span>
+            <span>{% translate "today" %}</span>
           </div>
         </div>
         {% endif %}
       </li>
       {% empty %}
-      <li class="card card-empty">No hosts on this page yet.</li>
+      <li class="card card-empty">{% translate "No hosts on this page yet." %}</li>
       {% endfor %}
     </ul>
 
@@ -199,9 +217,9 @@
     <footer>
       <span class="powered">
         <img src="{% static 'img/vigil-logo.png' %}" alt="">
-        Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.
+        {% blocktranslate %}Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.{% endblocktranslate %}
       </span>
-      <span class="sqsy">A <b>SQSY</b> · Susquehanna Syntax product</span>
+      <span class="sqsy">{% blocktranslate %}A <b>SQSY</b> · Susquehanna Syntax product{% endblocktranslate %}</span>
     </footer>
     {% endif %}
   </div>
@@ -209,20 +227,75 @@
   <script nonce="{{ request.csp_nonce }}">
     // Poll for fresh status instead of a full-page meta-refresh, so the entry
     // animations don't replay every minute — only the changed values update.
+    // Each card rises 60ms after the one before it. Set here rather than in a
+    // style attribute, which the CSP refuses; this runs before the first paint.
+    document.querySelectorAll('#cards .card').forEach(function (card, i) {
+      card.style.animationDelay = (i * 60) + 'ms';
+    });
+
     (function () {
       var POLL_MS = 60000;
 
-      function applyState(el, up) {
-        el.classList.toggle('card--up', up);
-        el.classList.toggle('card--down', !up);
+      function fmt(iso) {
+        return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric',
+                                                  hour: '2-digit', minute: '2-digit' });
+      }
+
+      // The server renders notice times in UTC; visitors read their own.
+      document.querySelectorAll('#notices time').forEach(function (el) {
+        el.textContent = fmt(el.getAttribute('datetime'));
+      });
+
+      function applyState(el, state) {
+        el.classList.toggle('card--up', state === 'up');
+        el.classList.toggle('card--maint', state === 'maintenance');
+        el.classList.toggle('card--down', state === 'down');
+      }
+
+      function renderNotices(list) {
+        var box = document.getElementById('notices');
+        if (!box) return;
+        box.innerHTML = '';
+        box.hidden = !list.length;
+        list.forEach(function (n) {
+          var notice = document.createElement('div');
+          notice.className = 'notice';
+          var when = document.createElement('div');
+          when.className = 'notice-when';
+          if (n.active) {
+            when.append('Maintenance in progress, until ');
+            when.append(timeEl(n.ends_at));
+          } else {
+            when.append('Scheduled maintenance: ');
+            when.append(timeEl(n.starts_at));
+            when.append(' to ');
+            when.append(timeEl(n.ends_at));
+          }
+          var hosts = document.createElement('div');
+          hosts.className = 'notice-hosts';
+          hosts.textContent = n.hosts.join(', ');
+          notice.append(when, hosts);
+          box.append(notice);
+        });
+      }
+
+      function timeEl(iso) {
+        var t = document.createElement('time');
+        t.setAttribute('datetime', iso);
+        t.textContent = fmt(iso);
+        return t;
       }
 
       function render(data) {
+        var maint = !!data.maintenance_count;
         var overall = document.getElementById('overall');
-        overall.classList.toggle('overall--up', data.all_up);
+        overall.classList.toggle('overall--up', data.all_up && !maint);
+        overall.classList.toggle('overall--maint', data.all_up && maint);
         overall.classList.toggle('overall--down', !data.all_up);
         document.getElementById('overall-title').textContent =
-          data.all_up ? 'All systems operational' : 'Some systems are down';
+          data.all_up ? (maint ? 'Scheduled maintenance in progress'
+                               : 'All systems operational')
+                      : 'Some systems are down';
         document.getElementById('overall-count').textContent =
           data.up_count + '/' + data.total + ' up';
 
@@ -232,11 +305,14 @@
         data.hosts.forEach(function (h) {
           var card = document.querySelector('.card[data-host-id="' + h.id + '"]');
           if (!card) return;
-          applyState(card, h.up);
+          applyState(card, h.state);
           var state = card.querySelector('.card-state');
           if (state) {
-            state.className = 'card-state card-state--' + (h.up ? 'up' : 'down');
-            state.textContent = h.up ? 'operational' : 'down';
+            // The JSON and template state value is "maintenance"; the CSS
+            // classes are card--maint and card-state--maint.
+            var key = h.state === 'maintenance' ? 'maint' : h.state;
+            state.className = 'card-state card-state--' + key;
+            state.textContent = h.state === 'up' ? 'operational' : h.state;
           }
           var uptime = card.querySelector('.card-uptime');
           if (uptime) uptime.textContent = h.uptime_pct ? h.uptime_pct + '% uptime' : '';
@@ -248,6 +324,8 @@
             }).join('');
           }
         });
+
+        renderNotices(data.notices || []);
       }
 
       function poll() {

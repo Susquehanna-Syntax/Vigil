@@ -1,4 +1,6 @@
 """apps.hosts.views: agent views (split from the old single module, unchanged)."""
+from datetime import timedelta
+
 from drf_spectacular.utils import extend_schema
 
 from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
@@ -6,7 +8,98 @@ from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
                           HostsErrorSerializer, HostsHostSerializer,
                           HostsRegisterResponseSerializer, HostsRegisterSerializer,
                           HostsTransportAckBodySerializer, HostsTransportAckSerializer)
+from ..device_checks import signed_check_list, store_check_results
+from ..discovery import signed_scan, store_scan_result
 from ._common import *  # noqa: F401,F403
+
+
+#: The outcomes an agent may report for a self-update (agent update_guard).
+AGENT_UPDATE_STATES = ("confirmed", "rolled_back", "not_applied")
+
+
+def _agent_update_outcome(raw) -> dict | None:
+    """The ``agent_update`` a check-in carried, cleaned, or None when it
+    carried none or one that is not an outcome. Every value is the agent's
+    own claim about itself: it is stored for display and never trusted to
+    decide what the host may do."""
+    if not isinstance(raw, dict) or raw.get("state") not in AGENT_UPDATE_STATES:
+        return None
+
+    def text(key, limit):
+        value = raw.get(key)
+        return " ".join(value.split())[:limit] if isinstance(value, str) else ""
+
+    return {"state": raw["state"], "from_version": text("from_version", 50),
+            "to_version": text("to_version", 50), "running": text("running", 50),
+            "reason": text("reason", 300), "at": now().isoformat()}
+
+
+#: How far back a rolled-back or not-applied report reaches for the
+#: update_agent task it is about.
+AGENT_UPDATE_REPORT_WINDOW = timedelta(hours=24)
+
+#: The prefix of the alert a rolled-back update raises; also how the alert is found again.
+AGENT_UPDATE_ROLLBACK_ALERT = "Agent update rolled back:"
+
+
+def _record_agent_update_outcome(host, outcome: dict) -> None:
+    """Carry an agent's update outcome into run history and the rollout gate.
+
+    The update_agent task completed when the new binary was handed off, so a
+    rollback that comes later would look like a success everywhere. A
+    rolled_back or not_applied report therefore fails that task (once), and
+    its run is recomputed; a rolled_back report also raises an alert, which
+    a later confirmed report resolves. confirmed changes no task.
+    """
+    from apps.alerts.models import Alert as _Alert
+    from apps.tasks.models import Task
+    from apps.tasks.summary import run_outcome
+
+    state = outcome["state"]
+    reason = outcome["reason"]
+
+    if state in ("rolled_back", "not_applied"):
+        task = (Task.objects.filter(
+                    host=host, action="update_agent", state=Task.State.COMPLETED,
+                    completed_at__gte=now() - AGENT_UPDATE_REPORT_WINDOW)
+                .order_by("-completed_at").first())
+        if task is not None:
+            line = (f"Rolled back on the host: {reason}" if state == "rolled_back"
+                    else f"The update did not take effect: {reason}")
+            task.state = Task.State.FAILED
+            task.result_output = (f"{task.result_output}\n{line}" if task.result_output else line)
+            task.save(update_fields=["state", "result_output"])
+            if task.run_id is not None:
+                run = task.run
+                rows = run.tasks.values_list("state", "on_failure")
+                recomputed = run_outcome(rows)
+                if run.state != recomputed:
+                    run.state = recomputed
+                    run.save(update_fields=["state"])
+
+    if state == "rolled_back":
+        open_alert = _Alert.objects.filter(
+            host=host, rule=None,
+            state__in=[_Alert.State.FIRING, _Alert.State.ACKNOWLEDGED],
+            message__startswith=AGENT_UPDATE_ROLLBACK_ALERT,
+        ).exists()
+        if not open_alert:
+            _Alert.objects.create(
+                host=host,
+                rule=None,
+                state=_Alert.State.FIRING,
+                severity="warning",
+                message=(f"{AGENT_UPDATE_ROLLBACK_ALERT} {host.hostname} returned to "
+                         f"v{outcome['from_version']} from v{outcome['to_version']}: {reason}"),
+                metric_value=None,
+                fix_context={"host_id": str(host.id), "hostname": host.hostname},
+            )
+    elif state == "confirmed":
+        _Alert.objects.filter(
+            host=host, rule=None,
+            state__in=[_Alert.State.FIRING, _Alert.State.ACKNOWLEDGED],
+            message__startswith=AGENT_UPDATE_ROLLBACK_ALERT,
+        ).update(state=_Alert.State.RESOLVED, resolved_at=now())
 
 
 @scoping.system_view(reason="agent enrolment: a new host registers with no user")
@@ -187,6 +280,22 @@ def checkin(request):
     # Absent means an agent too old to report it (or Windows) — keep what we knew.
     if isinstance(data.get("runs_as_root"), bool):
         host.agent_runs_as_root = data["runs_as_root"]
+    # S9: the agent's own agent.yml opt-in to polling agent-less devices. Written
+    # only here, never by the dashboard.
+    if isinstance(data.get("poller"), bool):
+        host.agent_poller = data["poller"]
+
+    if (outcome := _agent_update_outcome(data.get("agent_update"))) is not None:
+        host.agent_update = outcome
+        if outcome["state"] != "confirmed":
+            logger.warning("host %s: agent update %s -> %s %s: %s", host.hostname,
+                           outcome["from_version"], outcome["to_version"],
+                           outcome["state"], outcome["reason"])
+        # Failing a task and raising an alert act on the install, so they wait
+        # for approval like every other effect of a check-in. Storing the
+        # outcome for display above does not.
+        if host.status not in (Host.Status.PENDING, Host.Status.REJECTED):
+            _record_agent_update_outcome(host, outcome)
 
     if data.get("features") is not None:
         # A list of short strings the agent understands (task-language
@@ -211,18 +320,31 @@ def checkin(request):
     if host.status == Host.Status.OFFLINE:
         host.status = Host.Status.ONLINE
         from apps.alerts.models import Alert as _Alert
+        from apps.alerts.tasks import OFFLINE_PREFIX
+        # Acknowledged counts too: someone saying "I know" does not keep the
+        # alert open after the host is back. The resolved notice is owed, not
+        # sent: a slow channel must not hold up this check-in, so the
+        # stale-host job sends it (alerts.tasks._send_owed_resolutions).
         _Alert.objects.filter(
             host=host,
             rule=None,
-            state=_Alert.State.FIRING,
-            message__startswith="Host offline:",
-        ).update(state=_Alert.State.RESOLVED, resolved_at=now())
+            state__in=[_Alert.State.FIRING, _Alert.State.ACKNOWLEDGED],
+            message__startswith=OFFLINE_PREFIX,
+        ).update(state=_Alert.State.RESOLVED, resolved_at=now(), resolve_pending=True)
 
     # Auto-tag based on intrinsic facts (OS family, mode). Runs after the
     # agent.yml merge so derived tags appear alongside operator-set ones.
     host.tags = merge_auto_tags(host)
 
     host.save()
+
+    # S9: results for the device checks this host polled. Stored after the save above
+    # (which may have brought the host back online), so the assignment sees it as online.
+    if host.status not in (Host.Status.PENDING, Host.Status.REJECTED):
+        store_check_results(host, data.get("check_results"))
+        # S9 06b: this poller's answer to the discovery scan it was handed.
+        if host.agent_poller:
+            store_scan_result(host, data.get("scan_result"))
 
     # A rebuilt host's first check-in closes out its rebuild job: operator
     # tag applied, maintenance window cleared, playbook dispatched. No-op for
@@ -501,6 +623,10 @@ def checkin(request):
             # list, "direct" whether the dashboard itself still accepts agents,
             # and "relays_sig" what proves neither was written by the relay.
             **signed_relay_list(host.token_fingerprint),
+            # S9: the device checks this poller is handed, signed for this agent.
+            **(signed_check_list(host) if host.agent_poller else {}),
+            # S9 06b: the discovery scan this poller is handed, signed for it.
+            **(signed_scan(host) if host.agent_poller else {}),
             # The agent resends its software list when this differs from its
             # own digest. "" when the server holds nothing for this host.
             "software_digest": snapshot.digest if snapshot else "",

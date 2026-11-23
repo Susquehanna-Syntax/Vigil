@@ -35,10 +35,11 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.agentprofiles.models import AgentProfile
-from apps.alerts.models import Alert, AlertRule
+from apps.alerts.models import Alert, AlertRule, DeviceAlert, MaintenanceWindow, NotificationChannel
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
-from apps.hosts.models import Host, LogTailSession, Tag, UnmanagedDevice
+from apps.hosts.models import (DeviceCheck, DiscoveredHost, DiscoveryScan, Host,
+                               LogTailSession, Tag, UnmanagedDevice)
 from apps.jackil.models import IntegrationKey
 from apps.metrics.models import MetricPoint
 from apps.playbooks.models import Playbook
@@ -64,6 +65,7 @@ from vigil.testsupport import require_business_module
 require_business_module()
 from apps_business.sites.models import (
     AutomationSiteAssignment,
+    ChannelSiteAssignment,
     HostSiteAssignment,
     PlaybookSiteAssignment,
     Site,
@@ -91,6 +93,7 @@ FILLERS = {
     "wave_id": lambda o: o["wave"].id,
     "tag_id": lambda o: o["tag"].id,
     "device_id": lambda o: o["device"].id,
+    "check_id": lambda o: o["check"].id,
     "definition_id": lambda o: o["definition"].id,
     "stack_id": lambda o: o["stack"].id,
     "session_id": lambda o: o["session"].id,
@@ -98,11 +101,13 @@ FILLERS = {
     "role_id": lambda o: o["role"].id,
     "policy_id": lambda o: o["policy"].id,
     "playbook_id": lambda o: o["playbook"].id,
+    "channel_id": lambda o: o["channel"].id,
     "automation_id": lambda o: o["automation"].id,
     "report_id": lambda o: o["report"].id,
     "dashboard_id": lambda o: o["dashboard"].id,
     "job_id": lambda o: o["job"].id,
     "page_id": lambda o: o["page"].id,
+    "window_id": lambda o: o["window"].id,
     "finding_id": lambda o: o["finding"].id,
     # Both sites' SoftwareItem rows share this name_key (Spec 4): the two
     # requests are then identical, so the body can differ only if a site-B row leaks.
@@ -113,6 +118,10 @@ FILLERS = {
     "name": "nginx",
     "number": 1,
     "index": 0,
+    # An ifIndex is whatever a device calls its interface. The interface reads
+    # find the check through device_id and check_id, so this only picks which
+    # interface of *that* check to answer for.
+    "if_index": 1,
     "kind": "cpu",
     "category": "cpu",
     "metric_name": "cpu_pct",
@@ -135,6 +144,7 @@ ALLOWLIST = {
     "login/verify/key/options/": "sign-in flow",
     "login/verify/key/": "sign-in flow",
     "logout/": "sign-in flow",
+    "ui-kit/": "component gallery, admins only; it renders no rows at all",
     "accounts/civil/login/": "sign-in flow",
     "accounts/civil/callback": "sign-in flow",
     "api/v1/register": "agent-token auth",
@@ -203,6 +213,18 @@ ALLOWLIST = {
     "api/v1/reprovision/preflight/": "reads a host by an agent token, not by a session",
     "api/v1/branding/": "instance-wide; one branding for the whole install",
     "api/v1/api-keys/": "instance-wide; a key is issued to a user, not a site",
+    "api/v1/hosts/discovery/pollers/": "the picker of machines that would run a scan; "
+                                       "``site_id`` says whose poller each is and "
+                                       "``site_for_write`` refuses another site's",
+    # A scan answer repeats the cidr, ports, error text and the names its hosts
+    # reported — an inventory list of another site's network, with no device ids to
+    # link it to. A scan of a site this user cannot see is 404; creating one on that
+    # site's poller is refused by site_for_write.
+    "api/v1/hosts/discovery/scans/": "the newest scans, which are site-scoped rows",
+    # An id that names no scan of a site this user cannot see answers 404 here too:
+    # GET and DELETE reach _scan_or_404, adopt reaches the same guard.
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/": "see the collection above",
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/adopt/": "see the collection above",
     # The scope itself: these rows are what every site filter resolves against.
     "api/v1/sites/": "the scope itself; site rows are the boundary, not behind it",
     "api/v1/sites/<uuid:site_id>/": "the scope itself; site rows are the boundary, not behind it",
@@ -232,6 +254,12 @@ ALLOWLIST = {
 #: model than FILLERS assumes.
 ROUTE_FILLERS = {
     "api/v1/hosts/log-tails/<uuid:session_id>/": {"session_id": lambda o: o["logtail"].id},
+    # The device-alert acknowledge names the *alert*, so without this the walk
+    # would fill it with site B's host alert and ask a different question.
+    "api/v1/alerts/devices/<uuid:alert_id>/acknowledge/": {
+        "alert_id": lambda o: o["device_alert"].id},
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/": {"scan_id": lambda o: o["scan"].id},
+    "api/v1/hosts/discovery/scans/<uuid:scan_id>/adopt/": {"scan_id": lambda o: o["scan"].id},
     "api/v1/agent-profiles/<uuid:profile_id>/": {"profile_id": lambda o: o["profile"].id},
     "api/v1/reprovision/profiles/<uuid:profile_id>/preview/": {
         "profile_id": lambda o: o["install_profile"].id},
@@ -544,6 +572,9 @@ class SiteIsolationTests(TestCase):
 
             o["playbook"] = Playbook.objects.create(name=f"{tag}-playbook")
             PlaybookSiteAssignment.objects.create(playbook=o["playbook"], site=site)
+            o["channel"] = NotificationChannel.objects.create(
+                name=f"{tag}-channel", kind="webhook", config={"url": f"https://{tag}.test/hook"})
+            ChannelSiteAssignment.objects.create(channel=o["channel"], site=site)
 
             o["automation"] = Automation.objects.create(
                 name=f"{tag}-automation",
@@ -559,7 +590,20 @@ class SiteIsolationTests(TestCase):
             # Per site since 04d-1 (decisions-06 item 5).
             o["profile"] = AgentProfile.objects.create(name=f"{tag}-profile", site_id=site.pk)
             o["device"] = UnmanagedDevice.objects.create(name=f"{tag}-device", site_id=site.pk)
+            o["check"] = DeviceCheck.objects.create(
+                device=o["device"], kind="icmp", params={"host": "10.0.0.1"})
+            o["device_alert"] = DeviceAlert.objects.create(
+                device=o["device"], device_check=o["check"], message=f"{tag}-device is down")
+            # A finished scan of this site's poller and one host it found: the id
+            # the discovery routes' FILLERS entry probes.
+            o["scan"] = DiscoveryScan.objects.create(
+                poller=o["host"], site_id=site.pk, cidr="192.0.2.0/24", ports=[22],
+                state=DiscoveryScan.State.DONE)
+            DiscoveredHost.objects.create(scan=o["scan"], ip="192.0.2.5", alive_by="ping")
             o["page"] = StatusPage.objects.create(title=f"{tag}-page", site_id=site.pk)
+            o["window"] = MaintenanceWindow.objects.create(
+                name=f"{tag}-window", site_id=site.pk, kind="once",
+                starts_at=timezone.now(), ends_at=timezone.now() + timedelta(hours=1))
             o["key"] = IntegrationKey.objects.create(
                 name=f"shared-{shared}-key",
                 prefix="ky",

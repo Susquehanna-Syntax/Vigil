@@ -1,0 +1,650 @@
+/* ═══════════════════════════════════════════
+   TASK LIST
+   ═══════════════════════════════════════════ */
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+.task-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  transition: background 0.2s, transform 0.4s var(--ease-out-expo);
+}
+.task-item:hover { background: var(--s2); }
+
+.task-action-name {
+  font-size: 14px; font-weight: 500;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.task-detail { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.task-content { flex: 1; }
+
+.state-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 4px 12px; border-radius: 20px;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  white-space: nowrap;
+}
+.state-pending { background: rgba(var(--rgb-peach), var(--tint-a)); color: var(--peach-ink); }
+.state-dispatched { background: rgba(var(--rgb-sky), var(--tint-a)); color: var(--sky-ink); }
+.state-executing { background: rgba(var(--rgb-sky), var(--tint-a)); color: var(--sky-ink); }
+.state-completed { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.state-failed { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.state-rejected { background: rgba(var(--rgb-coral), var(--tint-a)); color: var(--coral-ink); }
+.state-expired { background: var(--state-muted-bg); color: var(--text-3); }
+.state-blocked { background: var(--state-muted-bg); color: var(--text-3); }
+.state-skipped { background: rgba(var(--rgb-lavender), var(--tint-a)); color: var(--lavender-ink); }
+.status-dot.skipped { background: var(--lavender); }
+
+/* Auto-classified tags (os:linux, pkg:apt, …) read slightly muted so
+   user-set tags stand out. The colon convention is the wire format the
+   server uses to distinguish them; CSS picks them up via :has() in
+   modern browsers — fallback is the auto-tag class applied by JS. */
+.host-tag-chip.host-tag-auto {
+  color: var(--text-3);
+  background: var(--s2);
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════
+   TASK DEFINITION CARDS
+   ═══════════════════════════════════════════ */
+.def-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.def-card {
+  background: var(--s1);
+  border-radius: var(--r-md);
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: transform 0.4s var(--ease-out-expo), background 0.3s, border-color 0.3s;
+}
+.def-card:hover { transform: translateX(2px); background: var(--s2); border-color: var(--s4); }
+.def-card:active { transform: translateX(0) scale(0.995); transition-duration: 0.12s; }
+.def-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.def-card-title {
+  font-family: 'Fraunces', serif;
+  font-size: 17px; font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.def-card-desc {
+  font-size: 13px; color: var(--text-2);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.def-card-meta {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; color: var(--text-3);
+  font-family: 'IBM Plex Mono', monospace;
+  margin-top: 4px;
+}
+.def-card-meta .dot-sep { opacity: 0.5; }
+.def-card-footer {
+  display: flex; gap: 8px;
+  flex-shrink: 0;
+}
+.def-card-footer .btn {
+  padding: 9px 16px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* The Community page's own looks, moved out of vigil-community.js (08h). */
+.community-requires {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.community-require-row { display: flex; justify-content: space-between; gap: 10px; }
+.community-require-count { color: var(--text-3); margin-bottom: 5px; }
+.community-requires-held { color: var(--mint-ink); }
+.community-require-name { color: var(--text-2); }
+.community-require-held { color: var(--mint-ink); }
+.community-require-will { color: var(--sky-ink); }
+/* `.btn-ghost` sets a colour of its own and is loaded earlier, so naming both
+   classes keeps the tie that the inline used to break. */
+.btn.community-github-link { color: var(--text-3); text-decoration: none; }
+/* No other rule touches `grid-column` here, so it sits on a class of its own;
+   the `padding` beside it needs `.empty-state` named too, to beat the 80px 40px
+   that rule gives the same element. */
+.community-grid-banner { grid-column: 1/-1; }
+.community-grid-banner-tight { grid-column: 1/-1; }
+.empty-state.community-grid-banner { padding: 18px; }
+.empty-state.community-grid-banner-tight { padding: 14px; }
+.community-serving-toggle { margin-left: 8px; }
+
+/* ═══════════════════════════════════════════
+   YAML EDITOR PAGE
+   ═══════════════════════════════════════════ */
+.editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px;
+  min-height: calc(100vh - 220px);
+}
+.editor-panel {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 18px;
+  display: flex; flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.editor-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.editor-textarea {
+  flex: 1;
+  width: 100%;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 16px 18px;
+  resize: none;
+  outline: none;
+  min-height: 340px;
+  transition: border-color 0.2s;
+  tab-size: 2;
+}
+.editor-textarea:focus { border-color: var(--sky); }
+.editor-error {
+  display: none;
+  background: rgba(var(--rgb-rose), var(--tint-a));
+  border: 1px solid rgba(var(--rgb-rose), 0.3);
+  color: var(--rose-ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  white-space: pre-wrap;
+}
+.editor-error.show { display: block; }
+.preview-stale { opacity: 0.4; }
+.preview-stale::before { content: "Showing the last valid version — fix the error to update."; display: block; font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+
+.editor-warnings {
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+
+.preview-section {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.preview-heading {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+.preview-sub {
+  font-size: 13px; color: var(--text-2);
+}
+.preview-meta {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  font-size: 11px; color: var(--text-3);
+}
+.preview-meta span { padding: 3px 10px; background: var(--s2); border-radius: 20px; }
+.preview-actions {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 4px;
+}
+.preview-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.preview-step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--s3); color: var(--text-2);
+  display: grid; place-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; font-weight: 600; flex-shrink: 0;
+  margin-top: 1px;
+}
+.preview-step-body { flex: 1; min-width: 0; }
+.preview-step-hash { display:flex; gap:8px; align-items:center; margin-top:4px; font-size:11px; color: var(--text-3); word-break: break-all; }
+.preview-step-hash .btn { flex-shrink: 0; white-space: nowrap; }
+.preview-step-hash .mono { font-family: var(--font-mono); font-size: 11px; }
+.preview-step-outputs { margin-top: 4px; font-size: 11px; color: var(--text-3); }
+.preview-script-note { margin-top:8px; font-size:11px; color: var(--text-3); }
+.preview-step-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.preview-step-action {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+  word-break: break-all;
+}
+/* A step is coloured all over by its risk: a tint and a full border. */
+.preview-step.risk-high, .preview-step.task-high { --pc: var(--rose); }
+.preview-step.risk-standard, .preview-step.task-standard { --pc: var(--sky); }
+.preview-step.risk-low, .preview-step.task-low { --pc: var(--mint); }
+.preview-step[class*="risk-"], .preview-step[class*="task-"] {
+  background: color-mix(in srgb, var(--pc) 12%, var(--s2));
+  border-color: color-mix(in srgb, var(--pc) 55%, var(--border));
+}
+.preview-relevant {
+  padding: 12px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.preview-relevant-heading { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.preview-relevant-list { list-style: none; margin: 0 0 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.preview-relevant-list ul { list-style: none; margin: 2px 0 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.preview-relevant-op { font-weight: 600; color: var(--text-3); }
+.preview-relevant-list code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
+.preview-relevant-note { margin-top: 6px; font-size: 11px; color: var(--text-3); }
+.preview-branch {
+  padding: 10px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.preview-branch-if { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+.preview-branch-if code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; font-weight: 400; }
+.preview-branch-groups { display: flex; flex-direction: column; gap: 8px; }
+.preview-branch-group { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: var(--r-md); background: var(--s1); }
+.preview-branch-group-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.preview-use {
+  padding: 10px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.preview-use-label { font-weight: 600; }
+.preview-use code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
+
+.editor-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.editor-toolbar .right {
+  display: flex; gap: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   TASK SEARCH BAR
+   ═══════════════════════════════════════════ */
+.task-search-bar {
+  position: relative;
+  margin-bottom: 18px;
+}
+.task-search-input {
+  width: 100%;
+  background: var(--s1);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: inherit; font-size: 14px;
+  padding: 11px 14px 11px 42px;
+  transition: border-color 0.2s; outline: none;
+}
+.task-search-input:focus { border-color: var(--sky); }
+.task-search-input::placeholder { color: var(--text-3); }
+.task-search-icon {
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  stroke: var(--text-3);
+  fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════
+   DEPLOY MODAL
+   ═══════════════════════════════════════════ */
+.modal.modal-wide { width: 560px; }
+.modal.modal-xwide {
+  width: 920px;
+  height: 680px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal.modal-xwide .modal-title { flex-shrink: 0; }
+.modal.modal-xwide form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.deploy-grid {
+  display: grid;
+  grid-template-columns: 47% 47%;
+  gap: 0 6%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.deploy-grid > div {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.deploy-col-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+.deploy-yaml-wrap {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+  height: 100%;
+  color: var(--text-1);
+  tab-size: 2;
+}
+.deploy-yaml-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+.deploy-yaml-wrap::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+/* YAML syntax highlighting tokens */
+.yh-key      { color: var(--sky-ink); }
+.yh-string   { color: var(--mint-ink); }
+.yh-number   { color: var(--peach-ink); }
+.yh-bool     { color: var(--lemon-ink); font-weight: 600; }
+.yh-null     { color: var(--text-3); font-style: italic; }
+.yh-comment  { color: var(--text-3); font-style: italic; }
+.yh-anchor   { color: var(--lavender-ink); }
+.yh-dash     { color: var(--lavender-ink); }
+.yh-doctype  { color: var(--rose-ink); }
+
+.deploy-host-search {
+  width: 100%;
+  background: var(--s2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: inherit; font-size: 13px;
+  padding: 9px 13px;
+  margin-bottom: 8px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.deploy-host-search:focus { border-color: var(--sky); }
+.deploy-host-table {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.deploy-host-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.deploy-host-row:last-child { border-bottom: none; }
+.deploy-host-row:hover { background: var(--s3); }
+.deploy-host-row input[type=checkbox] {
+  accent-color: var(--sky);
+  width: 16px; height: 16px; cursor: pointer;
+}
+.deploy-host-row.selected { background: rgba(var(--rgb-sky), var(--tint-a)); }
+.deploy-host-row .dh-name { font-size: 13px; font-weight: 500; }
+.deploy-host-row .dh-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.deploy-host-head {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--s3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.deploy-input-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.deploy-input-row { display: flex; flex-direction: column; gap: 5px; }
+.deploy-input-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.deploy-input-req { font-weight: 400; color: var(--text-3); }
+.deploy-input-desc  { font-size: 11px; color: var(--text-3); }
+.deploy-input-row .form-control { padding: 8px 11px; font-size: 13px; }
+.deploy-input-row.bool { flex-direction: row; align-items: center; gap: 10px; }
+.deploy-input-row.bool input { accent-color: var(--sky); width: 16px; height: 16px; }
+.deploy-input-row.bool .deploy-input-label { font-weight: 500; }
+.deploy-right-col { display: flex; flex-direction: column; min-height: 0; }
+.deploy-right-col > #deploy-target-hosts,
+.deploy-right-col > #deploy-target-tags { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* Deploy tabs (LEFT pane) */
+.deploy-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.deploy-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s;
+}
+.deploy-tab:hover { color: var(--text-1); }
+.deploy-tab.active { color: var(--text-1); border-bottom-color: var(--sky); }
+.deploy-tab-panels { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.deploy-panel { display: none; height: 100%; overflow-y: auto; }
+.deploy-panel.active { display: block; }
+.deploy-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 12px;
+  margin-bottom: 10px;
+}
+.deploy-policy-grid .full { grid-column: 1 / -1; }
+.deploy-day-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.deploy-day-chip {
+  user-select: none;
+  border: 1px solid var(--border);
+  background: var(--s2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.deploy-day-chip.on {
+  background: rgba(var(--rgb-sky), var(--tint-a));
+  border-color: var(--sky);
+  color: var(--sky-ink);
+}
+.deploy-policy-help {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.host-picker {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  padding: 6px;
+}
+.host-pick {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.host-pick:hover { background: var(--s3); }
+.host-pick input[type=checkbox] {
+  accent-color: var(--sky);
+  width: 16px; height: 16px; cursor: pointer;
+}
+.host-pick .host-pick-name { flex: 1; font-size: 13px; font-weight: 500; }
+.host-pick .host-pick-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.host-pick-empty {
+  padding: 24px; text-align: center;
+  color: var(--text-3); font-size: 13px;
+}
+.confirm-hint {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+/* The deploy dialog's and the wave editor's own looks, moved out of
+   base.html (08e). A rule that repeats a declaration the element's shared
+   class already makes — `.deploy-policy-grid`'s and `.form-group`'s bottom
+   margin, `.confirm-hint`'s top margin, `.deploy-col-title`'s and
+   `.deploy-tabs`' bottom margin — carries that shared class too, so it beats
+   it as the inline used to. */
+.deploy-run-now {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px; cursor: pointer; font-weight: 600;
+}
+.deploy-policy-grid.deploy-policy-grid-top { margin-top: 10px; }
+.deploy-criteria-regex { font-family: 'IBM Plex Mono', monospace; }
+.deploy-target-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; flex-shrink: 0;
+}
+.deploy-col-title.deploy-col-title-flush { margin-bottom: 0; }
+.deploy-tabs.deploy-tabs-flush { margin-bottom: 0; }
+.deploy-select-all { accent-color: var(--sky); width: 14px; height: 14px; cursor: pointer; }
+.confirm-hint.confirm-hint-tight { margin-top: 8px; }
+.confirm-hint.confirm-hint-wide { margin-top: 10px; }
+.confirm-hint.confirm-hint-flush { margin-top: 4px; }
+/* The wave editor's match count, painted in the accent colour. */
+.confirm-hint.wave-match-preview { margin-top: 6px; color: var(--sky-ink); }
+.deploy-policy-help.deploy-tag-help { margin-bottom: 10px; }
+.deploy-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 20px; gap: 12px;
+}
+.deploy-footer-actions { display: flex; gap: 10px; }
+
+.wave-editor-body { overflow-y: auto; }
+.wave-editor-close-icon {
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;
+}
+.muted-note.muted-note-below-field { margin-top: 6px; }
+.form-label-optional { color: var(--text-3); font-weight: 400; }
+.wave-row { display: flex; gap: 12px; }
+.wave-row > .form-group { flex: 1; }
+.form-check.wave-enabled-check { margin-bottom: 4px; }
+
+/* The rollout start and submit-to-community dialogs' own looks, moved out of
+   base.html (08f). A rule that repeats a declaration the element's shared class
+   already makes — `.modal-actions`' gap, `.form-group`'s bottom margin — carries
+   that shared class too, or sits as its child selector, so it beats it as the
+   inline used to. */
+.modal-scroll-body { overflow-y: auto; }
+.modal-actions.modal-actions-centered { align-items: center; gap: 10px; }
+.rollout-start-pair { display: flex; gap: 12px; margin-bottom: 14px; }
+/* As `.wave-row > .form-group` does for the wave editor's two columns. */
+.rollout-start-pair > .form-group { flex: 1; margin-bottom: 0; }
+.form-group.form-group-12 { margin-bottom: 12px; }
+.form-group.form-group-tight { margin-bottom: 14px; }
+.rollout-start-actions {
+  display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+}
+.community-catalog-link { color: var(--sky-ink); }
+.community-submit-steps { margin: 6px 0 0 18px; padding: 0; line-height: 1.7; }
+.community-submit-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+}
+.community-submit-actions.community-submit-actions-tall { margin-top: 18px; }
+.modal.modal-column { max-height: 80vh; display: flex; flex-direction: column; }
+
+/* ── Inline styles moved out of vigil-tasks.js (S6 08i) ────────────────── */
+/* The deploy-preview dialog's input table, built by vigil-tasks.js. No part of
+   the stylesheet gives any of these elements a look and `.mono` on its own is
+   nothing but the monospace face, so each span carries one class for the size
+   and colour it drew from an inline style — the caption among them, which needs
+   two because `.preview-heading` is also the dialog's 22px serif heading. */
+.preview-inputs { margin-top: 18px; }
+.preview-heading.preview-heading-sm { font-size: 14px; }
+.preview-input-list {
+  background: var(--s2); border-radius: var(--r-sm);
+  margin-top: 8px; border: 1px solid var(--border);
+}
+.preview-input-row {
+  display: flex; gap: 10px; font-size: 12px; padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.preview-input-id { color: var(--sky-ink); min-width: 120px; }
+.preview-input-type { color: var(--text-3); min-width: 60px; }
+.preview-input-label { color: var(--text-2); flex: 1; }
+.preview-input-sample { color: var(--text-3); }
+
+/* The task history pager: vigil-tasks.js shows it with display:flex once there
+   is more than one page; this is the rest of the look it used to carry inline. */
+.task-history-pager { align-items: center; justify-content: center; gap: 14px; padding: 14px 0; }

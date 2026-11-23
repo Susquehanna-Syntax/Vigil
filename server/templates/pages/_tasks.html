@@ -1,31 +1,31 @@
-{# Tasks page section (My Library tab + History tab) #}
-{# Logic: static/js/vigil-tasks.js | Styles: vigil.css .def-*, .task-* | Data: tasks from dashboard() view; library grid fetched client-side #}
+{% load i18n %}{# Tasks page section (My Library tab + History tab) #}
+{# Logic: static/js/vigil-tasks.js | Styles: css/vigil/*.css .def-*, .task-* | Data: tasks from dashboard() view; library grid fetched client-side #}
     <section id="page-tasks" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Tasks<span>.</span></div>
-          <div class="page-sub">Author multistep tasks and deploy them across your fleet</div>
+          <div class="page-title">{% translate "Tasks" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Author multistep tasks and deploy them across your fleet" %}</div>
         </div>
         <button class="btn btn-sky" data-act="openDefinitionEditor">
           <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Task
+          {% translate "New Task" %}
         </button>
       </div>
 
       <div class="tab-bar" data-tab-group="tasks">
-        <div class="tab t-lav active" data-tab="tasks-library">My Library</div>
-        <div class="tab t-mint" data-tab="tasks-history">History</div>
-        <div class="tab t-lemon" data-tab="tasks-tags">Tags</div>
+        <div class="tab t-lav active" data-tab="tasks-library">{% translate "My Library" %}</div>
+        <div class="tab t-mint" data-tab="tasks-history">{% translate "History" %}</div>
+        <div class="tab t-lemon" data-tab="tasks-tags">{% translate "Tags" %}</div>
       </div>
 
       <!-- My Library -->
       <div class="tab-content active" id="tasks-library">
         <div class="task-search-bar">
           <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="task-search-input" id="task-library-search" placeholder="Search tasks by name, description, or action…" data-input="filterTaskGrid" data-a1="library">
+          <input type="text" class="task-search-input" id="task-library-search" placeholder="{% translate "Search tasks by name, description, or action…" %}" data-input="filterTaskGrid" data-a1="library">
         </div>
-        <label class="apps-filter task-detections-filter"><input type="checkbox" id="task-library-detections" data-change="filterTaskGrid" data-a1="library"> Detection tasks only</label>
+        <label class="apps-filter task-detections-filter"><input type="checkbox" id="task-library-detections" data-change="filterTaskGrid" data-a1="library"> {% translate "Detection tasks only" %}</label>
         <div id="task-library-grid" class="def-grid"></div>
       </div>
 
@@ -35,10 +35,10 @@
       <div class="tab-content" id="tasks-tags">
         <div class="bl-toolbar">
           <input type="text" class="form-control bl-search" id="tag-search"
-                 placeholder="Search tags by name…">
-          <span class="field-hint" tabindex="0" aria-label="About tags"
-                data-hint="A tag is a label you put on machines. Waves, playbooks and automations all pick machines by tag, so this is where a tag gets its name.&#10;&#10;Renaming a tag here renames it everywhere at once.&#10;&#10;Tags starting with os:, pkg:, arch: or agent: are set by Vigil from what each machine reports, and cannot be edited by hand.">?</span>
-          <button class="btn btn-mint" id="tag-new-btn">New tag</button>
+                 placeholder="{% translate "Search tags by name…" %}">
+          <span class="field-hint" tabindex="0" aria-label="{% translate "About tags" %}"
+                data-hint="{% translate "A tag is a label you put on machines. Waves, playbooks and automations all pick machines by tag, so this is where a tag gets its name.&#10;&#10;Renaming a tag here renames it everywhere at once.&#10;&#10;Tags starting with os:, pkg:, arch: or agent: are set by Vigil from what each machine reports, and cannot be edited by hand." %}">?</span>
+          <button class="btn btn-mint" id="tag-new-btn">{% translate "New tag" %}</button>
         </div>
         <div id="tags-list" class="bl-list"></div>
       </div>
@@ -46,11 +46,10 @@
       <div class="tab-content" id="tasks-history">
         <div id="task-history-list" class="task-list">
           <div class="empty-state">
-            <div class="empty-state-title">Loading…</div>
+            <div class="empty-state-title">{% translate "Loading…" %}</div>
           </div>
         </div>
-        <div id="task-history-pager"
-             style="display:none;align-items:center;justify-content:center;gap:14px;padding:14px 0;"></div>
+        <div id="task-history-pager" class="task-history-pager" style="display:none;"></div>
       </div>
 
     </section>

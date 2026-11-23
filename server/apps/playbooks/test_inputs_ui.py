@@ -24,6 +24,7 @@ from apps.automations.models import Automation
 from apps.playbooks.models import Playbook
 from apps.tasks.models import TaskDefinition
 from apps.tasks.views import _save_definition_from_yaml
+from vigil.css_text import design_css
 
 PICKERS = "static/js/vigil-pickers.js"
 PLAYBOOKS = "static/js/vigil-playbooks.js"
@@ -32,7 +33,6 @@ ROLLOUT = "static/js/vigil-rollout.js"
 AUTOMATIONS = "static/js/vigil-automations.js"
 PLAYBOOKS_HTML = "pages/_playbooks.html"
 BASE = "base.html"
-CSS = "static/css/vigil.css"
 
 EDITED_JS = [PICKERS, PLAYBOOKS, FLOW, ROLLOUT, AUTOMATIONS]
 
@@ -236,14 +236,14 @@ class AutomationSaveTests(TestCase):
 
 class StyleTests(SimpleTestCase):
     def test_the_inputs_block_landed_in_the_stylesheet(self):
-        css = _source(CSS)
+        css = design_css()
         self.assertIn("/* ── Playbook inputs (14.4) */", css)
         for selector in (".bl-inputs {", ".inputs-form {", ".inputs-form-row"):
             self.assertIn(selector, css)
 
     def test_step_input_rows_are_rule_based_not_striped(self):
         rules = "\n".join(
-            line for line in _source(CSS).splitlines()
+            line for line in design_css().splitlines()
             if line.strip().startswith((".fci-ctl", ".fci-insert"))
         )
         for banned in ("border-left", "border-right"):

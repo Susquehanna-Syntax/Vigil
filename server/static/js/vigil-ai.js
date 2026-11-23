@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-ai.js
 // Owns: the multi-provider "Suggested fixes" modal (Alerts + Docker) and the
 // AI providers manager on Settings. A request fans out to every selected
@@ -35,10 +36,10 @@ function _staticVulnFix(f) {
   // One upgrade clears every CVE open against the package, so say so rather
   // than implying this task is scoped to the single CVE the operator clicked.
   const covers = others
-    ? `\n# Also clears ${others} other open finding(s) against ${pkg} on this host.`
+    ? `\n# ${t('Also clears {others} other open finding(s) against {pkg} on this host.', { others, pkg })}`
     : '';
-  const yaml = `name: ${_yamlStr(`Upgrade ${pkg} to ${f.fixed_version}`)}
-description: ${_yamlStr(`Remediates ${f.cve_id || f.plugin_id_or_oid} on ${f.host_hostname || 'this host'} (installed ${f.installed_version || 'unknown'} -> fixed ${f.fixed_version})`)}${covers}
+  const yaml = `name: ${_yamlStr(t('Upgrade {pkg} to {version}', { pkg, version: f.fixed_version }))}
+description: ${_yamlStr(t('Remediates {cve} on {host} (installed {installed} -> fixed {fixed})', { cve: f.cve_id || f.plugin_id_or_oid, host: f.host_hostname || t('this host'), installed: f.installed_version || t('unknown'), fixed: f.fixed_version }))}${covers}
 risk: standard
 actions:
   - type: update_package
@@ -46,35 +47,38 @@ actions:
       package_name: ${_yamlStr(pkg)}`;
   return {
     yaml,
-    parsed: { name: `Upgrade ${pkg} to ${f.fixed_version}` },
+    parsed: { name: t('Upgrade {pkg} to {version}', { pkg, version: f.fixed_version }) },
     risk: 'standard',
     note: others
-      ? `${pkg} has ${others + 1} open findings on this host; one upgrade clears them all.`
-      : `Your package manager may cap the available version below ${f.fixed_version}.`,
+      ? t('{pkg} has {count} open findings on this host; one upgrade clears them all.', { pkg, count: others + 1 })
+      : t('Your package manager may cap the available version below {version}.', { version: f.fixed_version }),
   };
 }
 
 /* ── Modal shell ─────────────────────────────────────────────────────── */
 let _aiModal = null;
+// The picker area's own markup. "No AI providers are configured" replaces it,
+// so every open puts it back first; without that, a second open found no
+// #ai-picker and threw until the page was reloaded.
+const _AI_PICKER_HTML = `
+      <div class="section-label ai-ask-label">${escHtml(t('Ask which models'))}</div>
+      <div class="ai-provider-picker" id="ai-picker"></div>
+      <button class="btn btn-mint btn-sm ai-run-btn" id="ai-run">${escHtml(t('Get suggestions'))}</button>`;
 function _ensureAiModal() {
   if (_aiModal) return _aiModal;
   _aiModal = mountModal('ai', { wide: true });
   _aiModal.modal.classList.add('ai-modal');
   _aiModal.setBody(`
     <div class="modal-title">
-      Suggested fixes
-      <button class="modal-close" id="ai-close" aria-label="Close">
+      ${escHtml(t('Suggested fixes'))}
+      <button class="modal-close" id="ai-close" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="page-sub" id="ai-context" style="margin:-14px 0 18px;"></div>
-    <div id="ai-picker-wrap">
-      <div class="section-label" style="margin-top:0;">Ask which models</div>
-      <div class="ai-provider-picker" id="ai-picker"></div>
-      <button class="btn btn-mint btn-sm" id="ai-run" style="margin-top:12px;">Get suggestions</button>
-    </div>
+    <div class="page-sub ai-context" id="ai-context"></div>
+    <div id="ai-picker-wrap">${_AI_PICKER_HTML}</div>
     <div class="ai-compare" id="ai-compare"></div>`);
-  _aiModal.modal.querySelector('#ai-close').onclick = () => _closeAi();
+  /** @type {HTMLElement} */ (_aiModal.modal.querySelector('#ai-close')).onclick = () => _closeAi();
   return _aiModal;
 }
 
@@ -87,27 +91,58 @@ async function _openAi(context, runFn, staticResult) {
   _staticResolver = staticResult || null;
   document.getElementById('ai-context').textContent = context || '';
   document.getElementById('ai-compare').innerHTML = '';
-  const picker = document.getElementById('ai-picker');
+  if (!document.getElementById('ai-picker')) {
+    document.getElementById('ai-picker-wrap').innerHTML = _AI_PICKER_HTML;
+  }
+  const picker = /** @type {HTMLElement} */ (document.getElementById('ai-picker'));
   document.getElementById('ai-picker-wrap').style.display = '';
-  picker.innerHTML = '<span class="ai-empty">Loading providers…</span>';
+  showLoading(picker, t('Loading providers…'));
   requestAnimationFrame(m.open);
 
   try {
     _aiProviders = (await apiJson('/api/v1/ai/providers/')).filter(p => p.enabled && p.configured);
-  } catch { _aiProviders = []; }
+  } catch (e) {
+    // The provider chips are the modal's list: the failure draws over them and
+    // retry refetches into the same place instead of drawing an empty picker.
+    showLoadFailure(picker.parentElement, t('AI providers'), e, () => _reloadAiPicker(picker, runFn));
+    return;
+  }
+  _renderProviderPicker(picker, runFn);
+}
 
+/** Redraw the chip row and fetch again into it.
+ *  @param {HTMLElement} picker @param {(id: any) => Promise<any>} runFn @returns {Promise<void>} */
+async function _reloadAiPicker(picker, runFn) {
+  const wrap = /** @type {HTMLElement} */ (document.getElementById('ai-picker-wrap'));
+  // The empty state can replace the whole picker markup; rebuild it so the
+  // retry has somewhere to draw.
+  if (!picker.isConnected && wrap) wrap.innerHTML = _AI_PICKER_HTML;
+  const row = /** @type {HTMLElement} */ (document.getElementById('ai-picker'));
+  if (!row) return;
+  showLoading(row, t('Loading providers…'));
+  try {
+    _aiProviders = (await apiJson('/api/v1/ai/providers/')).filter(p => p.enabled && p.configured);
+  } catch (e) {
+    showLoadFailure(row.parentElement || row, t('AI providers'), e, () => _reloadAiPicker(row, runFn));
+    return;
+  }
+  _renderProviderPicker(/** @type {HTMLElement} */ (document.getElementById('ai-picker')) || row, runFn);
+}
+
+/** @param {HTMLElement} picker @param {(id: any) => Promise<any>} runFn @returns {void} */
+function _renderProviderPicker(picker, runFn) {
   // The built-in template (when present) is always an option and needs no AI.
   const staticChip = _staticResolver ? `
     <label class="ai-pick on" data-pid="static">
       <input type="checkbox" checked>
-      <span>Built-in template</span>
-      <span class="ai-pick-model">no AI · instant</span>
+      <span>${escHtml(t('Built-in template'))}</span>
+      <span class="ai-pick-model">${escHtml(t('no AI · instant'))}</span>
     </label>` : '';
 
   if (!_aiProviders.length && !_staticResolver) {
     document.getElementById('ai-picker-wrap').innerHTML =
-      `<div class="ai-empty">No AI providers are configured.
-       <button class="btn btn-mint btn-sm" style="margin-left:8px;" data-ai-settings>Add one in Settings</button></div>`;
+      `<div class="ai-empty">${escHtml(t('No AI providers are configured.'))}
+       <button class="btn btn-mint btn-sm ai-settings-btn" data-ai-settings>${escHtml(t('Add one in Settings'))}</button></div>`;
     return;
   }
   picker.innerHTML = staticChip + _aiProviders.map(p => `
@@ -118,16 +153,16 @@ async function _openAi(context, runFn, staticResult) {
     </label>`).join('');
   if (!_aiProviders.length) {
     picker.insertAdjacentHTML('beforeend',
-      '<span class="ai-empty" style="width:100%;">Add AI providers in Settings to compare model suggestions alongside the built-in template.</span>');
+      `<span class="ai-empty ai-empty-wide">${escHtml(t('Add AI providers in Settings to compare model suggestions alongside the built-in template.'))}</span>`);
   }
-  picker.querySelectorAll('.ai-pick').forEach(el => {
-    const cb = el.querySelector('input');
+  /** @type {NodeListOf<HTMLElement>} */ (picker.querySelectorAll('.ai-pick')).forEach(el => {
+    const cb = /** @type {HTMLInputElement} */ (el.querySelector('input'));
     cb.addEventListener('change', () => el.classList.toggle('on', cb.checked));
   });
   document.getElementById('ai-run').onclick = () => {
-    const ids = [...picker.querySelectorAll('.ai-pick')].filter(el => el.querySelector('input').checked)
+    const ids = [.../** @type {NodeListOf<HTMLElement>} */ (picker.querySelectorAll('.ai-pick'))].filter(el => el.querySelector('input').checked)
       .map(el => el.dataset.pid === 'static' ? 'static' : +el.dataset.pid);
-    if (!ids.length) return showToast('Pick at least one option', 'error');
+    if (!ids.length) return showToast(t('Pick at least one option'), 'error');
     document.getElementById('ai-picker-wrap').style.display = 'none';
     _runComparison(ids, runFn);
   };
@@ -135,12 +170,12 @@ async function _openAi(context, runFn, staticResult) {
 
 /* ── Fan-out + compare ───────────────────────────────────────────────── */
 function _colName(id) {
-  if (id === 'static') return 'Built-in template';
+  if (id === 'static') return t('Built-in template');
   const p = _aiProviders.find(x => x.id === id);
   return p ? p.name : String(id);
 }
 function _colModel(id) {
-  if (id === 'static') return 'deterministic · no AI';
+  if (id === 'static') return t('deterministic · no AI');
   const p = _aiProviders.find(x => x.id === id);
   return p ? p.model : '';
 }
@@ -158,7 +193,7 @@ function _runComparison(ids, runFn) {
         <span class="ai-col-time" id="ai-time-${id}">0.0s</span></div>
       <div class="ai-col-body">
         <div class="ai-progress"><div class="ai-progress-bar"></div></div>
-        <div class="ai-loading-row"><span>${escHtml(_colModel(id))}</span><span>${id === 'static' ? 'building…' : 'thinking…'}</span></div>
+        <div class="ai-loading-row"><span>${escHtml(_colModel(id))}</span><span>${id === 'static' ? escHtml(t('building…')) : escHtml(t('thinking…'))}</span></div>
       </div>
     </div>`).join('');
 
@@ -191,33 +226,33 @@ function _renderColumn(id) {
   const page = _aiPage[id] || 0;
   let body;
   if (!data || data.error) {
-    body = `<div class="ai-col-body"><div class="ai-err">${escHtml((data && data.error) || 'failed')}</div></div>`;
+    body = `<div class="ai-col-body"><div class="ai-err">${escHtml((data && data.error) || t('failed'))}</div></div>`;
   } else if (!sugs.length) {
     body = `<div class="ai-col-body">
-      ${data.note ? `<div class="ai-note">${escHtml(data.note)}</div>` : '<div class="ai-empty">The model wrote no task Vigil could accept.</div>'}
+      ${data.note ? `<div class="ai-note">${escHtml(data.note)}</div>` : `<div class="ai-empty">${escHtml(t('The model wrote no task Vigil could accept.'))}</div>`}
       ${_rejectedHtml(data.rejected)}</div>`;
   } else {
     const s = sugs[page];
     const nav = sugs.length > 1 ? `
       <div class="ai-sug-nav">
-        <button class="ai-arrow" data-ai-prev ${page === 0 ? 'disabled' : ''} aria-label="Previous">‹</button>
-        <span class="ai-sug-count">Suggestion ${page + 1} of ${sugs.length}</span>
-        <button class="ai-arrow" data-ai-next ${page === sugs.length - 1 ? 'disabled' : ''} aria-label="Next">›</button>
+        <button class="ai-arrow" data-ai-prev ${page === 0 ? 'disabled' : ''} aria-label="${escAttr(t('Previous'))}">‹</button>
+        <span class="ai-sug-count">${escHtml(t('Suggestion {current} of {total}', { current: page + 1, total: sugs.length }))}</span>
+        <button class="ai-arrow" data-ai-next ${page === sugs.length - 1 ? 'disabled' : ''} aria-label="${escAttr(t('Next'))}">›</button>
       </div>` : '';
     body = `<div class="ai-col-body">
       <div class="ai-sug">
         <div class="ai-sug-head">
-          <span class="ai-sug-name">${escHtml((s.parsed && s.parsed.name) || 'Suggestion')}</span>
+          <span class="ai-sug-name">${escHtml((s.parsed && s.parsed.name) || t('Suggestion'))}</span>
           <span class="risk-badge risk-${escHtml(s.risk || 'standard')}">${escHtml(s.risk || 'standard')}</span>
         </div>
-        ${s.note ? `<div class="bl-hint" style="margin-bottom:8px;">${escHtml(s.note)}</div>` : ''}
+        ${s.note ? `<div class="bl-hint ai-sug-note">${escHtml(s.note)}</div>` : ''}
         <pre class="ai-sug-yaml">${yamlToHtml(s.yaml)}</pre>
       </div>
       ${nav}
       ${_rejectedHtml(data.rejected)}
       <div class="ai-sug-actions">
-        <button class="btn btn-lav btn-sm" data-ai-copy>Copy YAML</button>
-        <button class="btn btn-mint btn-sm" data-ai-open>Use this</button>
+        <button class="btn btn-lav btn-sm" data-ai-copy>${escHtml(t('Copy YAML'))}</button>
+        <button class="btn btn-mint btn-sm" data-ai-open>${escHtml(t('Use this'))}</button>
       </div>
     </div>`;
   }
@@ -236,7 +271,7 @@ function _renderColumn(id) {
   });
   col.querySelector('[data-ai-copy]')?.addEventListener('click', () => {
     copyText(cur.yaml).then((ok) => showToast(
-      ok ? 'YAML copied' : 'Copy failed', ok ? 'success' : 'error'));
+      ok ? t('YAML copied') : t('Copy failed'), ok ? 'success' : 'error'));
   });
 }
 
@@ -245,7 +280,7 @@ function _renderColumn(id) {
 function _rejectedHtml(rejected) {
   if (!rejected || !rejected.length) return '';
   return `<details class="ai-rejected">
-    <summary>${rejected.length} ${rejected.length === 1 ? 'task was' : 'tasks were'} rejected</summary>
+    <summary>${escHtml(tn('{n} task was rejected', '{n} tasks were rejected', rejected.length))}</summary>
     ${rejected.map(r => `<div class="ai-rejected-item">
       <div class="ai-rejected-why">${escHtml(r.error)}</div>
       <pre class="ai-sug-yaml">${yamlToHtml(r.yaml)}</pre></div>`).join('')}
@@ -256,7 +291,7 @@ function _addBestTag(col) {
   if (col.querySelector('.ai-best-tag')) return;
   const head = col.querySelector('.ai-col-head');
   const tag = document.createElement('span');
-  tag.className = 'ai-best-tag'; tag.textContent = 'best pick';
+  tag.className = 'ai-best-tag'; tag.textContent = t('best pick');
   head.appendChild(tag);
 }
 
@@ -309,14 +344,14 @@ function suggestFixForVuln(finding) {
 // A vulnerability with no fix (M9): mitigations only, grounded in the stored
 // advisory. A group that has a fix gets "Deploy fix" instead and never this.
 function suggestMitigationsForFixGroup(group) {
-  _openAi(`${group.package} — no fix available`,
+  _openAi(t('{package} — no fix available', { package: group.package }),
     (pid) => apiJson('/api/v1/ai/suggest/fix-group/',
       { method: 'POST', body: JSON.stringify({ provider_id: pid, fix_key: group.fix_key }) }));
 }
 
 /* ── Providers manager (Settings) ────────────────────────────────────── */
 async function loadAiProviders() {
-  const list = document.getElementById('ai-providers-list');
+  const list = /** @type {HTMLElement|null} */ (document.getElementById('ai-providers-list'));
   if (!list) return;
   try {
     const rows = await apiJson('/api/v1/ai/providers/');
@@ -324,61 +359,61 @@ async function loadAiProviders() {
       <div class="provider-row">
         <div class="provider-row-main">
           <span class="provider-row-name">${escHtml(p.name)}
-            <span class="bl-badge ${p.enabled ? 'on' : 'off'}">${p.enabled ? 'enabled' : 'off'}</span>
-            ${p.configured ? '' : '<span class="bl-badge off">needs setup</span>'}</span>
-          <span class="provider-row-sub">${escHtml(p.kind)} · ${escHtml(p.model || 'no model')} · ${escHtml(p.base_url || 'default endpoint')}${p.reasoning_effort ? ' · ' + escHtml(p.reasoning_effort) + ' reasoning' : ''}${p.api_key_set ? ' · key set' : ''}</span>
+            <span class="bl-badge ${p.enabled ? 'on' : 'off'}">${escHtml(p.enabled ? t('enabled') : t('off'))}</span>
+            ${p.configured ? '' : `<span class="bl-badge off">${escHtml(t('needs setup'))}</span>`}</span>
+          <span class="provider-row-sub">${escHtml(p.kind)} · ${escHtml(p.model || t('no model'))} · ${escHtml(p.base_url || t('default endpoint'))}${p.reasoning_effort ? ' · ' + escHtml(p.reasoning_effort) + ' ' + escHtml(t('reasoning')) : ''}${p.api_key_set ? ' · ' + escHtml(t('key set')) : ''}</span>
           <div class="provider-test" id="ap-test-${p.id}" hidden></div>
         </div>
         <div class="card-actions">
-          <button class="btn btn-mint btn-xs" data-ap-test="${p.id}">Test</button>
-          <button class="btn btn-sky btn-xs" data-ap-edit="${p.id}">Edit</button>
-          <button class="btn btn-${p.enabled ? 'lemon' : 'mint'} btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${p.enabled ? 'Disable' : 'Enable'}</button>
-          <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">Delete</button>
+          <button class="btn btn-mint btn-xs" data-ap-test="${p.id}">${escHtml(t('Test'))}</button>
+          <button class="btn btn-sky btn-xs" data-ap-edit="${p.id}">${escHtml(t('Edit'))}</button>
+          <button class="btn btn-${p.enabled ? 'lemon' : 'mint'} btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${escHtml(p.enabled ? t('Disable') : t('Enable'))}</button>
+          <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">${escHtml(t('Delete'))}</button>
         </div>
-      </div>`).join('') : '<p class="muted-note">No providers yet. Add your first model endpoint below.</p>';
-    list.querySelectorAll('[data-ap-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!(await confirmModal('Delete this AI provider?', { danger: true, confirmText: 'Delete' }))) return;
+      </div>`).join('') : `<p class="muted-note">${escHtml(t('No providers yet. Add your first model endpoint below.'))}</p>`;
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-del]')).forEach(b => b.addEventListener('click', async () => {
+      if (!(await confirmModal(t('Delete this AI provider?'), { danger: true, confirmText: t('Delete') }))) return;
       await fetch(`/api/v1/ai/providers/${b.dataset.apDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
       loadAiProviders();
     }));
-    list.querySelectorAll('[data-ap-toggle]').forEach(b => b.addEventListener('click', async () => {
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-toggle]')).forEach(b => b.addEventListener('click', async () => {
       await apiJson(`/api/v1/ai/providers/${b.dataset.apToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: b.dataset.en !== 'true' }) });
       loadAiProviders();
     }));
-    list.querySelectorAll('[data-ap-test]').forEach(b => b.addEventListener('click', () => _testProvider(b)));
-    list.querySelectorAll('[data-ap-edit]').forEach(b => b.addEventListener('click', () => _editProvider(rows.find(r => r.id == b.dataset.apEdit))));
-  } catch (e) { /* card stays as-is */ }
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-test]')).forEach(b => b.addEventListener('click', () => _testProvider(b)));
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-edit]')).forEach(b => b.addEventListener('click', () => _editProvider(rows.find(r => r.id == b.dataset.apEdit))));
+  } catch (e) { showLoadFailure(list, t('AI providers'), e, loadAiProviders); return; }
 }
 
 // Asks the provider for one real task and says what came back: the time it
 // took, whether Vigil accepted the task, and the reason when it did not.
-async function _testProvider(btn) {
+async function _testProvider(/** @type {HTMLButtonElement} */ btn) {
   const id = btn.dataset.apTest;
-  const out = document.getElementById(`ap-test-${id}`);
+  const out = /** @type {HTMLElement} */ (document.getElementById(`ap-test-${id}`));
   const t0 = performance.now();
   btn.disabled = true;
   out.hidden = false;
   out.className = 'provider-test';
-  out.textContent = 'Asking the model for a task…';
+  out.textContent = t('Asking the model for a task…');
   const timer = pollingInterval(() => {
-    out.textContent = `Asking the model for a task… ${((performance.now() - t0) / 1000).toFixed(0)}s`;
+    out.textContent = t('Asking the model for a task… {seconds}s', { seconds: ((performance.now() - t0) / 1000).toFixed(0) });
   }, 1000);
   try {
     const d = await apiJson(`/api/v1/ai/providers/${id}/test/`, { method: 'POST' });
     const secs = d.elapsed_ms != null ? `${(d.elapsed_ms / 1000).toFixed(1)}s` : '';
     if (d.ok) {
       out.classList.add('ok');
-      out.textContent = `Working: the model wrote a task Vigil accepts, in ${secs}.`;
+      out.textContent = t('Working: the model wrote a task Vigil accepts, in {secs}.', { secs });
     } else {
       out.classList.add('bad');
       const why = d.error || (d.rejected && d.rejected.length
-        ? `it wrote a task Vigil rejected: ${d.rejected[0].error}`
-        : `it answered without a task${d.note ? ': ' + d.note.slice(0, 200) : ''}`);
-      out.textContent = `Not working${secs ? ' (' + secs + ')' : ''}: ${why}`;
+        ? t('it wrote a task Vigil rejected: {error}', { error: d.rejected[0].error })
+        : t('it answered without a task{note}', { note: d.note ? ': ' + d.note.slice(0, 200) : '' }));
+      out.textContent = t('Not working{detail}: {why}', { detail: secs ? ` (${secs})` : '', why });
     }
   } catch (e) {
     out.classList.add('bad');
-    out.textContent = 'Test failed: ' + e.message;
+    out.textContent = t('Test failed: {message}', { message: e.message });
   } finally {
     clearPollingInterval(timer);
     btn.disabled = false;
@@ -386,36 +421,36 @@ async function _testProvider(btn) {
 }
 
 function _editProvider(p) {
-  document.getElementById('ap-form').dataset.editing = p ? p.id : '';
-  document.getElementById('ap-form-title').textContent = p ? 'Edit provider' : 'Add a provider';
-  document.getElementById('ap-name').value = p ? p.name : '';
-  document.getElementById('ap-kind').value = p ? p.kind : 'openai';
-  document.getElementById('ap-url').value = p ? p.base_url : '';
-  document.getElementById('ap-model').value = p ? p.model : '';
-  document.getElementById('ap-effort').value = p ? (p.reasoning_effort || '') : '';
-  document.getElementById('ap-key').value = '';
-  document.getElementById('ap-key-note').textContent = p && p.api_key_set ? 'A key is stored — leave blank to keep it.' : '';
+  /** @type {HTMLElement} */ (document.getElementById('ap-form')).dataset.editing = p ? p.id : '';
+  /** @type {HTMLElement} */ (document.getElementById('ap-form-title')).textContent = p ? t('Edit provider') : t('Add a provider');
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-name')).value = p ? p.name : '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('ap-kind')).value = p ? p.kind : 'openai';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-url')).value = p ? p.base_url : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-model')).value = p ? p.model : '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('ap-effort')).value = p ? (p.reasoning_effort || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-key')).value = '';
+  /** @type {HTMLElement} */ (document.getElementById('ap-key-note')).textContent = p && p.api_key_set ? t('A key is stored — leave blank to keep it.') : '';
   document.getElementById('ap-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function _saveProvider() {
   const body = {
-    name: document.getElementById('ap-name').value.trim() || 'Provider',
-    kind: document.getElementById('ap-kind').value,
-    base_url: document.getElementById('ap-url').value.trim(),
-    model: document.getElementById('ap-model').value.trim(),
-    reasoning_effort: document.getElementById('ap-effort').value,
+    name: /** @type {HTMLInputElement} */ (document.getElementById('ap-name')).value.trim() || t('Provider'),
+    kind: /** @type {HTMLSelectElement} */ (document.getElementById('ap-kind')).value,
+    base_url: /** @type {HTMLInputElement} */ (document.getElementById('ap-url')).value.trim(),
+    model: /** @type {HTMLInputElement} */ (document.getElementById('ap-model')).value.trim(),
+    reasoning_effort: /** @type {HTMLSelectElement} */ (document.getElementById('ap-effort')).value,
   };
-  const key = document.getElementById('ap-key').value;
+  const key = /** @type {HTMLInputElement} */ (document.getElementById('ap-key')).value;
   if (key) body.api_key = key;
   const editing = document.getElementById('ap-form').dataset.editing;
   try {
     if (editing) await apiJson(`/api/v1/ai/providers/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
     else await apiJson('/api/v1/ai/providers/', { method: 'POST', body: JSON.stringify(body) });
-    showToast('Provider saved', 'success');
+    showToast(t('Provider saved'), 'success');
     _editProvider(null);
     loadAiProviders();
-  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+  } catch (e) { showToast(t('Save failed: {message}', { message: e.message }), 'error'); }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

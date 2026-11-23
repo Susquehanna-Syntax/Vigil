@@ -86,8 +86,8 @@ class CheckinCollectionTests(unittest.TestCase):
             "/networks": [{"Id": "n1", "Name": "shop_default", "Driver": "bridge", "Scope": "local",
                            "IPAM": {"Config": [{"Subnet": "172.18.0.0/16"}]}}],
         }
-        with patch.object(collector, "_engine_available", return_value=True), \
-                patch.object(collector, "_docker_api_get", side_effect=lambda p: replies[p]):
+        with patch.object(collector.docker_resources, "_engine_available", return_value=True), \
+                patch.object(collector.docker_resources, "_docker_api_get", side_effect=lambda p: replies[p]):
             res = collector.collect_docker_resources()
         self.assertEqual(res["images"][0]["tags"], ["nginx:1.25"])
         self.assertEqual(res["volumes"][0]["stack"], "shop")
@@ -100,7 +100,7 @@ class CheckinCollectionTests(unittest.TestCase):
         self.assertEqual(collector._container_mounts(c)[0]["name"], "db")
 
     def test_no_engine_sends_nothing(self):
-        with patch.object(collector, "_engine_available", return_value=False):
+        with patch.object(collector.docker_resources, "_engine_available", return_value=False):
             self.assertIsNone(collector.collect_docker_resources())
 
 

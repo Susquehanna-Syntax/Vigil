@@ -1,3 +1,8 @@
+// @ts-check
+/** One row of GET /api/v1/tasks/editor-templates/, which this page caches in
+ *  _editorTemplates: a real task file the server ships, with `label` and `group`
+ *  for the picker's two-line row. */
+/** @typedef {{id: string, label: string, group: string, filename: string, yaml: string}} EditorTemplate */
 // vigil-tasks.js
 // Owns: Tasks page — library grid, task editor (YAML + preview), fork,
 //   deploy launcher, community-submit (GitHub PR). The Community page's own
@@ -46,6 +51,7 @@ actions:
    GET /api/v1/tasks/editor-templates/. Each is a real task file a test can
    prove valid, rather than a string literal kept in sync by hand. Fetched once
    per page load and held here; the picker and the loader read this cache. */
+/** @type {EditorTemplate[]|null} */
 let _editorTemplates = null;
 
 async function _loadEditorTemplates() {
@@ -54,7 +60,7 @@ async function _loadEditorTemplates() {
     const body = await apiJson('/api/v1/tasks/editor-templates/');
     _editorTemplates = body.results || [];
   } catch (e) {
-    showToast('Could not load the task templates: ' + e.message, 'error');
+    showToast(t('Could not load the task templates: {msg}', { msg: e.message }), 'error');
     _editorTemplates = [];
   }
   return _editorTemplates;
@@ -63,7 +69,7 @@ async function _loadEditorTemplates() {
 function _populateTemplatePicker() {
   // One template file per example on the server, so this fetches the list once
   // and opens a search modal over the result rather than an in-page constant.
-  const btn = document.getElementById('editor-template-btn');
+  const btn = /** @type {HTMLElement|null} */ (document.getElementById('editor-template-btn'));
   if (!btn || btn.dataset.wired) return;
   btn.dataset.wired = '1';
   btn.addEventListener('click', async () => {
@@ -71,26 +77,46 @@ function _populateTemplatePicker() {
     if (!templates.length) return;
     openPicker({
       type: 'editor_template',
-      title: 'Start from a template',
+      title: t('Start from a template'),
       allowAdd: false,
-      items: templates.map(t => ({ key: t.id, name: t.label, meta: t.group })),
+      items: templates.map(row => ({ key: row.id, name: row.label, meta: row.group })),
       onSelect: (item) => loadEditorTemplate(item.key),
     });
   });
 }
 
+/** @param {string|null|undefined} id @returns {void} */
 function loadEditorTemplate(id) {
   if (!id) return;
   const tpl = (_editorTemplates || []).find(t => t.id === id);
   if (!tpl) return;
-  const ta = document.getElementById('editor-yaml');
+  const ta = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml'));
   const current = (ta.value || '').trim();
   const isPristine = !current || current === DEFAULT_YAML_TEMPLATE.trim();
-  if (!isPristine && !confirm('Replace the current YAML with the selected template?')) return;
+  if (!isPristine && !confirm(t('Replace the current YAML with the selected template?'))) return;
   ta.value = tpl.yaml;
   onEditorInput();
 }
 
+/** A "relevant" expression as the parser returns it: a fold of probes, so a node
+ *  is either an `op` over its `items` or one `probe`. _relevantTreeHtml walks it. */
+/** @typedef {{op: string, items: RelevantNode[]} | {probe: {type?: string|null, params: Record<string, unknown>}}} RelevantNode */
+/** A step as the editor renders it — an `actions` entry or a `flow` one; a flow
+ *  step carries its condition (`when`) and what it declares (`outputs`). */
+/** @typedef {{type?: string, label?: string|null, id?: string, when?: string|null, outputs?: string[]|null, script_sha256?: string|null}} EditorAction */
+/** A `flow` entry the editor's preview draws: a branch (`if`/`then`/`else`), a
+ *  task pulled in by name (`use`), or a plain step. One shape per kind, and
+ *  _flowNodeHtml tests for them in that order. */
+/** @typedef {{type?: string, label?: string|null, id?: string, when?: string|null, outputs?: string[]|null, script_sha256?: string|null, use?: string, if?: string, then?: object[], else?: object[]}} FlowNode */
+/** The editor's preview of one parsed document. `inputs` are the questions the
+ *  deploy form asks, and a container step carries `params`, whose values are
+ *  whatever YAML put there — this page escapes them all before drawing them. */
+/** @typedef {{name?: string|null, description?: string|null, derived_risk?: string, risk?: string, relevant?: RelevantNode|{all?: RelevantNode[]}|null, actions?: EditorAction[], flow?: FlowNode[], inputs?: {id: string, type?: string, label?: string|null, choices?: {value: string}[], default?: unknown}[], warnings?: string[], author?: string, created?: string}} EditorSpec */
+/** A definition row of the library or community grid: only what _renderTaskGrid
+ *  reads before handing the row on to defCardHtml, which draws from the whole
+ *  object and needs no declared fields to do it. */
+/** @typedef {{name?: string|null, description?: string|null, relevance?: string|null, parsed_spec?: EditorSpec|null}} TaskGridRow */
+/** @typedef {{valid: boolean, error?: string, spec?: EditorSpec|null}} ValidateResponse */
 let editorState = {
   definitionId: null,   // null when creating
   lastParsedSpec: null,
@@ -99,8 +125,8 @@ let editorState = {
 
 /* ── Definition card rendering ───────────────────────────────────────── */
 function riskBadgeHtml(risk) {
-  const label = { low: 'Low', standard: 'Standard', high: 'High' }[risk] || 'Standard';
-  return `<span class="risk-badge risk-${risk}">${label} risk</span>`;
+  const label = { low: t('Low'), standard: t('Standard'), high: t('High') }[risk] || t('Standard');
+  return `<span class="risk-badge risk-${risk}">${escHtml(t('{label} risk', { label }))}</span>`;
 }
 
 function defCardHtml(def, opts) {
@@ -112,8 +138,8 @@ function defCardHtml(def, opts) {
   const yamlAuthor = def.parsed_spec && def.parsed_spec.author;
   const yamlCreated = def.parsed_spec && def.parsed_spec.created;
   const authorLabel = yamlAuthor
-    ? `by ${escHtml(yamlAuthor)}`
-    : (opts.showOwner && def.owner_username ? `by ${escHtml(def.owner_username)}` : '');
+    ? escHtml(t('by {name}', { name: yamlAuthor }))
+    : (opts.showOwner && def.owner_username ? escHtml(t('by {name}', { name: def.owner_username })) : '');
   const dateLabel = yamlCreated ? escHtml(yamlCreated) : escHtml(updated);
   const attribution = (dateLabel || authorLabel)
     ? `<span class="dot-sep">·</span><span>${[dateLabel, authorLabel].filter(Boolean).join(' · ')}</span>`
@@ -121,22 +147,22 @@ function defCardHtml(def, opts) {
   // Community cards live in vigil-community.js now — this renders the
   // operator's own library only.
   const buttons = def.archived_at
-    ? `<button class="btn btn-mint btn-sm" data-def-restore="${escAttr(def.id)}">Restore</button>`
-    : `<button class="btn btn-sky btn-sm" data-def-edit="${escAttr(def.id)}">Edit</button>
-     <button class="btn btn-peach btn-sm" data-def-deploy="${escAttr(def.id)}">Deploy</button>
-     <button class="btn btn-lemon btn-sm" data-def-archive="${escAttr(def.id)}">Archive</button>`;
+    ? `<button class="btn btn-mint btn-sm" data-def-restore="${escAttr(def.id)}">${escHtml(t('Restore'))}</button>`
+    : `<button class="btn btn-sky btn-sm" data-def-edit="${escAttr(def.id)}">${escHtml(t('Edit'))}</button>
+     <button class="btn btn-peach btn-sm" data-def-deploy="${escAttr(def.id)}">${escHtml(t('Deploy'))}</button>
+     <button class="btn btn-lemon btn-sm" data-def-archive="${escAttr(def.id)}">${escHtml(t('Archive'))}</button>`;
   return `
     <div class="def-card" data-def-open="${escAttr(def.id)}">
       <div class="def-card-body">
-        <div class="def-card-title">${escHtml(def.name || 'Untitled')}</div>
-        <div class="def-card-desc">${escHtml(def.description || 'No description provided.')}</div>
+        <div class="def-card-title">${escHtml(def.name || t('Untitled'))}</div>
+        <div class="def-card-desc">${escHtml(def.description || t('No description provided.'))}</div>
         <div class="def-card-meta">
           ${riskBadgeHtml(def.risk_level || 'standard')}
           <span class="dot-sep">·</span>
-          <span>${actions} action${actions === 1 ? '' : 's'}</span>
-          ${(def.parsed_spec || {}).flow ? '<span class="chip">branches</span>' : ''}
-          ${(def.parsed_spec || {}).relevant ? '<span class="chip">applies when…</span>' : ''}
-          ${(def.parsed_spec || {}).severity ? `<span class="chip chip-rose" title="A detection task: a match is a ${escAttr(def.parsed_spec.severity)} finding">detection · ${escHtml(def.parsed_spec.severity)}</span>` : ''}
+          <span>${escHtml(tn('{n} action', '{n} actions', actions))}</span>
+          ${(def.parsed_spec || {}).flow ? `<span class="chip">${escHtml(t('branches'))}</span>` : ''}
+          ${(def.parsed_spec || {}).relevant ? `<span class="chip">${escHtml(t('applies when…'))}</span>` : ''}
+          ${(def.parsed_spec || {}).severity ? `<span class="chip chip-rose" title="${escAttr(t('A detection task: a match is a {severity} finding', { severity: def.parsed_spec.severity }))}">${escHtml(t('detection ·'))} ${escHtml(def.parsed_spec.severity)}</span>` : ''}
           ${def.content_source && def.content_source !== 'organization' ? `<span class="chip chip-muted">${escHtml(def.content_source)}</span>` : ''}
           ${attribution}
         </div>
@@ -152,9 +178,9 @@ function _defLastRunHtml(last) {
   const segs = stateSegments(last.states);
   const words = segs.map(s => `${s.value} ${s.label}`).join(', ');
   const when = last.created_at ? new Date(last.created_at).toLocaleDateString() : '';
-  return `<div class="def-card-run" title="${escAttr('Last run: ' + words)}">
-    ${donutHtml(segs, { size: 30, legend: false, title: 'Last run' })}
-    <span>Last run${when ? ' ' + escHtml(when) : ''}: ${escHtml(words)}</span>
+  return `<div class="def-card-run" title="${escAttr(t('Last run: {words}', { words }))}">
+    ${donutHtml(segs, { size: 30, legend: false, title: t('Last run') })}
+    <span>${escHtml(when ? t('Last run {when}: {words}', { when, words }) : t('Last run: {words}', { words }))}</span>
   </div>`;
 }
 
@@ -163,22 +189,23 @@ const LIBRARY_EMPTY_HTML = `
     <div class="empty-state-icon">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="empty-state-title">No tasks yet</div>
-    <div class="empty-state-desc">Create your first task — describe what it does and list the actions that run in order.</div>
+    <div class="empty-state-title">${escHtml(t('No tasks yet'))}</div>
+    <div class="empty-state-desc">${escHtml(t('Create your first task — describe what it does and list the actions that run in order.'))}</div>
   </div>`;
 
 // Cached unfiltered list so search is purely client-side and instant.
+/** @type {{library: TaskGridRow[]}} */
 const taskGridCache = { library: [] };
 
 function _renderTaskGrid(scope) {
-  const cfg = { gridId: 'task-library-grid', searchId: 'task-library-search',
-                mode: 'library', empty: LIBRARY_EMPTY_HTML, showOwner: false };
+  const cfg = { gridId: 'task-library-grid', searchId: 'task-library-search', empty: LIBRARY_EMPTY_HTML,
+                mode: 'library', showOwner: false };
   const grid = document.getElementById(cfg.gridId);
   if (!grid) return;
   const all = taskGridCache[scope] || [];
-  const q = (document.getElementById(cfg.searchId)?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById(cfg.searchId))?.value || '').trim().toLowerCase();
   let visible = all;
-  if (document.getElementById('task-library-detections')?.checked) {
+  if (/** @type {HTMLInputElement} */ (document.getElementById('task-library-detections'))?.checked) {
     visible = visible.filter(d => d.parsed_spec && d.parsed_spec.severity);
   }
   if (q) {
@@ -193,7 +220,7 @@ function _renderTaskGrid(scope) {
   if (!all.length) { grid.innerHTML = cfg.empty; return; }
   if (!visible.length) {
     const safeQ = escHtml(q);
-    grid.innerHTML = '<div class="empty-state"><div class="empty-state-title">No matches</div><div class="empty-state-desc">No tasks match \u201c' + safeQ + '\u201d.</div></div>';
+    grid.innerHTML = `<div class="empty-state"><div class="empty-state-title">${escHtml(t('No matches'))}</div><div class="empty-state-desc">${t('No tasks match “{q}”.', { q: safeQ })}</div></div>`;
     return;
   }
   grid.innerHTML = visible.map(d => defCardHtml(d, { mode: cfg.mode, showOwner: cfg.showOwner })).join('');
@@ -207,39 +234,39 @@ async function refreshTaskLibrary(archived) {
       '/api/v1/tasks/definitions/?scope=mine' + (archived ? '&archived=1' : ''));
     _renderTaskGrid('library');
   } catch (e) {
-    showToast('Failed to load library: ' + e.message, 'error');
+    showLoadFailure(document.getElementById('task-library-grid'), 'the task library', e, () => refreshTaskLibrary(archived));
   }
 }
 
 async function forkDefinition(id) {
   try {
     await apiJson(`/api/v1/tasks/definitions/${id}/fork/`, { method: 'POST' });
-    showToast('Forked into your library', 'success');
+    showToast(t('Forked into your library'), 'success');
     refreshTaskLibrary();
-    const libTab = document.querySelector('[data-tab="tasks-library"]');
+    const libTab = /** @type {HTMLElement} */ (document.querySelector('[data-tab="tasks-library"]'));
     if (libTab) libTab.click();
   } catch (e) {
-    showToast('Fork failed: ' + e.message, 'error');
+    showToast(t('Fork failed: {msg}', { msg: e.message }), 'error');
   }
 }
 
 async function openDefinitionEditor(definitionId, initialYaml = null) {
   editorState.definitionId = definitionId || null;
   document.getElementById('editor-error').classList.remove('show');
-  document.getElementById('editor-page-title').innerHTML = (definitionId ? 'Edit Task' : 'New Task') + '<span>.</span>';
+  document.getElementById('editor-page-title').innerHTML = (definitionId ? escHtml(t('Edit Task')) : escHtml(t('New Task'))) + '<span>.</span>';
   _populateTemplatePicker();
 
   if (definitionId) {
     try {
       const def = await apiJson(`/api/v1/tasks/definitions/${definitionId}/`);
-      document.getElementById('editor-yaml').value = def.yaml_source || DEFAULT_YAML_TEMPLATE;
+      /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value = def.yaml_source || DEFAULT_YAML_TEMPLATE;
     } catch (e) {
-      showToast('Failed to load task: ' + e.message, 'error');
+      showToast(t('Failed to load task: {msg}', { msg: e.message }), 'error');
       return;
     }
   } else {
     // initialYaml can be passed by suggestAgentUpdate() or other callers to pre-fill the editor
-    document.getElementById('editor-yaml').value = initialYaml || DEFAULT_YAML_TEMPLATE;
+    /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value = initialYaml || DEFAULT_YAML_TEMPLATE;
   }
 
   navigateTo('task-editor');
@@ -252,7 +279,7 @@ function onEditorInput() {
 }
 
 async function validateEditor() {
-  const yaml = document.getElementById('editor-yaml').value;
+  const yaml = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value;
   const errBox = document.getElementById('editor-error');
   try {
     const body = await apiJson('/api/v1/tasks/definitions/validate/', {
@@ -274,7 +301,7 @@ async function validateEditor() {
 }
 
 function renderEditorPreview(spec) {
-  const el = document.getElementById('editor-preview');
+  const el = /** @type {HTMLElement} */ (document.getElementById('editor-preview'));
   if (!spec) { el.innerHTML = '<div class="preview-heading">—</div>'; return; }
   // The whole task's steps share ONE pastel — the task's derived risk — so a
   // task reads as a single coloured unit rather than a mixed-colour ladder.
@@ -286,9 +313,9 @@ function renderEditorPreview(spec) {
   // the operator is about to sign.
   const relevantHtml = spec.relevant
     ? `<div class="preview-relevant">
-        <div class="preview-relevant-heading">Applies when</div>
+        <div class="preview-relevant-heading">${escHtml(t('Applies when'))}</div>
         <ul class="preview-relevant-list">${_relevantTreeHtml(spec.relevant)}</ul>
-        <div class="preview-relevant-note">Hosts where this does not hold report Not applicable and run nothing.</div>
+        <div class="preview-relevant-note">${escHtml(t('Hosts where this does not hold report Not applicable and run nothing.'))}</div>
       </div>`
     : '';
   const actionsHtml = spec.flow
@@ -301,17 +328,17 @@ function renderEditorPreview(spec) {
       const sample = i.type === 'choice'
         ? (i.choices || []).map(c => c.value).join(' | ')
         : (i.default !== undefined && i.default !== '' ? String(i.default) : '');
-      return `<div style="display:flex;gap:10px;font-size:12px;padding:6px 10px;border-bottom:1px solid var(--border);">
-        <span class="mono" style="color:var(--sky-ink);min-width:120px;">${escHtml(i.id)}</span>
-        <span style="color:var(--text-3);min-width:60px;">${escHtml(i.type)}</span>
-        <span style="color:var(--text-2);flex:1;">${escHtml(i.label || '')}</span>
-        <span class="mono" style="color:var(--text-3);">${escHtml(sample)}</span>
+      return `<div class="preview-input-row">
+        <span class="mono preview-input-id">${escHtml(i.id)}</span>
+        <span class="preview-input-type">${escHtml(i.type)}</span>
+        <span class="preview-input-label">${escHtml(i.label || '')}</span>
+        <span class="mono preview-input-sample">${escHtml(sample)}</span>
       </div>`;
     }).join('');
     inputsHtml = `
-      <div style="margin-top:18px;">
-        <div class="preview-heading" style="font-size:14px;">Inputs (asked at deploy time)</div>
-        <div style="background:var(--s2);border-radius:var(--r-sm);margin-top:8px;border:1px solid var(--border);">${rows}</div>
+      <div class="preview-inputs">
+        <div class="preview-heading preview-heading-sm">${escHtml(t('Inputs (asked at deploy time)'))}</div>
+        <div class="preview-input-list">${rows}</div>
       </div>`;
   }
   const warnings = spec.warnings || [];
@@ -320,32 +347,32 @@ function renderEditorPreview(spec) {
     : '';
   const hasInlineScript = spec.actions.some(a => a.script_sha256);
   const scriptNote = hasInlineScript
-    ? `<div class="preview-script-note">${escHtml('Managed hosts run an inline script only if its hash is approved on the host (vigil-agent allow-script). Editing the script changes the hash.')}</div>`
+    ? `<div class="preview-script-note">${escHtml(t('Managed hosts run an inline script only if its hash is approved on the host (vigil-agent allow-script). Editing the script changes the hash.'))}</div>`
     : '';
   el.innerHTML = `
     <div class="preview-heading">${escHtml(spec.name)}</div>
-    <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
+    <div class="preview-sub">${escHtml(spec.description || t('No description.'))}</div>
     <div class="preview-meta">
       ${riskBadgeHtml(spec.risk)}
-      ${spec.flow ? '<span>branches</span>' : ''}
-      ${spec.relevant ? '<span>applies when…</span>' : ''}
-      <span>${spec.actions.length} step${spec.actions.length === 1 ? '' : 's'}</span>
-      ${inputs.length ? `<span>${inputs.length} input${inputs.length === 1 ? '' : 's'}</span>` : ''}
-      ${spec.author ? `<span>by ${escHtml(spec.author)}</span>` : ''}
+      ${spec.flow ? `<span>${escHtml(t('branches'))}</span>` : ''}
+      ${spec.relevant ? `<span>${escHtml(t('applies when…'))}</span>` : ''}
+      <span>${escHtml(tn('{n} step', '{n} steps', spec.actions.length))}</span>
+      ${inputs.length ? `<span>${escHtml(tn('{n} input', '{n} inputs', inputs.length))}</span>` : ''}
+      ${spec.author ? `<span>${escHtml(t('by {name}', { name: spec.author }))}</span>` : ''}
       ${spec.created ? `<span>${escHtml(spec.created)}</span>` : ''}
     </div>
     ${warningsHtml}
     ${relevantHtml}
     ${inputsHtml}
     <div class="preview-actions">${actionsHtml}</div>${scriptNote}`;
-  el.querySelectorAll('[data-copy-hash]').forEach(btn => {
+  el.querySelectorAll('[data-copy-hash]').forEach((/** @type {HTMLButtonElement} */ btn) => {
     btn.addEventListener('click', () => {
       const hash = btn.dataset.copyHash;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(hash).then(() => {
-          showToast('Hash copied', 'success');
+          showToast(t('Hash copied'), 'success');
         }).catch(() => {
-          showToast('Copy failed', 'error');
+          showToast(t('Copy failed'), 'error');
         });
       } else {
         const span = btn.parentElement.querySelector('span');
@@ -354,7 +381,7 @@ function renderEditorPreview(spec) {
         const range = document.createRange();
         range.selectNodeContents(span);
         sel.addRange(range);
-        showToast('Press Ctrl+C to copy', 'info');
+        showToast(t('Press Ctrl+C to copy'), 'info');
       }
     });
   });
@@ -366,11 +393,11 @@ function _previewStepHtml(a, i, taskRisk) {
       <div class="preview-step-num">${i + 1}</div>
       <div class="preview-step-body">
         <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).replace(/\n+$/, '').split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
-        ${a.when ? `<div class="preview-step-outputs">runs only when: ${escHtml(a.when)}</div>` : ''}
-        ${(a.outputs || []).length ? `<div class="preview-step-outputs">outputs: ${a.outputs.map(o => escHtml(o)).join(', ')}</div>` : ''}
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? escHtml(t('script={n} lines', { n: String(v).replace(/\n+$/, '').split('\n').length })) : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
+        ${a.when ? `<div class="preview-step-outputs">${escHtml(t('runs only when:'))} ${escHtml(a.when)}</div>` : ''}
+        ${(a.outputs || []).length ? `<div class="preview-step-outputs">${escHtml(t('outputs:'))} ${a.outputs.map(o => escHtml(o)).join(', ')}</div>` : ''}
         ${a.script_sha256 ? `<div class="preview-step-hash"><span class="mono">${escHtml(a.script_sha256)}</span>
-          <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">Copy</button></div>` : ''}
+          <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">${escHtml(t('Copy'))}</button></div>` : ''}
       </div>
     </div>`;
 }
@@ -379,13 +406,13 @@ function _relevantItemHtml(item) {
   if (item && item.probe) {
     const params = item.probe.params || {};
     const pairs = Object.entries(params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ');
-    return `<li><code>${escHtml(item.probe.type)}</code>${pairs ? ` · ${pairs}` : ''}</li>`;
+    return `<li><code>${escHtml(item.probe.type)}</code>${pairs ? ' · ' + pairs : ''}</li>`;
   }
   return `<li>${_relevantTreeHtml(item)}</li>`;
 }
 
 function _relevantTreeHtml(node) {
-  const head = node.op === 'any' ? 'any of:' : node.op === 'not' ? 'none of:' : 'all of:';
+  const head = node.op === 'any' ? t('any of:') : node.op === 'not' ? t('none of:') : t('all of:');
   const items = (node.items || []).map(_relevantItemHtml).join('');
   return `<span class="preview-relevant-op">${head}</span><ul class="preview-relevant-list">${items}</ul>`;
 }
@@ -401,12 +428,12 @@ function _flowNodeHtml(node, spec, taskRisk) {
     return idx >= 0 ? _previewStepHtml(spec.actions[idx], idx, taskRisk) : '';
   }
   if (node.use) {
-    return `<div class="preview-use"><span class="preview-use-label">uses task</span> <code>${escHtml(node.use)}</code> — its current steps are copied in when you deploy</div>`;
+    return `<div class="preview-use"><span class="preview-use-label">${escHtml(t('uses task'))}</span> <code>${escHtml(node.use)}</code> ${escHtml(t('— its current steps are copied in when you deploy'))}</div>`;
   }
   const then = _flowGroupHtml('then', node.then || [], spec, taskRisk);
   const els = (node.else || []).length ? _flowGroupHtml('else', node.else, spec, taskRisk) : '';
   return `<div class="preview-branch">
-    <div class="preview-branch-if">if <code>${escHtml(node.if)}</code></div>
+    <div class="preview-branch-if">${escHtml(t('if'))} <code>${escHtml(node.if)}</code></div>
     <div class="preview-branch-groups">${then}${els}</div>
   </div>`;
 }
@@ -453,14 +480,14 @@ function _injectCommunityMetadata(yaml) {
 }
 
 function openCommunitySubmit() {
-  const rawYaml = (document.getElementById('editor-yaml').value || '').trim();
-  if (!rawYaml) { showToast('Write some YAML first', 'error'); return; }
+  const rawYaml = (/** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value || '').trim();
+  if (!rawYaml) { showToast(t('Write some YAML first'), 'error'); return; }
   const yaml = _injectCommunityMetadata(rawYaml);
   const parsed = editorState.lastParsedSpec;
   const nameSlug = parsed && parsed.name ? _slugifyTaskName(parsed.name) : 'task';
   const filename = nameSlug + '.yaml';
   const url = `${COMMUNITY_REPO_URL}/new/main/tasks?filename=${encodeURIComponent(filename)}&value=${encodeURIComponent(yaml)}`;
-  const link = document.getElementById('community-submit-link');
+  const link = /** @type {HTMLAnchorElement} */ (document.getElementById('community-submit-link'));
   link.href = url;
   document.getElementById('community-submit-filename').textContent = filename;
   document.getElementById('community-submit-overlay').classList.add('open');
@@ -478,15 +505,15 @@ async function copyCommunityYaml() {
   if (!yaml) return;
   try {
     await copyText(yaml);
-    showToast('YAML copied to clipboard', 'success');
+    showToast(t('YAML copied to clipboard'), 'success');
   } catch {
-    showToast('Clipboard blocked — copy from the editor manually', 'error');
+    showToast(t('Clipboard blocked — copy from the editor manually'), 'error');
   }
 }
 
 async function saveDefinitionFromEditor() {
-  const yaml = document.getElementById('editor-yaml').value;
-  const btn = document.getElementById('editor-save-btn');
+  const yaml = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value;
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('editor-save-btn'));
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
     const url = editorState.definitionId
@@ -494,14 +521,14 @@ async function saveDefinitionFromEditor() {
       : '/api/v1/tasks/definitions/';
     const method = editorState.definitionId ? 'PUT' : 'POST';
     await apiJson(url, { method, body: JSON.stringify({ yaml_source: yaml }) });
-    showToast('Task saved', 'success');
+    showToast(t('Task saved'), 'success');
     await refreshTaskLibrary();
     navigateTo('tasks');
   } catch (e) {
     const errBox = document.getElementById('editor-error');
     errBox.textContent = e.message;
     errBox.classList.add('show');
-    showToast('Save failed: ' + e.message, 'error');
+    showToast(t('Save failed: {msg}', { msg: e.message }), 'error');
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }
@@ -510,13 +537,13 @@ async function saveDefinitionFromEditor() {
 /* ── navigateTo wrapper: lazy-load library/community grids ───────────── */
 // Load the library / community grids when their respective pages become visible.
 const originalNavigateForTasks = navigateTo;
-navigateTo = function (pageName) {
+window.navigateTo = function (pageName) {
   originalNavigateForTasks(pageName);
   if (pageName === 'tasks') refreshTaskLibrary();
 };
 
 // Hook tab switches inside the tasks page so the library grid refreshes on demand.
-document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach((/** @type {HTMLElement} */ tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'tasks-library') refreshTaskLibrary();
   });
@@ -546,10 +573,10 @@ async function openTaskDetail(runId) {
   const stepsEl = document.getElementById('task-detail-steps');
   const actionsEl = document.getElementById('task-detail-actions');
 
-  titleEl.textContent = 'Loading…';
+  titleEl.textContent = '';   // the steps say Loading; never the last run's title
+  stepsEl.innerHTML = loadingHtml();
   metaEl.replaceChildren();
   document.getElementById('task-detail-jackil').style.display = 'none';
-  stepsEl.replaceChildren();
   actionsEl.hidden = true;
   overlay.classList.add('open');
   modal.classList.add('open');
@@ -557,16 +584,18 @@ async function openTaskDetail(runId) {
   try {
     const run = await apiJson('/api/v1/tasks/runs/' + runId + '/');
 
-    titleEl.textContent = run.definition_name || run.name_snapshot || 'Task Run';
+    titleEl.textContent = run.definition_name || run.name_snapshot || t('Task Run');
 
-    const fmt = iso => iso ? new Date(iso).toLocaleString() : '—';
+    const fmt = iso => iso ? new Date(iso).toLocaleString() : '—' /* i18n-ignore */;
     const sep = () => _tdEl('span', 'color:var(--s3);margin:0 4px;', '·');
     const metaParts = [
-      run.requested_by_username ? 'by ' + run.requested_by_username : null,
-      'started ' + fmt(run.created_at),
-      run.finished_at ? 'finished ' + fmt(run.finished_at) : null,
-      run.host_count + ' host' + (run.host_count !== 1 ? 's' : '') +
-        ', ' + run.step_count + ' step' + (run.step_count !== 1 ? 's' : ''),
+      run.requested_by_username ? t('by {name}', { name: run.requested_by_username }) : null,
+      t('started {when}', { when: fmt(run.created_at) }),
+      run.finished_at ? t('finished {when}', { when: fmt(run.finished_at) }) : null,
+      t('{hosts}, {steps}', {
+        hosts: tn('{n} host', '{n} hosts', run.host_count),
+        steps: tn('{n} step', '{n} steps', run.step_count),
+      }),
     ].filter(Boolean);
     metaParts.forEach((p, i) => {
       metaEl.appendChild(_tdEl('span', null, p));
@@ -581,7 +610,7 @@ async function openTaskDetail(runId) {
     }
 
     if (!run.tasks || run.tasks.length === 0) {
-      stepsEl.appendChild(_tdEl('div', 'color:var(--text-3);text-align:center;padding:24px;', 'No step records found.'));
+      stepsEl.appendChild(_tdEl('div', 'color:var(--text-3);text-align:center;padding:24px;', t('No step records found.')));
       return;
     }
 
@@ -608,7 +637,7 @@ async function openTaskDetail(runId) {
       const hdr = _tdEl('div', 'display:flex;align-items:center;gap:10px;margin-bottom:6px;');
       hdr.appendChild(_tdEl('span', 'font-size:13px;font-weight:600;color:var(--text-1);', task.step_label || task.action));
       if (task.step_label && task.step_label !== task.action) {
-        hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action));
+        hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action)); // i18n-ignore — a font name
       }
       hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', TASK_STATE_LABELS[task.state] || task.state));
       card.appendChild(hdr);
@@ -635,21 +664,21 @@ async function openTaskDetail(runId) {
 
       if (output) {
         const pre = _tdEl('pre', "margin:0;padding:10px 12px;background:var(--s0);border-radius:var(--r-sm);" +
-          "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" +
+          "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" + // i18n-ignore — a font name
           'white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;');
         pre.textContent = output;
         if (hasRows) {
           const more = document.createElement('details');
           more.className = 'step-output-more';
           const summary = document.createElement('summary');
-          summary.textContent = 'Full output';
+          summary.textContent = t('Full output');
           more.append(summary, pre);
           card.appendChild(more);
         } else {
           card.appendChild(pre);
         }
       } else if (task.state === 'completed' || task.state === 'failed') {
-        card.appendChild(_tdEl('div', 'font-size:11px;color:var(--text-3);font-style:italic;', 'No output captured.'));
+        card.appendChild(_tdEl('div', 'font-size:11px;color:var(--text-3);font-style:italic;', t('No output captured.')));
       }
 
       stepsEl.appendChild(card);
@@ -666,9 +695,7 @@ async function openTaskDetail(runId) {
       };
     }
   } catch (e) {
-    const errEl = _tdEl('div', 'color:var(--rose-ink);padding:16px;');
-    errEl.textContent = 'Failed to load run details: ' + e.message;
-    stepsEl.appendChild(errEl);
+    showLoadFailure(stepsEl, t('the task run'), e, () => openTaskDetail(runId));
   }
 }
 
@@ -680,10 +707,10 @@ function closeTaskDetail() {
 /* ── Task history (live-polled, paginated) ───────────────────────────── */
 
 const TASK_STATE_LABELS = {
-  blocked: 'Blocked', pending: 'Pending', dispatched: 'Dispatched',
-  executing: 'Executing', completed: 'Completed', failed: 'Failed',
-  rejected: 'Rejected', expired: 'Expired', skipped: 'Skipped',
-  not_applicable: 'Not applicable',
+  blocked: t('Blocked'), pending: t('Pending'), dispatched: t('Dispatched'),
+  executing: t('Executing'), completed: t('Completed'), failed: t('Failed'),
+  rejected: t('Rejected'), expired: t('Expired'), skipped: t('Skipped'),
+  not_applicable: t('Not applicable'),
 };
 
 const taskHistoryState = { page: 1, pages: 1, interval: null };
@@ -707,17 +734,17 @@ function _taskTimeSince(iso) {
   return Math.floor(h / 24) + 'd ago';
 }
 
-function _buildTaskHistoryRow(t) {
+function _buildTaskHistoryRow(task) {
   const row = document.createElement('div');
   row.className = 'task-item';
-  if (t.run) {
+  if (task.run) {
     row.style.cursor = 'pointer';
-    row.title = 'Click to view full run details';
-    row.addEventListener('click', () => openTaskDetail(t.run));
+    row.title = t('Click to view full run details');
+    row.addEventListener('click', () => openTaskDetail(task.run));
   }
 
   const dot = document.createElement('div');
-  dot.className = 'status-dot ' + _taskDotClass(t.state);
+  dot.className = 'status-dot ' + _taskDotClass(task.state);
   dot.style.width = '8px';
   dot.style.height = '8px';
   row.appendChild(dot);
@@ -727,22 +754,22 @@ function _buildTaskHistoryRow(t) {
 
   const name = document.createElement('div');
   name.className = 'task-action-name';
-  name.textContent = t.action + ((t.step_label && t.step_label !== t.action) ? ' · ' + t.step_label : '');
+  name.textContent = task.action + ((task.step_label && task.step_label !== task.action) ? ' · ' + task.step_label : '');
   content.appendChild(name);
 
   const detail = document.createElement('div');
   detail.className = 'task-detail';
-  const parts = [t.host_hostname || ''];
-  if (t.requested_by_username) parts.push('by ' + t.requested_by_username);
-  parts.push(_taskTimeSince(t.created_at));
+  const parts = [task.host_hostname || ''];
+  if (task.requested_by_username) parts.push(t('by {name}', { name: task.requested_by_username }));
+  parts.push(_taskTimeSince(task.created_at));
   detail.textContent = parts.filter(Boolean).join(' · ');
   content.appendChild(detail);
 
   row.appendChild(content);
 
   const badge = document.createElement('span');
-  badge.className = 'state-badge state-' + t.state;
-  badge.textContent = TASK_STATE_LABELS[t.state] || t.state;
+  badge.className = 'state-badge state-' + task.state;
+  badge.textContent = TASK_STATE_LABELS[task.state] || task.state;
   row.appendChild(badge);
 
   return row;
@@ -756,10 +783,10 @@ function _csrfToken() {
 function _buildEmptyState(title, desc) {
   const wrap = document.createElement('div');
   wrap.className = 'empty-state';
-  const t = document.createElement('div');
-  t.className = 'empty-state-title';
-  t.textContent = title;
-  wrap.appendChild(t);
+  const heading = document.createElement('div');
+  heading.className = 'empty-state-title';
+  heading.textContent = title;
+  wrap.appendChild(heading);
   if (desc) {
     const d = document.createElement('div');
     d.className = 'empty-state-desc';
@@ -779,7 +806,7 @@ function _renderTaskHistoryPager() {
 
   const prev = document.createElement('button');
   prev.className = 'btn btn-outline btn-sm';
-  prev.textContent = '‹ Prev';
+  prev.textContent = t('‹ Prev');
   prev.disabled = p <= 1;
   prev.addEventListener('click', () => taskHistoryGoto(p - 1));
   pager.appendChild(prev);
@@ -787,12 +814,12 @@ function _renderTaskHistoryPager() {
   const label = document.createElement('span');
   label.style.fontSize = '12px';
   label.style.color = 'var(--text-3)';
-  label.textContent = `Page ${p} of ${n}`;
+  label.textContent = t('Page {page} of {total}', { page: p, total: n });
   pager.appendChild(label);
 
   const next = document.createElement('button');
   next.className = 'btn btn-outline btn-sm';
-  next.textContent = 'Next ›';
+  next.textContent = t('Next ›');
   next.disabled = p >= n;
   next.addEventListener('click', () => taskHistoryGoto(p + 1));
   pager.appendChild(next);
@@ -802,19 +829,24 @@ async function refreshTaskHistory(page) {
   const list = document.getElementById('task-history-list');
   if (!list) return;
   const p = page || taskHistoryState.page || 1;
+  // The template's placeholder is the first paint, so a load over it keeps it
+  // rather than flashing Loading; only an empty list needs to say Loading.
+  const fromScratch = !list.querySelector('.task-item');
+  if (fromScratch) showLoading(list);
   try {
     const body = await apiJson(`/api/v1/tasks/history/?page=${p}`);
     taskHistoryState.page = body.page;
     taskHistoryState.pages = body.pages;
     list.replaceChildren();
     if (!body.results.length) {
-      list.appendChild(_buildEmptyState('No task history yet', 'Dispatched task steps will appear here.'));
+      list.appendChild(_buildEmptyState(t('No task history yet'), t('Dispatched task steps will appear here.')));
     } else {
-      for (const t of body.results) list.appendChild(_buildTaskHistoryRow(t));
+      for (const row of body.results) list.appendChild(_buildTaskHistoryRow(row));
     }
     _renderTaskHistoryPager();
   } catch (e) {
-    // Silent on poll failure — keep last-good list visible.
+    if (!fromScratch) return;   // a poll failure keeps the last good list on screen
+    showLoadFailure(list, t('the task history'), e, () => refreshTaskHistory(p));
   }
 }
 
@@ -840,7 +872,7 @@ function _startTaskHistoryPolling() {
 _startTaskHistoryPolling();
 
 // Tab click: load history when the user opens the tab.
-document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach((/** @type {HTMLElement} */ tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'tasks-history') refreshTaskHistory(1);
   });
@@ -851,17 +883,16 @@ document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab =
    it would lose a step without saying so — so archiving is how one is retired. */
 async function setDefinitionArchived(id, archived) {
   if (archived && !(await confirmModal(
-    'Archive this task? It leaves the list and the pickers. Playbooks and '
-    + 'automations already using it keep working.',
-    { confirmText: 'Archive' }))) return;
+    t('Archive this task? It leaves the list and the pickers. Playbooks and automations already using it keep working.'),
+    { confirmText: t('Archive') }))) return;
   try {
     await apiJson(`/api/v1/tasks/definitions/${id}/archive/`, {
       method: 'POST', body: JSON.stringify({ restore: !archived }) });
   } catch (e) {
-    showToast(e.message || 'Could not archive', 'error');
+    showToast(e.message || t('Could not archive'), 'error');
     return;
   }
-  showToast(archived ? 'Task archived' : 'Task restored', 'success');
+  showToast(archived ? t('Task archived') : t('Task restored'), 'success');
   refreshTaskLibrary();
 }
 

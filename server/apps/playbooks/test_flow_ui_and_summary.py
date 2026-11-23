@@ -20,6 +20,7 @@ from apps.playbooks.views import _validate_and_set_steps
 from apps.tasks.models import Task, TaskDefinition, TaskRun
 from apps.tasks.spec import parse_and_validate
 from apps.tasks.summary import run_summary
+from vigil.css_text import design_css
 
 JS = Path(__file__).resolve().parents[2] / "static" / "js"
 
@@ -112,7 +113,9 @@ class FlowUiSourceTests(SimpleTestCase):
         flow = self.src("vigil-playbook-flow.js")
         # Step names, ids, conditions and outcomes are author- or agent-supplied.
         for needle in ("escHtml(name)", "escHtml(s.sid)", "escHtml(flowCondSummary(cond))",
-                       "escHtml(s.outcome)", "escHtml(node.cond || '')", "escAttr(cond ? `if ${cond}`"):
+                       "escHtml(t('ends as “{outcome}”', { outcome: s.outcome }))",
+                       "escHtml(node.cond || '')",
+                       "escAttr(cond ? t('if {condition}', { condition: cond })"):
             self.assertIn(needle, flow)
         charts = self.src("vigil-charts.js")
         self.assertIn("escHtml(s.label)", charts)
@@ -138,7 +141,7 @@ class FlowUiSourceTests(SimpleTestCase):
     def test_no_coloured_side_stripes(self):
         """Cards are coloured all over or not at all — never a stripe down one side."""
         import re
-        css = (JS.parent / "css" / "vigil.css").read_text()
+        css = design_css()
         stripes = re.findall(r"border-left(?:-color)?:\s*(?:\d+px\s+solid\s+)?var\(--(?!border)[\w-]+\)", css)
         self.assertEqual(stripes, [])
         self.assertNotRegex(css, r"inset [3-9]px 0 0")

@@ -1,0 +1,281 @@
+/* ═══════════════════════════════════════════
+   HOST DETAIL PANEL
+   ═══════════════════════════════════════════ */
+.detail-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: var(--scrim);
+  z-index: 200;
+  animation: fadeIn 0.2s ease both;
+}
+.detail-overlay.open { display: block; }
+@keyframes fadeIn {
+  from { opacity: 0; } to { opacity: 1; }
+}
+
+.detail-panel {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 520px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  z-index: 210;
+  overflow-y: auto;
+  padding: 32px;
+  /* transform, not right: right animates layout on the main thread and
+     stutters while the panel's charts render; translateX stays on the GPU */
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.4s var(--ease-out-expo), visibility 0s linear 0.4s;
+}
+.detail-panel.open { transform: translateX(0); visibility: visible; transition: transform 0.4s var(--ease-out-expo), visibility 0s; }
+.detail-panel::-webkit-scrollbar { width: 4px; }
+.detail-panel::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 2px; }
+
+.detail-close {
+  width: 36px; height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  border: none; cursor: pointer;
+  display: grid; place-items: center;
+  color: var(--text-2);
+  transition: background 0.2s, transform 0.3s var(--ease-out-expo);
+  float: right;
+}
+.detail-close:hover { background: var(--s2); transform: scale(1.08); }
+.detail-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+
+.detail-header { margin-bottom: 32px; padding-top: 4px; }
+.detail-hostname {
+  font-family: 'Fraunces', serif;
+  font-size: 24px; font-weight: 500;
+  margin-bottom: 6px;
+}
+.detail-meta { font-size: 13px; color: var(--text-2); }
+.detail-agent-update { font-size: 12px; border-radius: 8px; padding: 6px 10px; margin-top: 2px; }
+.detail-agent-update--ok { color: var(--mint-ink); background: rgba(var(--rgb-mint), var(--tint-a)); }
+.detail-agent-update--bad { color: var(--rose-ink); background: rgba(var(--rgb-rose), var(--tint-a)); }
+.detail-agent-update-reason { display: block; color: var(--text-3); margin-top: 2px; word-break: break-word; }
+
+.detail-section { margin-bottom: 28px; }
+.detail-section-title {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 14px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.metric-card {
+  background: var(--s1);
+  border-radius: var(--r-md);
+  padding: 16px;
+}
+.metric-card-label { font-size: 11px; color: var(--text-3); font-weight: 500; margin-bottom: 6px; }
+.metric-card-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 20px; font-weight: 600;
+}
+.metric-card-bar {
+  height: 4px; background: var(--s3);
+  border-radius: 2px; overflow: hidden;
+  margin-top: 10px;
+}
+/* The bars start empty; the drawer's script writes width per render. */
+.metric-card-fill { height: 100%; width: 0%; border-radius: 2px; }
+.metric-card-value-sky      { color: var(--sky-ink); }
+.metric-card-value-lavender { color: var(--lavender-ink); }
+.metric-card-value-mint     { color: var(--mint-ink); }
+.metric-card-value-peach    { color: var(--peach-ink); }
+.metric-card-fill-sky      { background: var(--sky); }
+.metric-card-fill-lavender { background: var(--lavender); }
+.metric-card-fill-mint     { background: var(--mint); }
+.metric-card-fill-peach    { background: var(--peach); }
+
+/* The host detail drawer's own looks, moved out of base.html (08e). A rule
+   that repeats a declaration an element's shared class already makes — the
+   buttons' padding, `.form-control`'s font-size and padding, `.confirm-hint`'s
+   and `.host-tag-row`'s margins — carries that shared class too, so it beats
+   it as the inline used to. */
+.detail-meta-inline { display: flex; align-items: center; gap: 6px; }
+.detail-status-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.detail-status-text { font-size: 14px; font-weight: 500; }
+/* The script resets the badge's className, so the row places it. */
+.detail-status-row .mode-badge { margin-left: auto; }
+.detail-sub-line { font-size: 12px; color: var(--text-3); }
+.detail-agent-line { display: flex; align-items: center; gap: 8px; }
+.btn-sm.detail-agent-btn, .btn-ghost:hover.detail-agent-btn { padding: 2px 8px; }
+.detail-agent-btn { color: var(--sky-ink); }
+.detail-jackil-body { font-size: 13px; }
+.detail-score-row { display: flex; align-items: baseline; gap: 12px; }
+.detail-score { font-size: 28px; font-weight: 600; line-height: 1; }
+.detail-sub-line-below { margin-top: 6px; }
+.detail-chart-box { height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px; }
+.detail-containers-empty { background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
+.host-tag-row.detail-tags-gap { margin-bottom: 8px; }
+.form-control.detail-tag-input { font-size: 12px; padding: 7px 10px; }
+.confirm-hint.detail-hint-below { margin-top: 6px; }
+.detail-section.detail-section-last { margin-top: auto; padding-top: 24px; border-top: 1px solid var(--s3); }
+.btn.detail-delete-btn { width: 100%; }
+
+.detail-actions {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+/* Markup vigil-host-cards.js builds into the host drawer and the task-detail
+   drawer. Each class settles a look nothing else gives these elements, so it
+   beats nothing it has to beat; the two muted lines there keep wearing the
+   shared `.muted-span`. */
+.detail-actions-note { color: var(--text-3); font-size: 13px; }
+.jackil-link-status { font-size: 11px; }
+.jackil-related-label {
+  color: var(--text-3); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; margin-top: 8px;
+}
+.jackil-link { color: var(--text-1); text-decoration: none; font-weight: 500; }
+
+/* ═══════════════════════════════════════════
+   EMPTY STATE
+   ═══════════════════════════════════════════ */
+.empty-state {
+  text-align: center;
+  padding: 80px 40px;
+}
+.empty-state-icon {
+  width: 64px; height: 64px;
+  border-radius: var(--r-lg);
+  background: var(--s2);
+  display: grid; place-items: center;
+  margin: 0 auto 20px;
+  color: var(--text-3);
+}
+.empty-state-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+.empty-state-title {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 500; margin-bottom: 8px;
+}
+.empty-state-desc {
+  font-size: 14px; color: var(--text-2);
+  max-width: 400px; margin: 0 auto 24px; line-height: 1.6;
+}
+
+.load-failed { text-align: center; padding: 32px 16px; }
+.state-loading { text-align: center; padding: 32px 16px; font-size: 13px; color: var(--text-3); }
+.state-row > td { padding: 0; }
+.load-failed-title { font-size: 14px; font-weight: 500; color: var(--text-1); }
+.load-failed-desc { font-size: 13px; color: var(--text-2); margin: 6px auto 14px; max-width: 480px; overflow-wrap: anywhere; }
+
+.code-block {
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 18px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; color: var(--mint-ink); line-height: 1.7;
+  text-align: left; max-width: 520px; margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════ */
+.toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  z-index: 300;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+}
+.toast {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 20px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-1);
+  animation: toastIn 0.4s var(--ease-out-expo) both;
+  display: flex; align-items: center; gap: 10px;
+}
+.toast.success { border-color: var(--mint); }
+.toast.error { border-color: var(--rose); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ═══════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeUp 0.6s var(--ease-out-expo) both; }
+.d1 { animation-delay: 0.05s; }
+.d2 { animation-delay: 0.1s; }
+.d3 { animation-delay: 0.15s; }
+.d4 { animation-delay: 0.2s; }
+.d5 { animation-delay: 0.25s; }
+.d6 { animation-delay: 0.3s; }
+
+/* The device editor, task-run detail dialog and enrollment wizard's own looks,
+   moved out of base.html (08f). A rule that repeats a declaration the element's
+   shared class already makes — `.tab-bar`'s bottom margin, `.enroll-card`'s,
+   `.enroll-meta`'s and `.confirm-hint`'s margins — carries that shared class
+   too, so it beats it as the inline used to. */
+.tab-bar.tab-bar-tight { margin-bottom: 14px; }
+.device-editor-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.device-editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.device-editor-foot-actions { display: flex; gap: 10px; margin-left: auto; }
+.btn-ghost.device-delete-btn { color: var(--rose-ink); }
+.modal-title.modal-title-tight { flex-shrink: 0; }
+.task-detail-meta {
+  font-size: 12px; color: var(--text-3); margin-bottom: 16px; flex-shrink: 0;
+  display: flex; gap: 12px; flex-wrap: wrap;
+}
+.task-detail-jackil { flex-shrink: 0; margin-bottom: 12px; font-size: 13px; }
+.task-detail-steps { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.enroll-steps { display: flex; gap: 8px; margin-bottom: 20px; flex-shrink: 0; }
+.enroll-step-label { font-size: 12px; color: var(--text-3); margin-left: 4px; align-self: center; }
+.enroll-step-body { flex: 1; overflow-y: auto; }
+.enroll-step-centered { text-align: center; padding: 32px 0; }
+.enroll-profile-field { margin-bottom: 14px; }
+.enroll-command-actions { display: flex; gap: 8px; margin: 14px 0; }
+.enroll-cmd-block { margin-bottom: 12px; }
+.enroll-cmd { cursor: pointer; user-select: all; word-break: break-all; }
+.enroll-cmd-copy { display: flex; gap: 8px; margin-bottom: 20px; }
+/* Smaller than `.btn svg`'s default size, so the rule names the button. */
+.btn .btn-icon-xs { width: 13px; height: 13px; }
+.enroll-step-icon { margin-bottom: 16px; }
+.enroll-icon-clock {
+  width: 32px; height: 32px; stroke: var(--sky-ink); fill: none;
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+}
+.enroll-icon-check {
+  width: 36px; height: 36px; stroke: var(--mint-ink); fill: none;
+  stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+}
+.enroll-step-title { font-weight: 600; font-size: 15px; margin-bottom: 8px; }
+.enroll-step-title-mid { margin-bottom: 16px; }
+.enroll-step-title-done { font-size: 16px; }
+.enroll-step-title-mint { color: var(--mint-ink); }
+.enroll-pulse-row { margin-top: 20px; }
+/* Three classes, to beat `.status-dot.pending`'s slower animation (two classes,
+   an earlier part) as the inline `animation` used to. */
+.status-dot.pending.enroll-pulse-dot { display: inline-block; animation: pulse 1.5s infinite; }
+.enroll-card.enroll-card-below { margin-bottom: 20px; }
+.enroll-meta.enroll-replaces { margin-top: 6px; }
+.enroll-approve-actions { display: flex; gap: 8px; }
+
+/* ── Inline styles moved out of vigil-alerts.js (S6 08i) ───────────────── */
+/* The Alerts page's three empty states, whose icon box this part gives
+   `var(--s2)`, tint it in the colour of what an empty list means — mint for all
+   clear, lemon for alerts someone still owes an answer to — so each tint repeats
+   that class. And `.empty-state-icon svg` strokes every glyph with
+   `currentColor`; a mint one is not a grey one, so it names the element too. */
+.empty-state-icon.empty-state-mint { background: rgba(var(--rgb-mint), var(--tint-a)); }
+.empty-state-icon.empty-state-lemon { background: rgba(var(--rgb-lemon), var(--tint-a)); }
+.empty-state-icon svg.empty-state-svg-mint { stroke: var(--mint); }
+.empty-state-icon svg.empty-state-svg-lemon { stroke: var(--lemon); }
+
+/* Depends on, in the host drawer (M7): the select and its hint, as the inline
+   styles they replaced had them. */
+.detail-depends-select { font-size: 12px; padding: 7px 10px; }
+.confirm-hint.detail-depends-hint { margin-top: 6px; }

@@ -15,7 +15,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -87,6 +87,10 @@ def open_logs(request, host_id, name):
                     status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["GET"], parameters=[
+    OpenApiParameter("after", int,
+                     description="Line sequence number; only lines after it are returned. Default 0."),
+])
 @extend_schema(methods=["GET", "DELETE"], request=None,
                responses={200: HostsLogTailPollSerializer,
                           (204, "application/json"): None, 404: HostsErrorSerializer})

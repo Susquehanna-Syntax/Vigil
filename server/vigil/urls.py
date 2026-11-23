@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import include, path
+from django.views.i18n import JavaScriptCatalog
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -31,6 +32,7 @@ from apps.statuspage.views import public_status_data as status_public_data_view
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
 from vigil import api_schema, health_view, metrics_endpoint, scoping, views_scope
+from vigil.ui_kit import ui_kit
 
 
 @extend_schema(responses=api_schema.VigilHealthSerializer)
@@ -134,6 +136,10 @@ admin.site.login = _admin_login
 
 urlpatterns = [
     path("", dashboard, name="dashboard"),
+    # Translations for strings scripts build (t() / tn() in vigil-utils.js).
+    # Only English ships, so the catalog is empty until a locale is added.
+    path("jsi18n/", JavaScriptCatalog.as_view(), name="javascript-catalog"),
+    path("ui-kit/", ui_kit, name="ui-kit"),
     path("setup/", setup_view, name="setup"),
     path("login/", login_view, name="login"),
     path("login/verify/", login_mfa.verify_view, name="login-verify"),
@@ -242,3 +248,5 @@ if settings.BUSINESS_API_KEYS:
     urlpatterns += [path("api/v1/api-keys/", include("apps_business.apikeys.urls"))]
 if settings.BUSINESS_WEBHOOKS:
     urlpatterns += [path("api/v1/webhooks/", include("apps_business.webhooks.urls"))]
+if settings.BUSINESS_CONFIG_BACKUP:
+    urlpatterns += [path("api/v1/config-backups/", include("apps_business.configbackup.urls"))]

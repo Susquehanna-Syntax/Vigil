@@ -17,23 +17,32 @@ SERVER = Path(__file__).resolve().parent.parent
 CROSSINGS: dict[str, list[str]] = {
     'apps/agentprofiles/redeem_views.py': ['agent install: a one-time profile token is the access control'],
     'apps/agentprofiles/views.py': ['agent profile names are unique across the install'],
+    'apps/alerts/device_alerts.py': ["device alert evaluation: every site's devices are polled by their own site's pollers"],
     'apps/alerts/tasks.py': ['background job: acknowledgements expire on every site',
                              "background job: agent versions are checked for every site's hosts",
                              "background job: alert rules are evaluated for every site's hosts",
+                             "background job: device alerts are evaluated for every site's devices",
                              "background job: every site's silent hosts are marked offline",
                              "background job: image updates are checked for every site's hosts",
                              "background job: retention prunes every site's alerts",
                              "background job: retention prunes every site's metrics"],
+    'apps/alerts/slack_actions.py': ['Slack acknowledge button, signature checked against the channel',
+                                     'Slack acknowledge: finding the channel whose signing secret signed this click',
+                                     "Slack acknowledge: the channel's signing secret is the access control"],
     'apps/automations/engine.py': ['automation events fire install-wide, whoever raised them'],
     'apps/automations/tasks.py': ['background job: a scheduled automation fires, bounded by its own reach'],
     'apps/catalog/tasks.py': ['background job: the package catalog is install-wide'],
     'apps/instance/tasks.py': ['background job: a backup covers the whole install'],
     'vigil/metrics_endpoint.py': ['Prometheus scrape: no person is behind it; the bearer token is the access control'],
     'vigil/health_view.py': ['instance health: the counts are install-wide'],
+    'apps/hosts/discovery.py': ["agent check-in: this poller's own scan answer",
+                                "agent check-in: this poller's own scans, whichever site made it"],
     'apps/hosts/enrollment.py': ["re-enrolment moves the machine's own history onto its surviving row",
                                  're-enrolment: the same machine is matched across every site'],
     'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/hosts/tasks.py': ['background job: directory import is install-wide'],
+    'apps/hosts/views/discovery.py': ["discovery cap: a poller's waiting scans, whoever "
+                                      'queued them'],
     'apps/hosts/views/_common.py': ['tag delete guard: a tag is install-wide',
                                     'tag rename: tags are install-wide',
                                     'tag rename: tags are install-wide',
@@ -86,6 +95,15 @@ def _is_test(path):
     return path.name.startswith("test") or path.name == "testsupport.py"
 
 
+def _in_scoping(rel):
+    # vigil/scoping.py was split into the vigil/scoping/ package (S5 07), so
+    # every submodule of the package is excluded from the crossing sweep, as
+    # the module itself used to be. Its __init__ is a re-export list whose
+    # names (`system`, ...) an AST sweep would otherwise read as crossings.
+    return rel in ("vigil/scoping.py", "vigil/scoping/__init__.py") \
+        or rel.startswith("vigil/scoping/")
+
+
 def _system_names(tree):
     """Local names bound to vigil.scoping.system by a from-import."""
     names = set()
@@ -111,7 +129,7 @@ def find_crossings(root=SERVER):
         rel = path.relative_to(root).as_posix()
         if ".venv" in path.parts or "migrations" in path.parts or _is_test(path):
             continue
-        if rel == "vigil/scoping.py":
+        if _in_scoping(rel):
             continue
         text = path.read_text(encoding="utf-8")
         if "unscoped" not in text and "system" not in text:

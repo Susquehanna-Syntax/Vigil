@@ -1,63 +1,63 @@
-{# Vulnerabilities page section #}
-{# Logic: static/js/vigil-vulns.js | Styles: vigil.css .vuln-*, .stat-* | Data: client-side fetch /api/v1/vulns/ (returns empty until a scanner has reported) #}
+{% load i18n %}{# Vulnerabilities page section #}
+{# Logic: static/js/vigil-vulns.js | Styles: css/vigil/*.css .vuln-*, .stat-* | Data: client-side fetch /api/v1/vulns/ (returns empty until a scanner has reported) #}
     <section id="page-vulns" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Vulnerabilities<span>.</span></div>
-          <div class="page-sub">Scan findings per host, across every configured scanner</div>
+          <div class="page-title">{% translate "Vulnerabilities" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Scan findings per host, across every configured scanner" %}</div>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div class="vulns-actions">
           <button class="btn btn-outline btn-sm" data-act="pickAnvilRecord" id="vulns-anvil-btn"
-                  title="Import an Anvil record (SARIF 2.1.0 + anvil/*)">Import Anvil record</button>
+                  title="{% translate "Import an Anvil record (SARIF 2.1.0 + anvil/*)" %}">{% translate "Import Anvil record" %}</button>
           <input type="file" id="vulns-anvil-file" accept=".json,.sarif,application/json" hidden
                  data-change="uploadAnvilRecord" data-a1="$el">
           <button class="btn btn-outline btn-sm" data-act="refreshVulns" id="vulns-refresh-btn">
             <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-            Refresh
+            {% translate "Refresh" %}
           </button>
         </div>
       </div>
 
       {# Fleet headline — sad-face badge + worst-offender callout, computed from VulnSummary scores. #}
-      <div id="vuln-fleet-headline" style="display:flex;align-items:center;gap:24px;background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:24px;">
-        <div id="vuln-fleet-face" style="flex-shrink:0;width:80px;height:80px;"></div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);margin-bottom:4px;">Fleet score</div>
-          <div style="display:flex;align-items:playbook;gap:10px;">
-            <span class="mono" id="vuln-fleet-score" style="font-size:36px;font-weight:600;line-height:1;">—</span>
-            <span style="font-size:13px;color:var(--text-3);">/ 100</span>
+      <div id="vuln-fleet-headline" class="vuln-fleet-headline">
+        <div id="vuln-fleet-face" class="vuln-fleet-face"></div>
+        <div class="vuln-fleet-body">
+          <div class="vuln-fleet-caption">{% translate "Fleet score" %}</div>
+          <div class="vuln-fleet-score-row">
+            <span class="mono vuln-fleet-score" id="vuln-fleet-score">—</span>
+            <span class="vuln-fleet-of">/ 100</span>
           </div>
-          <div id="vuln-fleet-worst" style="font-size:12px;color:var(--text-3);margin-top:8px;"></div>
+          <div id="vuln-fleet-worst" class="vuln-fleet-worst"></div>
         </div>
       </div>
 
-      <div class="stats-row" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 28px;">
+      <div class="stats-row vuln-stats">
         <div class="stat-card">
-          <div class="stat-label">Hosts with Criticals</div>
-          <div class="stat-value" style="color: var(--rose-ink)" id="vuln-stat-critical-hosts">—</div>
+          <div class="stat-label">{% translate "Hosts with Criticals" %}</div>
+          <div class="stat-value vuln-stat-c-rose" id="vuln-stat-critical-hosts">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total Critical Findings</div>
-          <div class="stat-value" style="color: var(--coral-ink)" id="vuln-stat-total-critical">—</div>
+          <div class="stat-label">{% translate "Total Critical Findings" %}</div>
+          <div class="stat-value vuln-stat-c-coral" id="vuln-stat-total-critical">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total High Findings</div>
-          <div class="stat-value" style="color: var(--lemon-ink)" id="vuln-stat-total-high">—</div>
+          <div class="stat-label">{% translate "Total High Findings" %}</div>
+          <div class="stat-value vuln-stat-c-lemon" id="vuln-stat-total-high">—</div>
         </div>
       </div>
 
       <div class="tab-bar vuln-tabs" data-tab-group="vulns">
-        <div class="tab t-mint active" data-tab="vulns-by-fix">By fix</div>
-        <div class="tab t-sky" data-tab="vulns-by-host">By host</div>
+        <div class="tab t-mint active" data-tab="vulns-by-fix">{% translate "By fix" %}</div>
+        <div class="tab t-sky" data-tab="vulns-by-host">{% translate "By host" %}</div>
       </div>
 
       {# By fix (M9) — findings grouped by the action that resolves them. #}
       <div class="tab-content active" id="vulns-by-fix">
         <div id="vuln-fixes-section" class="vfix-section">
           <div class="vfix-head">
-            <p class="apps-intro">One row per fix: deploying it resolves every finding listed under it, on every host.</p>
-            <input type="search" class="form-control vfix-search" id="vuln-fix-q" placeholder="Search package or CVE…" autocomplete="off">
+            <p class="apps-intro">{% translate "One row per fix: deploying it resolves every finding listed under it, on every host." %}</p>
+            <input type="search" class="form-control vfix-search" id="vuln-fix-q" placeholder="{% translate "Search package or CVE…" %}" autocomplete="off">
           </div>
           <div id="vuln-fixes"></div>
         </div>
@@ -66,33 +66,33 @@
       {# By host — each host's score and open findings. #}
       <div class="tab-content" id="vulns-by-host">
         <div id="vulns-content">
-          <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="vulns-loading">
-            Loading vulnerability data…
+          <div class="vulns-loading" id="vulns-loading">
+            {% translate "Loading vulnerability data…" %}
           </div>
         </div>
       </div>
 
       {# Recent scans (server-launched + task-requested). Hidden when none. #}
-      <div id="vuln-scans-section" style="display:none;margin-top:28px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <div style="font-weight:600;font-size:14px;color:var(--text-1);">Recent scans</div>
-          <div style="font-size:11px;color:var(--text-3);">Updated every refresh · max 100</div>
+      <div id="vuln-scans-section" class="vuln-scans-section" style="display:none;">
+        <div class="vuln-scans-head">
+          <div class="vuln-scans-title">{% translate "Recent scans" %}</div>
+          <div class="vuln-scans-note">{% translate "Updated every refresh · max 100" %}</div>
         </div>
         <div id="vuln-scans-list" class="task-list"></div>
       </div>
 
       <div id="vulns-not-configured" style="display:none;">
-        <div style="background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
-          <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">No scanner has reported yet</div>
-          <div style="color:var(--text-2);font-size:13px;max-width:520px;margin:0 auto;line-height:1.7;">
-            Vigil ingests findings from three scanners into this one view. Set up whichever you have &mdash; none are required, and you can run more than one.
-            <div style="margin-top:14px;text-align:left;display:inline-block;">
-              <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Trivy</strong> &mdash; runs on the host itself, nothing to configure here. Deploy the <em>Install Trivy</em> and <em>Run a Trivy vulnerability scan</em> task templates.</div>
-              <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Nessus / Tenable</strong> &mdash; server URL and a pair of API keys.</div>
-              <div><strong style="color:var(--text-1);">Greenbone / OpenVAS</strong> &mdash; the GMP host:port, a username and a password.</div>
+        <div class="vulns-nc-card">
+          <div class="vulns-nc-title">{% translate "No scanner has reported yet" %}</div>
+          <div class="vulns-nc-body">
+            {% blocktranslate %}Vigil ingests findings from three scanners into this one view. Set up whichever you have &mdash; none are required, and you can run more than one.{% endblocktranslate %}
+            <div class="vulns-nc-list">
+              <div class="vulns-nc-item"><strong class="vulns-nc-strong">{% translate "Trivy" %}</strong> &mdash; {% blocktranslate with install="<em>Install Trivy</em>" scan="<em>Run a Trivy vulnerability scan</em>" %}runs on the host itself, nothing to configure here. Deploy the {{ install }} and {{ scan }} task templates.{% endblocktranslate %}</div>
+              <div class="vulns-nc-item"><strong class="vulns-nc-strong">{% translate "Nessus / Tenable" %}</strong> &mdash; {% blocktranslate %}server URL and a pair of API keys.{% endblocktranslate %}</div>
+              <div class="vulns-nc-item"><strong class="vulns-nc-strong">{% translate "Greenbone / OpenVAS" %}</strong> &mdash; {% blocktranslate %}the GMP host:port, a username and a password.{% endblocktranslate %}</div>
             </div>
-            <div style="margin-top:18px;">
-              <button type="button" class="btn btn-sky btn-sm" data-act="navigateTo" data-a1="settings">Configure scanners in Settings</button>
+            <div class="vulns-nc-cta">
+              <button type="button" class="btn btn-sky btn-sm" data-act="navigateTo" data-a1="settings">{% translate "Configure scanners in Settings" %}</button>
             </div>
           </div>
         </div>

@@ -1,3 +1,4 @@
+// @ts-check
 /* The Community page — tasks, playbooks and automations from the public repo.
  *
  * Each kind is fetched and cached independently (server-side, ten minutes) so
@@ -14,6 +15,7 @@
  */
 
 const COMMUNITY_KINDS = ['tasks', 'playbooks', 'automations'];
+/** @type {Record<string, CommunityItem[]>} */
 const communityCache = { tasks: [], playbooks: [], automations: [] };
 const communityLoaded = { tasks: false, playbooks: false, automations: false };
 let communityKind = 'tasks';
@@ -21,14 +23,37 @@ let communityKind = 'tasks';
    playbook. Off by default — those are offered by the thing that needs them. */
 let communityShowServing = false;
 
-const COMMUNITY_LABEL = { tasks: 'task', playbooks: 'playbook', automations: 'automation' };
+/** The catalog noun for a kind — one word, so a translation may change its
+ * case or replace the whole phrase around it. */
+/** @param {string} kind @returns {string} */
+function _communityKindWord(kind) {
+  if (kind === 'tasks') return t('task');
+  if (kind === 'playbooks') return t('playbook');
+  if (kind === 'automations') return t('automation');
+  return kind;
+}
 
+/** The plural catalog noun for a kind, for "No community tasks yet". */
+/** @param {string} kind @returns {string} */
+function _communityKindPlural(kind) {
+  if (kind === 'tasks') return t('tasks');
+  if (kind === 'playbooks') return t('playbooks');
+  if (kind === 'automations') return t('automations');
+  return kind;
+}
+
+/** One catalog entry from /api/v1/tasks/community/<kind>/. */
+/** @typedef {{kind?: string, filename?: string, name?: string, description?: string, summary?: string,
+ *  relevance?: string, author?: string, html_url?: string, risk_level?: string, uid?: string,
+ *  yaml_source?: string, have?: boolean, _planned?: boolean, requires?: Array<{kind?: string, uid?: string, slug?: string, name?: string, have?: boolean}>,
+ *  parsed_spec?: {actions?: Array<{type?: string, label?: string}>}, [k: string]: any}} CommunityItem */
+
+/** @param {string} kind @returns {string} */
 function _communityEmptyHtml(kind) {
+  const repo = `<a class="community-catalog-link" href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener">Vigil-Approved-Scripts</a>`; // i18n-ignore
   return `<div class="empty-state">
-    <div class="empty-state-title">No community ${escHtml(kind)} yet</div>
-    <div class="empty-state-desc">They come from the public
-      <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Vigil-Approved-Scripts</a>
-      repo. Be the first to contribute — open one in its editor and use Submit to Community.</div>
+    <div class="empty-state-title">${escHtml(t('No community {kind} yet', { kind: _communityKindPlural(kind) }))}</div>
+    <div class="empty-state-desc">${t('They come from the public {repo} repo. Be the first to contribute — open one in its editor and use Submit to Community.', { repo })}</div>
   </div>`;
 }
 
@@ -39,6 +64,7 @@ function _communityEmptyHtml(kind) {
  * rather than being hidden outright — a task that serves a playbook is still
  * a perfectly good task to read, or to fork on its own.
  */
+/** @returns {Set<string>} */
 function _referencedTaskKeys() {
   const keys = new Set();
   ['playbooks', 'automations'].forEach(kind => {
@@ -53,46 +79,50 @@ function _referencedTaskKeys() {
   return keys;
 }
 
+/** @param {CommunityItem} item @param {Set<string>} keys @returns {boolean} */
 function _isReferenced(item, keys) {
   const stem = (item.filename || '').replace(/\.(ya?ml)$/, '');
   return (item.uid && keys.has('uid:' + item.uid)) || keys.has('slug:' + stem);
 }
 
 /** What forking this item would pull in, rendered as a short list. */
+/** @param {CommunityItem} item @returns {string} */
 function _requiresHtml(item) {
   const needs = item.requires || [];
   const held = item.have
-    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--mint-ink);">Already in your library.</div>`
+    ? `<div class="community-requires community-requires-held">${escHtml(t('Already in your library.'))}</div>`
     : '';
   if (!needs.length) return held;
   if (item.have) return held;
   const rows = needs.map(ref => {
     const held = ref.have === true;
     const mark = held
-      ? '<span style="color:var(--mint-ink);">already yours</span>'
-      : '<span style="color:var(--sky-ink);">will fork</span>';
-    return `<div style="display:flex;justify-content:space-between;gap:10px;">
-      <span style="color:var(--text-2);">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
+      ? `<span class="community-require-held">${escHtml(t('already yours'))}</span>`
+      : `<span class="community-require-will">${escHtml(t('will fork'))}</span>`;
+    return `<div class="community-require-row">
+      <span class="community-require-name">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
   }).join('');
-  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;">
-    <div style="color:var(--text-3);margin-bottom:5px;">Pulls in ${needs.length} item${needs.length === 1 ? '' : 's'}:</div>
+  return `<div class="community-requires">
+    <div class="community-require-count">${escHtml(tn('Pulls in {n} item:', 'Pulls in {n} items:', needs.length))}</div>
     ${rows}
   </div>`;
 }
 
+/** @param {CommunityItem} item @returns {string} */
 function _communityCardHtml(item) {
   const meta = [];
   if (item.kind === 'tasks') {
     const actions = (item.parsed_spec?.actions || []).length;
-    meta.push(`${actions} action${actions === 1 ? '' : 's'}`);
+    meta.push(escHtml(tn('{n} action', '{n} actions', actions)));
   } else if (item.summary) {
+    // This list is spliced into markup as-is, so every entry escapes itself.
     meta.push(escHtml(item.summary));
   }
   if (item.relevance) meta.push(escHtml(item.relevance));
-  if (item.author) meta.push(`by ${escHtml(item.author)}`);
+  if (item.author) meta.push(escHtml(t('by {author}', { author: item.author })));
 
   const github = item.html_url
-    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>View on GitHub</a>`
+    ? `<a class="btn btn-ghost btn-sm community-github-link" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>${escHtml(t('View on GitHub'))}</a>`
     : '';
   // Was built as a JS argument string: `'${item.kind}','${encodeURIComponent(
   // item.filename)}'` spliced into an onclick. encodeURIComponent is the wrong
@@ -102,8 +132,8 @@ function _communityCardHtml(item) {
   return `
     <div class="def-card" data-comm-kind="${escAttr(item.kind)}" data-comm-file="${escAttr(item.filename)}">
       <div class="def-card-body">
-        <div class="def-card-title">${escHtml(item.name || 'Untitled')}</div>
-        <div class="def-card-desc">${escHtml(item.description || 'No description provided.')}</div>
+        <div class="def-card-title">${escHtml(item.name || t('Untitled'))}</div>
+        <div class="def-card-desc">${escHtml(item.description || t('No description provided.'))}</div>
         <div class="def-card-meta">
           ${riskBadgeHtml(item.risk_level || 'standard')}
           ${meta.map(m => `<span class="dot-sep">·</span><span>${m}</span>`).join('')}
@@ -118,12 +148,14 @@ function _communityCardHtml(item) {
 }
 
 /** "Fork" for a lone task, "Fork all 3" when it drags things along. */
+/** @param {CommunityItem} item @returns {string} */
 function _forkLabel(item) {
-  if (item.have) return 'Already yours';
+  if (item.have) return t('Already yours');
   const outstanding = (item.requires || []).filter(r => r.have !== true).length;
-  return outstanding > 0 ? `Fork all ${outstanding + 1}` : 'Fork';
+  return outstanding > 0 ? t('Fork all {n}', { n: outstanding + 1 }) : t('Fork');
 }
 
+/** @param {string} kind @returns {void} */
 function _renderCommunity(kind) {
   const grid = document.getElementById(`community-${kind}-grid`);
   if (!grid) return;
@@ -131,10 +163,10 @@ function _renderCommunity(kind) {
   if (!all.length) {
     grid.innerHTML = communityLoaded[kind]
       ? _communityEmptyHtml(kind)
-      : '<div class="empty-state"><div class="empty-state-desc">Loading…</div></div>';
+      : loadingHtml();
     return;
   }
-  const q = (document.getElementById(`community-${kind}-search`)?.value || '')
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById(`community-${kind}-search`))?.value || '')
     .trim().toLowerCase();
   let visible = all;
   if (q) {
@@ -145,8 +177,8 @@ function _renderCommunity(kind) {
     ].filter(Boolean).join(' ').toLowerCase().includes(q));
   }
   if (!visible.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="empty-state-title">No matches</div>
-      <div class="empty-state-desc">Nothing in ${escHtml(kind)} matches “${escHtml(q)}”.</div></div>`;
+    grid.innerHTML = `<div class="empty-state"><div class="empty-state-title">${escHtml(t('No matches'))}</div>
+      <div class="empty-state-desc">${escHtml(t('Nothing in {kind} matches “{query}”.', { kind: _communityKindPlural(kind), query: q }))}</div></div>`;
     return;
   }
 
@@ -160,22 +192,21 @@ function _renderCommunity(kind) {
     const serving = visible.filter(i => _isReferenced(i, referenced));
     if (serving.length && !communityShowServing) {
       grid.innerHTML = standalone.map(_communityCardHtml).join('')
-        + `<div class="empty-state" style="grid-column:1/-1;padding:18px;">
+        + `<div class="empty-state community-grid-banner">
              <div class="empty-state-desc">
-               ${serving.length} more task${serving.length === 1 ? ' is' : 's are'} used by a playbook or automation,
-               and come${serving.length === 1 ? 's' : ''} along when you fork it.
-               <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
-                       data-comm-serving>Show ${serving.length === 1 ? 'it' : 'them'}</button>
+               ${escHtml(tn('{n} more task is used by a playbook or automation, and comes along when you fork it.', '{n} more tasks are used by a playbook or automation, and come along when you fork it.', serving.length))}
+               <button class="btn btn-ghost btn-sm community-serving-toggle"
+                       data-comm-serving>${escHtml(serving.length === 1 ? t('Show it') : t('Show them'))}</button>
              </div></div>`;
       return;
     }
     if (serving.length) {
       grid.innerHTML = standalone.concat(serving).map(_communityCardHtml).join('')
-        + `<div class="empty-state" style="grid-column:1/-1;padding:14px;">
+        + `<div class="empty-state community-grid-banner-tight">
              <div class="empty-state-desc">
-               Showing tasks used by playbooks.
-               <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
-                       data-comm-serving>Hide them</button>
+               ${escHtml(t('Showing tasks used by playbooks.'))}
+               <button class="btn btn-ghost btn-sm community-serving-toggle"
+                       data-comm-serving>${escHtml(t('Hide them'))}</button>
              </div></div>`;
       return;
     }
@@ -188,11 +219,12 @@ function toggleCommunityServing() {
   _renderCommunity('tasks');
 }
 
+/** @param {string} kind @param {boolean=} force @returns {Promise<void>} */
 async function loadCommunityKind(kind, force) {
   if (communityLoaded[kind] && !force) return;
   const grid = document.getElementById(`community-${kind}-grid`);
   if (grid && !communityLoaded[kind]) {
-    grid.innerHTML = '<div class="empty-state"><div class="empty-state-desc">Loading…</div></div>';
+    grid.innerHTML = loadingHtml();
   }
   try {
     const url = `/api/v1/tasks/community/${kind}/${force ? '?refresh=1' : ''}`;
@@ -203,7 +235,7 @@ async function loadCommunityKind(kind, force) {
     communityCache[kind] = [];
     if (grid) {
       grid.innerHTML = `<div class="empty-state">
-        <div class="empty-state-title">Couldn't reach the community repo</div>
+        <div class="empty-state-title">${escHtml(t("Couldn't reach the community repo"))}</div>
         <div class="empty-state-desc">${escHtml(e.message)}</div></div>`;
       return;
     }
@@ -224,6 +256,7 @@ async function loadCommunityKind(kind, force) {
  * The same walk backs this and the fork itself, so the card's promise and the
  * button's behaviour cannot drift apart. One request per card, only for the
  * kinds that reference anything. */
+/** @param {string} kind @returns {Promise<void>} */
 async function _annotateFork(kind) {
   if (kind === 'tasks') return;
   const items = communityCache[kind] || [];
@@ -236,7 +269,7 @@ async function _annotateFork(kind) {
       item.have = plan.have === true;
       item._planned = true;
     } catch {
-      // Leave the card as it is; Fork still works and reports its own errors.
+      // state-ok: the fork plan is a convenience; the card still renders and Fork reports its own errors.
       item._planned = true;
     }
   }));
@@ -262,23 +295,25 @@ function _invalidateForkPlans() {
   });
 }
 
+/** @param {string} kind @param {string} encodedFilename @returns {CommunityItem|undefined} */
 function _communityItem(kind, encodedFilename) {
   const filename = decodeURIComponent(encodedFilename);
   return (communityCache[kind] || []).find(i => i.filename === filename);
 }
 
 /** Fork one item into the operator's own library. */
+/** @param {string} kind @param {string} encodedFilename @returns {Promise<void>} */
 async function openCommunityItem(kind, encodedFilename) {
   const item = _communityItem(kind, encodedFilename);
   if (!item || !item.yaml_source) {
-    showToast('Not loaded — hit Refresh and try again', 'error');
+    showToast(t('Not loaded — hit Refresh and try again'), 'error');
     return;
   }
   if (kind === 'tasks') {
     // Self-contained and nothing to resolve: straight into the editor,
     // unsaved, so it can be read before it is kept.
     openDefinitionEditor(null, item.yaml_source);
-    showToast('Community task opened — save it to add it to your library', 'success');
+    showToast(t('Community task opened — save it to add it to your library'), 'success');
     return;
   }
   // A playbook is a sequence of tasks and an automation runs a task or a
@@ -289,7 +324,7 @@ async function openCommunityItem(kind, encodedFilename) {
       `/api/v1/tasks/community/${kind}/${encodeURIComponent(item.filename)}/fork/`,
       { method: 'POST', body: JSON.stringify({}) });
     if (result.already) {
-      showToast(`You already have “${item.name}”`, 'success');
+      showToast(t('You already have “{name}”', { name: item.name }), 'success');
       item.have = true;
       _renderCommunity(kind);
       return;
@@ -302,27 +337,27 @@ async function openCommunityItem(kind, encodedFilename) {
     const extra = made.length - 1;
     showToast(
       extra > 0
-        ? `Forked “${item.name}” and the ${extra} item${extra === 1 ? '' : 's'} it needs`
-        : `Forked “${item.name}” into your library`,
+        ? tn('Forked “{name}” and the {n} item it needs', 'Forked “{name}” and the {n} items it needs', extra, { name: item.name })
+        : t('Forked “{name}” into your library', { name: item.name }),
       'success');
     navigateTo('playbooks');
     if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
-    showToast(e.message || `Could not fork this ${COMMUNITY_LABEL[kind]}`, 'error');
+    showToast(e.message || t('Could not fork this {kind}', { kind: _communityKindWord(kind) }), 'error');
   }
 }
 
 /* ── Wiring ───────────────────────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#page-community .sub-tab').forEach(tab => {
+  document.querySelectorAll('#page-community .sub-tab').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#page-community .sub-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('#page-community .sub-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById(tab.dataset.subtab).classList.add('active');
-      communityKind = tab.dataset.kind;
+      /** @type {HTMLElement} */ (document.getElementById(/** @type {DOMStringMap} */ (tab.dataset).subtab)).classList.add('active');
+      communityKind = /** @type {DOMStringMap} */ (tab.dataset).kind;
       loadCommunityKind(communityKind);
     });
   });
@@ -337,7 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
    is three round-trips wasted. */
 if (typeof navigateTo === 'function') {
   const _origNavCommunity = navigateTo;
-  navigateTo = function (page) {
+  window.navigateTo = function (page) {
     _origNavCommunity(page);
     if (page === 'community') loadCommunityKind(communityKind);
   };

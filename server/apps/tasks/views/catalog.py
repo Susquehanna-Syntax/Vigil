@@ -1,6 +1,6 @@
 """apps.tasks.views: catalog views (split from the old single module, unchanged)."""
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
@@ -15,8 +15,10 @@ from ..api_schema import (
 )
 
 
-@extend_schema(
-    responses={
+@extend_schema(parameters=[
+    OpenApiParameter("refresh", str, enum=["1"],
+                     description="Set to 1 to fetch the catalog from GitHub now instead of the cached copy."),
+], responses={
         200: TasksCommunityCardSerializer(many=True),
         404: TasksErrorSerializer,
         502: TasksErrorSerializer,

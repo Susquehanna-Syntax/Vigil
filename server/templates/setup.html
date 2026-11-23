@@ -1,19 +1,19 @@
-{% load static %}<!DOCTYPE html>
+{% load static %}{% load i18n %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vigil — Setup</title>
+<title>{% translate "Vigil — Setup" %}</title>
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
-<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+{% include "_stylesheets.html" %}
 <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 </head>
 <body class="auth-page">
 <div class="auth-wrap">
   <div class="auth-card">
-    <div class="auth-wordmark">Vigil<span style="color:var(--mint-ink);">.</span></div>
+    <div class="auth-wordmark">{% translate "Vigil" %}<span class="auth-wordmark-dot">.</span></div>
 
     {% if step == 1 %}
     {# ── Step 1: Create account ──────────────────────────────────────────── #}
@@ -21,8 +21,8 @@
       <div class="auth-step-pill active"></div>
       <div class="auth-step-pill"></div>
     </div>
-    <div class="auth-headline">Create your account</div>
-    <div class="auth-sub">Vigil is single-tenant — this is the only admin account.</div>
+    <div class="auth-headline">{% translate "Create your account" %}</div>
+    <div class="auth-sub">{% translate "Vigil is single-tenant — this is the only admin account." %}</div>
 
     {% if error %}
     <div class="auth-error">{{ error }}</div>
@@ -31,18 +31,18 @@
     <form method="post" action="{% url 'setup' %}">
       {% csrf_token %}
       <div class="form-group">
-        <label class="form-label">Username</label>
+        <label class="form-label">{% translate "Username" %}</label>
         <input type="text" name="username" class="form-control" autocomplete="username" autofocus required>
       </div>
       <div class="form-group">
-        <label class="form-label">Password</label>
+        <label class="form-label">{% translate "Password" %}</label>
         <input type="password" name="password" class="form-control" autocomplete="new-password" required>
       </div>
       <div class="form-group">
-        <label class="form-label">Confirm password</label>
+        <label class="form-label">{% translate "Confirm password" %}</label>
         <input type="password" name="confirm" class="form-control" autocomplete="new-password" required>
       </div>
-      <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;">Create account &rarr;</button>
+      <button type="submit" class="btn btn-mint auth-submit">{% translate "Create account &rarr;" %}</button>
     </form>
 
     {% elif step == 2 %}
@@ -51,8 +51,8 @@
       <div class="auth-step-pill active"></div>
       <div class="auth-step-pill active"></div>
     </div>
-    <div class="auth-headline">Set up two-factor auth</div>
-    <div class="auth-sub">Scan the QR code with your authenticator app (Aegis, Google Authenticator, 1Password, etc.). TOTP is required to execute tasks.</div>
+    <div class="auth-headline">{% translate "Set up two-factor auth" %}</div>
+    <div class="auth-sub">{% translate "Scan the QR code with your authenticator app (Aegis, Google Authenticator, 1Password, etc.). TOTP is required to execute tasks." %}</div>
 
     {% if error %}
     <div class="auth-error">{{ error }}</div>
@@ -63,23 +63,23 @@
       from the otpauth URI by qrcode, never from anything a user typed.
     {% endcomment %}
     <div class="auth-qr-wrap">{{ totp_qr_svg|safe }}</div>
-    <div class="auth-secret-label">Or enter the key manually</div>
+    <div class="auth-secret-label">{% translate "Or enter the key manually" %}</div>
     <div class="auth-secret-value">{{ totp_secret }}</div>
 
     <form method="post" action="{% url 'setup' %}">
       {% csrf_token %}
-      <div class="form-group" style="margin-top:20px;">
-        <label class="form-label">Verification code</label>
-        <input type="text" name="totp_code" class="form-control mono" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" autofocus required>
+      <div class="form-group auth-group-gap">
+        <label class="form-label">{% translate "Verification code" %}</label>
+        <input type="text" name="totp_code" class="form-control mono" inputmode="numeric" maxlength="6" placeholder="{% translate "123456" %}" autocomplete="one-time-code" autofocus required>
       </div>
-      <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;">Verify &amp; finish &rarr;</button>
+      <button type="submit" class="btn btn-mint auth-submit">{% translate "Verify &amp; finish &rarr;" %}</button>
     </form>
 
 
     {% endif %}
 
   </div>
-  <div class="auth-footer">Vigil &mdash; A Susquehanna Syntax product</div>
+  <div class="auth-footer">{% translate "Vigil &mdash; A Susquehanna Syntax product" %}</div>
 </div>
 </body>
 </html>

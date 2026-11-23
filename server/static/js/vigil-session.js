@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-session.js — sign-in session timeout (QA-14): a heartbeat on real use,
 // a warning two minutes before the server signs this browser out, and the
 // redirect to the login page once it has. The server is the authority; this
@@ -29,7 +30,7 @@ async function _sessionFetch(method) {
       headers: { 'X-CSRFToken': getCsrf() },
     });
   } catch (_e) {
-    return;  // a flaky network must never be the reason someone signs out
+    return;  // state-ok: not a list — a flaky network must never be the reason someone signs out
   }
   const body = await resp.json().catch(() => ({}));
   if (resp.status === 401) {
@@ -61,9 +62,8 @@ function _sessionMMSS(seconds) {
 
 function _sessionMessage(left) {
   return sessionState.limit === 'max'
-    ? 'This sign-in reaches its time limit in ' + _sessionMMSS(left)
-      + ". Save your work — you'll need to sign in again."
-    : "You'll be signed out in " + _sessionMMSS(left) + ' for inactivity.';
+    ? t("This sign-in reaches its time limit in {left}. Save your work — you'll need to sign in again.", { left: _sessionMMSS(left) })
+    : t("You'll be signed out in {left} for inactivity.", { left: _sessionMMSS(left) });
 }
 
 function _sessionWarn() {
@@ -73,11 +73,11 @@ function _sessionWarn() {
     <div class="confirm-msg session-warn-msg" id="session-warn-msg"></div>
     <div class="confirm-actions" id="session-warn-actions"></div>`);
   m.modal.querySelector('#session-warn-title').textContent =
-    sessionState.limit === 'max' ? 'Your sign-in is ending' : 'Still there?';
+    sessionState.limit === 'max' ? t('Your sign-in is ending') : t('Still there?');
   const actions = m.modal.querySelector('#session-warn-actions');
   const signOut = document.createElement('button');
   signOut.className = 'btn btn-outline btn-sm';
-  signOut.textContent = 'Sign out now';
+  signOut.textContent = t('Sign out now');
   signOut.addEventListener('click', () => { location.href = '/logout/'; });
   actions.appendChild(signOut);
   // "Stay signed in" is an idle-only offer: the hard cap cannot be extended,
@@ -85,7 +85,7 @@ function _sessionWarn() {
   if (sessionState.limit === 'idle') {
     const stay = document.createElement('button');
     stay.className = 'btn btn-sm btn-mint';
-    stay.textContent = 'Stay signed in';
+    stay.textContent = t('Stay signed in');
     stay.addEventListener('click', () => {
       sessionState.lastBeat = 0;
       _sessionFetch('POST');

@@ -14,6 +14,7 @@ _GUARDS = {
     "rpm": 'agent.pkg_manager in ["dnf", "yum", "zypper"]',
     "apk": 'agent.pkg_manager == "apk"',
     "pacman": 'agent.pkg_manager == "pacman"',
+    "pkg": 'agent.pkg_manager == "pkg"',
     "flatpak": 'agent.os == "linux"',
     "snap": 'agent.os == "linux"',
     "winget": 'agent.os == "windows"',

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -69,7 +69,12 @@ def _item_row(entry) -> dict:
     return {"name": str(entry.get("name", "")), "url": _safe_url(entry.get("url"))}
 
 
-@extend_schema(responses={200: JackilRelatedAnswerSerializer,
+@extend_schema(parameters=[
+    OpenApiParameter("type", str, required=True, enum=list(TYPES),
+                     description="Which kind of Vigil object to look up. Required."),
+    OpenApiParameter("id", str, required=True,
+                     description="The object's id. Required."),
+], responses={200: JackilRelatedAnswerSerializer,
                           400: JackilErrorSerializer,
                           404: JackilErrorSerializer})
 @api_view(["GET"])

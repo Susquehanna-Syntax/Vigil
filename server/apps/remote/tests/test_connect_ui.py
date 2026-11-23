@@ -13,10 +13,11 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[4] / "server"
 TEMPLATES = ROOT / "templates"
 JS = ROOT / "static" / "js"
-CSS = ROOT / "static" / "css" / "vigil.css"
 
 CHANGED = [TEMPLATES / "_host_card.html", TEMPLATES / "pages" / "_monitor.html",
            JS / "vigil-host-cards.js", JS / "vigil-terminal.js",
@@ -102,7 +103,7 @@ class MonitorPageTests(SimpleTestCase):
 
     def test_the_terminal_assets_are_named_for_on_demand_loading(self):
         for attr in ('data-js="{% static', 'data-xterm="{% static',
-                     'data-fit="{% static', 'data-css="{% static'):
+                     'data-fit="{% static', 'data-xterm-css="{% static'):
             self.assertIn(attr, self.html)
         self.assertIn("vigil-term-assets", self.html)
 
@@ -212,19 +213,19 @@ class NoInlineHandlersTests(SimpleTestCase):
 
 class StylesheetTests(SimpleTestCase):
     def test_the_terminal_dialog_is_styled(self):
-        css = read(CSS)
+        css = design_css()
         for selector in (".connect-menu", ".term-modal", ".term-host"):
             self.assertIn(selector, css)
 
     def test_the_dialog_is_resizable_the_way_the_logs_dialog_is(self):
-        css = read(CSS)
+        css = design_css()
         block = css[css.index(".modal.term-modal"):]
         self.assertIn("is-resized", block[:2000])
 
     def test_append_only_kept_the_stylesheet_longer(self):
-        # vigil.css is append-only for this phase; a shorter file means
+        # the stylesheets were append-only for this phase; a shorter file means
         # something was rewritten rather than added.
-        self.assertGreater(len(read(CSS).splitlines()), 4600)
+        self.assertGreater(len(design_css().splitlines()), 4600)
 
 
 class TerminalTeardownTests(SimpleTestCase):

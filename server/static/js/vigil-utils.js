@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-utils.js
 // Owns: shared helpers used across all other vigil-*.js files.
 // Depends on: nothing — must load FIRST.
@@ -21,7 +22,7 @@ async function copyText(text) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch (e) { /* fall through to the legacy path */ }
+  } catch (e) { /* state-ok: falls back to the legacy copy path below */ }
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -38,8 +39,9 @@ async function copyText(text) {
   }
 }
 
+/** @returns {string} */
 function getCsrf() {
-  const el = document.querySelector('[name=csrfmiddlewaretoken]');
+  const el = /** @type {HTMLInputElement|null} */ (document.querySelector('[name=csrfmiddlewaretoken]'));
   return el ? el.value : '';
 }
 
@@ -50,6 +52,93 @@ function showToast(message, type) {
   toast.textContent = message;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);
+}
+
+/**
+ * Draw a failed load in place of the content: what could not be loaded, the
+ * error's own message, and a Try again button that reruns the load.
+ * @param {HTMLElement | null} container
+ * @param {string} what   e.g. 'alerts', 'the task library'
+ * @param {unknown} err
+ * @param {(() => unknown) | null} [retry]
+ */
+function showLoadFailure(container, what, err, retry) {
+  if (!container) return;
+  const block = document.createElement('div');
+  block.className = 'load-failed';
+  block.setAttribute('role', 'alert');
+
+  const title = document.createElement('div');
+  title.className = 'load-failed-title';
+  title.textContent = t('Could not load {what}', { what });
+  block.appendChild(title);
+
+  const raw = err && typeof /** @type {{message?: unknown}} */ (err).message === 'string'
+    ? /** @type {{message: string}} */ (err).message
+    : String(err);
+  const message = raw.trim();
+  if (message) {
+    const desc = document.createElement('div');
+    desc.className = 'load-failed-desc';
+    desc.textContent = message;
+    block.appendChild(desc);
+  }
+
+  if (typeof retry === 'function') {
+    const button = document.createElement('button');
+    button.setAttribute('type', 'button');
+    button.className = 'btn btn-outline btn-sm';
+    button.textContent = t('Try again');
+    button.addEventListener('click', () => { retry(); });
+    block.appendChild(button);
+  }
+
+  container.replaceChildren(block);
+}
+
+// ── Loading, empty and failed: one look for every list ──────────────────
+// A list shows exactly one of three states while it has no rows to draw:
+// loading (the request is out), empty (it came back with nothing) or failed
+// (showLoadFailure above). A failed load is never drawn as empty: "No
+// policies yet" after a 500 tells the reader something false.
+// `compact` is the inline size (inside a card, a panel or a picker); the
+// default is the page-level block with a serif title.
+
+/** Markup for a list that is loading. @param {string} [label] @returns {string} */
+function loadingHtml(label) {
+  return `<div class="state-loading" role="status" aria-live="polite">${escHtml(label || t('Loading…'))}</div>`;
+}
+
+/** Draw the loading state in a container. @param {HTMLElement|null} container @param {string} [label] */
+function showLoading(container, label) {
+  if (container) container.innerHTML = loadingHtml(label);
+}
+
+/**
+ * Markup for an empty list. `desc` may hold trusted markup (catalog text with
+ * escaped values); `title` is escaped here.
+ * @param {{title: string, desc?: string, compact?: boolean}} opts @returns {string}
+ */
+function emptyHtml(opts) {
+  if (opts.compact) {
+    return `<div class="apps-empty-state">${escHtml(opts.title)}${opts.desc ? ` ${opts.desc}` : ''}</div>`;
+  }
+  return `<div class="empty-state"><div class="empty-state-title">${escHtml(opts.title)}</div>`
+    + (opts.desc ? `<div class="empty-state-desc">${opts.desc}</div>` : '') + '</div>';
+}
+
+/** Draw the empty state in a container. @param {HTMLElement|null} container @param {{title: string, desc?: string, compact?: boolean}} opts */
+function showEmpty(container, opts) {
+  if (container) container.innerHTML = emptyHtml(opts);
+}
+
+/**
+ * One table row spanning every column, holding a state's markup:
+ * `tbody.innerHTML = stateRowHtml(6, loadingHtml())`.
+ * @param {number} colspan @param {string} inner @returns {string}
+ */
+function stateRowHtml(colspan, inner) {
+  return `<tr class="state-row"><td colspan="${colspan}">${inner}</td></tr>`;
 }
 
 async function apiPost(url) {
@@ -63,11 +152,12 @@ async function apiPost(url) {
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || 'Request failed');
+    throw new Error(err.error || t('Request failed'));
   }
   return resp.json();
 }
 
+/** @param {string} url @param {RequestInit} [opts] @returns {Promise<any>} */
 async function apiJson(url, opts) {
   const resp = await fetch(url, {
     credentials: 'same-origin',
@@ -82,12 +172,29 @@ async function apiJson(url, opts) {
     }
     // The body rides along for callers that place per-field errors
     // ({errors: {field: message}}) next to their fields.
-    const err = new Error(body.detail || body.error || 'Request failed');
+    const err = /** @type {Error & {status?: number, body?: any}} */ (new Error(body.detail || body.error || t('Request failed')));
     err.status = resp.status;
     err.body = body;
     throw err;
   }
   return body;
+}
+
+// Every host the API lists, following its pages. `next` is absolute and,
+// behind a proxy, may carry the wrong scheme or host: only its path and query
+// are kept. Stops after 100 pages; a failed page keeps what was read.
+async function fetchAllHosts() {
+  const rows = [];
+  let url = '/api/v1/hosts/';
+  try {
+    for (let page = 0; url && page < 100; page += 1) {
+      const r = await apiJson(url);
+      rows.push(...(Array.isArray(r) ? r : (r.results || [])));
+      const next = Array.isArray(r) ? null : r.next;
+      url = next ? (() => { const u = new URL(next, location.href); return u.pathname + u.search; })() : null;
+    }
+  } catch (e) { /* state-ok: a failed page keeps the hosts already read; callers fill pickers */ }
+  return rows;
 }
 
 /* ── Formatters ──────────────────────────────────────────────────────── */
@@ -146,9 +253,13 @@ function escAttr(str) {
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
+  if (!isFinite(bytes)) return '—';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  // Clamped: under 1 B (a chart's 0.5 B tick) the log is negative, and past
+  // the last unit it runs off the list; both used to print "512 undefined".
+  const i = Math.min(sizes.length - 1,
+    Math.max(0, Math.floor(Math.log(Math.abs(bytes)) / Math.log(k))));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
@@ -161,8 +272,20 @@ function _formatBytesPerSec(value) {
 }
 
 /* ── Metric helpers (used by monitor + host-cards detail charts) ─────── */
+/** @typedef {(number|string)} TimeLike */
+/** One sample from a PromQL range query: {labels, time, value}. `time` is the
+ * caller's timestamp — epoch ms as the monitor charts and the API responses
+ * carry it, or an ISO string as jstests/utils.test.mjs passes them. Either way
+ * it reaches a Date constructor below. */
+/** @typedef {{labels?: Object<string, string>, time: TimeLike, value: number}} MetricPoint */
+
+/**
+ * @param {MetricPoint[]} points
+ * @param {string} labelKey
+ * @returns {Record<string, MetricPoint[]>}
+ */
 function groupByLabel(points, labelKey) {
-  const groups = {};
+  const groups = /** @type {Record<string, MetricPoint[]>} */ ({});
   for (const p of points) {
     const key = (p.labels || {})[labelKey] || '_default';
     if (!groups[key]) groups[key] = [];
@@ -171,10 +294,13 @@ function groupByLabel(points, labelKey) {
   return groups;
 }
 
+/** @param {MetricPoint[]} points @returns {{x: number, y: number}[]} */
 function computeRates(points) {
   const rates = [];
   for (let i = 1; i < points.length; i++) {
-    const dt = (new Date(points[i].time) - new Date(points[i-1].time)) / 1000;
+    // getTime() on each side rather than `new Date(a) - new Date(b)`: tsc
+    // rejects the latter because a caller may pass an ISO string. Same value.
+    const dt = ((new Date(points[i].time)).getTime() - (new Date(points[i-1].time)).getTime()) / 1000;
     if (dt <= 0) continue;
     const rate = Math.max(0, (points[i].value - points[i-1].value) / dt);
     // Numeric x: the charts run with `parsing: false`, which hands this
@@ -258,10 +384,20 @@ function osLogo(name) {
 const MODAL_BASE_Z = 200;
 let _modalDepth = 0;
 
+/** @typedef {string} ModalId — a mountModal id, and `<id>-overlay` /
+ * `<id>-modal` the element ids it uses. */
+/** What mountModal returns: the overlay + modal pair, both toggled `.open`. */
+/** @typedef {{overlay: HTMLElement, modal: HTMLElement, open: () => void, close: () => void, setBody: (html: string) => void}} MountedModal */
+/** Options the confirm / prompt / totp prompts read. */
+/** @typedef {{title?: string, html?: boolean, confirmText?: string, confirmLabel?: string, danger?: boolean, value?: string, placeholder?: string}} ModalOpts */
+
+/** @param {ModalId} id @param {{wide?: boolean, xwide?: boolean, variant?: string}} [opts] @returns {MountedModal} */
 function mountModal(id, opts) {
   opts = opts || {};
-  let overlay = document.getElementById(id + '-overlay');
-  let modal = document.getElementById(id + '-modal');
+  /** @type {HTMLElement} */
+  let overlay = /** @type {HTMLElement|null} */ (document.getElementById(id + '-overlay'));
+  /** @type {HTMLElement} */
+  let modal = /** @type {HTMLElement|null} */ (document.getElementById(id + '-modal'));
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = id + '-overlay';
@@ -304,29 +440,29 @@ function confirmModal(message, opts) {
     m.setBody(`
       <div class="modal-title">
         <span id="confirm-title"></span>
-        <button class="modal-close" id="confirm-x" aria-label="Close">
+        <button class="modal-close" id="confirm-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="confirm-msg" id="confirm-msg"></div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-outline btn-sm" id="confirm-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-sm" id="confirm-ok"></button>
       </div>`);
-    m.modal.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
+    m.modal.querySelector('#confirm-title').textContent = opts.title || t('Are you sure?');
     // textContent by default: almost every caller passes a plain sentence and
     // must not be able to inject markup through it. opts.html is for the few
     // confirmations that need emphasis, and those escape their own values.
-    const msgEl = m.modal.querySelector('#confirm-msg');
+    const msgEl = /** @type {HTMLElement} */ (m.modal.querySelector('#confirm-msg'));
     if (opts.html) msgEl.innerHTML = message;
     else msgEl.textContent = message;
-    const okBtn = m.modal.querySelector('#confirm-ok');
-    okBtn.textContent = opts.confirmText || opts.confirmLabel || 'Confirm';
+    const okBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-ok'));
+    okBtn.textContent = opts.confirmText || opts.confirmLabel || t('Confirm');
     okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
     okBtn.onclick = () => done(true);
-    m.modal.querySelector('#confirm-cancel').onclick = () => done(false);
-    m.modal.querySelector('#confirm-x').onclick = () => done(false);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-cancel')).onclick = () => done(false);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-x')).onclick = () => done(false);
     m.overlay.onclick = () => done(false);
     requestAnimationFrame(m.open);
   });
@@ -340,7 +476,7 @@ function promptModal(message, opts) {
     m.setBody(`
       <div class="modal-title">
         <span id="prompt-title"></span>
-        <button class="modal-close" id="prompt-x" aria-label="Close">
+        <button class="modal-close" id="prompt-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -348,19 +484,19 @@ function promptModal(message, opts) {
         <input type="text" class="form-control" id="prompt-input" maxlength="120">
       </div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="prompt-cancel">Cancel</button>
+        <button class="btn btn-outline btn-sm" id="prompt-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-mint btn-sm" id="prompt-ok"></button>
       </div>`);
     m.modal.querySelector('#prompt-title').textContent = message;
-    const input = m.modal.querySelector('#prompt-input');
+    const input = /** @type {HTMLInputElement} */ (m.modal.querySelector('#prompt-input'));
     input.value = opts.value || '';
     if (opts.placeholder) input.placeholder = opts.placeholder;
-    m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || 'Save';
+    m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || t('Save');
 
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
-    m.modal.querySelector('#prompt-ok').onclick = () => done(input.value.trim() || null);
-    m.modal.querySelector('#prompt-cancel').onclick = () => done(null);
-    m.modal.querySelector('#prompt-x').onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-ok')).onclick = () => done(input.value.trim() || null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-cancel')).onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-x')).onclick = () => done(null);
     m.overlay.onclick = () => done(null);
     input.onkeydown = (ev) => {
       if (ev.key === 'Enter') done(input.value.trim() || null);
@@ -405,7 +541,7 @@ function _securityKeyOffer() {
       _keyFactor = {
         offer: !!(data.keys > 0 && data.keys_possible && window.PublicKeyCredential),
         reason: data.keys > 0 && !data.keys_possible
-          ? (data.keys_reason || 'Security keys need HTTPS.') : '',
+          ? (data.keys_reason || t('Security keys need HTTPS.')) : '',
       };
       return _keyFactor;
     })
@@ -424,8 +560,8 @@ async function _runSecurityKeyCeremony() {
       type: c.type || 'public-key', id: b64urlToBytes(c.id).buffer,
     })),
   };
-  const cred = await navigator.credentials.get({ publicKey });
-  const r = cred.response;
+  const cred = /** @type {PublicKeyCredential} */ (await navigator.credentials.get({ publicKey }));
+  const r = /** @type {AuthenticatorAssertionResponse} */ (cred.response);
   const credential = {
     id: cred.id || bytesToB64url(cred.rawId),
     rawId: bytesToB64url(cred.rawId),
@@ -440,7 +576,7 @@ async function _runSecurityKeyCeremony() {
   const body = await apiJson('/api/v1/accounts/security-keys/assert/', {
     method: 'POST', body: JSON.stringify({ credential }),
   });
-  if (!body || !body.token) throw new Error('The server did not accept the key.');
+  if (!body || !body.token) throw new Error(t('The server did not accept the key.'));
   return body.token;
 }
 
@@ -451,31 +587,31 @@ function totpPrompt(reason, opts) {
     const m = mountModal('totp', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
-        <span id="totp-title">Confirm with your authenticator</span>
-        <button class="modal-close" id="totp-x" aria-label="Close">
+        <span id="totp-title">${escHtml(t('Confirm with your authenticator'))}</span>
+        <button class="modal-close" id="totp-x" aria-label="${escAttr(t('Close'))}">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="confirm-msg" id="totp-reason"></div>
       <div id="totp-key-slot" class="totp-key-slot" style="display:none;">
-        <button class="btn btn-mint btn-sm totp-key-btn" id="totp-key-btn">Use security key</button>
-        <div class="totp-sub" id="totp-key-hint">or enter the 6-digit code</div>
+        <button class="btn btn-mint btn-sm totp-key-btn" id="totp-key-btn">${escHtml(t('Use security key'))}</button>
+        <div class="totp-sub" id="totp-key-hint">${escHtml(t('or enter the 6-digit code'))}</div>
         <div class="totp-key-error" id="totp-key-error" style="display:none;"></div>
       </div>
       <div class="form-group">
         <input type="text" class="form-control totp-input" id="totp-input" inputmode="numeric"
                autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"
-               aria-label="6-digit code" placeholder="••••••">
+               aria-label="${escAttr(t('6-digit code'))}" placeholder="••••••">
       </div>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="totp-cancel">Cancel</button>
+        <button class="btn btn-outline btn-sm" id="totp-cancel">${escHtml(t('Cancel'))}</button>
         <button class="btn btn-mint btn-sm" id="totp-ok"></button>
       </div>`);
-    m.modal.querySelector('#totp-title').textContent = opts.title || 'Confirm with your authenticator';
+    m.modal.querySelector('#totp-title').textContent = opts.title || t('Confirm with your authenticator');
     m.modal.querySelector('#totp-reason').textContent = reason || '';
-    const input = m.modal.querySelector('#totp-input');
-    const okBtn = m.modal.querySelector('#totp-ok');
-    okBtn.textContent = opts.confirmText || 'Confirm';
+    const input = /** @type {HTMLInputElement} */ (m.modal.querySelector('#totp-input'));
+    const okBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-ok'));
+    okBtn.textContent = opts.confirmText || t('Confirm');
     okBtn.disabled = true;
 
     // Digits only, and never more than six: the pattern in the markup is a
@@ -492,8 +628,8 @@ function totpPrompt(reason, opts) {
     };
     const submit = () => { if (/^\d{6}$/.test(input.value)) done(input.value); };
     okBtn.onclick = submit;
-    m.modal.querySelector('#totp-cancel').onclick = () => done(null);
-    m.modal.querySelector('#totp-x').onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-cancel')).onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-x')).onclick = () => done(null);
     m.overlay.onclick = () => done(null);
     input.onkeydown = (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
@@ -501,8 +637,8 @@ function totpPrompt(reason, opts) {
       if (ev.key === 'Escape') { ev.stopPropagation(); done(null); }
     };
 
-    const keyBtn = m.modal.querySelector('#totp-key-btn');
-    const keyErr = m.modal.querySelector('#totp-key-error');
+    const keyBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-key-btn'));
+    const keyErr = /** @type {HTMLElement} */ (m.modal.querySelector('#totp-key-error'));
     keyBtn.onclick = () => {
       keyErr.style.display = 'none';
       keyBtn.disabled = true;
@@ -514,20 +650,20 @@ function totpPrompt(reason, opts) {
           if (closed) return;
           keyBtn.disabled = false;
           keyErr.textContent = (err && err.name === 'NotAllowedError')
-            ? 'Key request cancelled.'
-            : ((err && err.message) || 'The key was not accepted.');
+            ? t('Key request cancelled.')
+            : ((err && err.message) || t('The key was not accepted.'));
           keyErr.style.display = '';
         });
     };
 
     _securityKeyOffer().then((offer) => {
       if (closed || !offer.offer) return;
-      m.modal.querySelector('#totp-key-slot').style.display = '';
+      /** @type {HTMLElement} */ (m.modal.querySelector('#totp-key-slot')).style.display = '';
       requestAnimationFrame(() => keyBtn.focus());
     });
     requestAnimationFrame(() => {
       m.open();
-      if (m.modal.querySelector('#totp-key-slot').style.display !== 'none') return;
+      if (/** @type {HTMLElement} */ (m.modal.querySelector('#totp-key-slot')).style.display !== 'none') return;
       input.focus();
     });
   });
@@ -569,7 +705,7 @@ function yamlToHtml(src) {
  * The identical resolution runs inline in base.html before first paint; a
  * mismatch between the two shows up as a flash of the wrong theme. */
 const THEMES = ['dark', 'light', 'river', 'ink'];
-const THEME_LABELS = { dark: 'Dark', light: 'Paper', river: 'River', ink: 'Ink' };
+const THEME_LABELS = { dark: t('Dark'), light: t('Paper'), river: t('River'), ink: t('Ink') };
 const _MQ_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
 function _systemTheme() {
@@ -579,7 +715,7 @@ function _storedTheme() {
   try {
     const v = localStorage.getItem('vigil-theme');
     if (THEMES.includes(v) || v === 'system') return v;
-  } catch (e) {}
+  } catch (e) { /* state-ok: a private-mode Safari refuses; the default theme is fine */ }
   return 'dark';
 }
 function _applyThemeIcon(theme) {
@@ -588,7 +724,8 @@ function _applyThemeIcon(theme) {
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
   const toggle = document.getElementById('theme-toggle');
-  if (toggle) toggle.dataset.tip = 'Theme: ' + (THEME_LABELS[theme] || 'Dark');
+  // _sidebarLabels() shows the tip up to its colon, so the label reads "Theme".
+  if (toggle) toggle.dataset.tip = t('Theme: {name}', { name: THEME_LABELS[theme] || THEME_LABELS.dark });
 }
 function _applyThemeButtons(pref) {
   ['system', ...THEMES].forEach((m) => {
@@ -602,7 +739,7 @@ function setTheme(mode) {
   const pref = (THEMES.includes(mode) || mode === 'system') ? mode : 'dark';
   const resolved = pref === 'system' ? _systemTheme() : pref;
   document.documentElement.setAttribute('data-theme', resolved);
-  try { localStorage.setItem('vigil-theme', pref); } catch (e) {}
+  try { localStorage.setItem('vigil-theme', pref); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applyThemeIcon(resolved);
   _applyThemeButtons(pref);
   // Charts draw their grid and tooltips from the tokens once; they re-read them.
@@ -631,7 +768,7 @@ function _applyMotionButton(on) {
 function toggleReduceMotion() {
   const on = !document.documentElement.classList.contains('rm-sim');
   document.documentElement.classList.toggle('rm-sim', on);
-  try { localStorage.setItem('vigil-reduce-motion', on ? '1' : '0'); } catch (e) {}
+  try { localStorage.setItem('vigil-reduce-motion', on ? '1' : '0'); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applyMotionButton(on);
 }
 if (_MQ_DARK && _MQ_DARK.addEventListener) {
@@ -645,7 +782,7 @@ if (_MQ_DARK && _MQ_DARK.addEventListener) {
 // is labelled without a second copy of its name. "Theme: Dark" and
 // "Search (Ctrl+K)" read as "Theme" and "Search".
 function _sidebarLabels() {
-  document.querySelectorAll('.sidebar .sidebar-icon[data-tip]').forEach((icon) => {
+  document.querySelectorAll('.sidebar .sidebar-icon[data-tip]').forEach((/** @type {HTMLElement} */ icon) => {
     if (icon.querySelector('.sidebar-label')) return;
     const label = document.createElement('span');
     label.className = 'sidebar-label';
@@ -656,18 +793,18 @@ function _sidebarLabels() {
 function _applySidebarToggle(expanded) {
   const btn = document.getElementById('sidebar-toggle');
   if (!btn) return;
-  const words = expanded ? 'Hide page names' : 'Show page names';
+  const words = expanded ? t('Hide page names') : t('Show page names');
   btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   btn.setAttribute('aria-label', words);
   btn.dataset.tip = words;
   const label = btn.querySelector('.sidebar-label');
-  if (label) label.textContent = expanded ? 'Collapse' : 'Expand';
+  if (label) label.textContent = expanded ? t('Collapse') : t('Expand');
 }
 function toggleSidebar() {
   const expanded = document.documentElement.getAttribute('data-sidebar') !== 'expanded';
   if (expanded) document.documentElement.setAttribute('data-sidebar', 'expanded');
   else document.documentElement.removeAttribute('data-sidebar');
-  try { localStorage.setItem('vigil-sidebar', expanded ? 'expanded' : 'collapsed'); } catch (e) {}
+  try { localStorage.setItem('vigil-sidebar', expanded ? 'expanded' : 'collapsed'); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applySidebarToggle(expanded);
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -675,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _applySidebarToggle(document.documentElement.getAttribute('data-sidebar') === 'expanded');
 });
 document.addEventListener('keydown', (ev) => {
-  if (ev.target && ev.target.id === 'sidebar-toggle' && (ev.key === 'Enter' || ev.key === ' ')) {
+  if (ev.target && /** @type {HTMLElement} */ (ev.target).id === 'sidebar-toggle' && (ev.key === 'Enter' || ev.key === ' ')) {
     ev.preventDefault();
     toggleSidebar();
   }
@@ -691,7 +828,7 @@ function _applyDensityButtons(mode) {
 function setDensity(mode) {
   const next = mode === 'compact' ? 'compact' : 'cozy';
   document.documentElement.setAttribute('data-density', next);
-  try { localStorage.setItem('vigil-density', next); } catch (e) {}
+  try { localStorage.setItem('vigil-density', next); } catch (e) { /* state-ok: a preference write, no list behind it */ }
   _applyDensityButtons(next);
 }
 
@@ -723,7 +860,7 @@ function _closeFnFor(modalId) {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join('');
   for (const name of ['close' + base, 'close' + base + 'Modal']) {
-    if (typeof window[name] === 'function') return window[name];
+    if (typeof window[name] === 'function') return /** @type {() => void} */ (window[name]);
   }
   return null;
 }
@@ -822,16 +959,16 @@ document.addEventListener('visibilitychange', () => {
   }
 
   const enter = (ev) => {
-    const marker = ev.target.closest && ev.target.closest('.field-hint');
+    const marker = /** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.field-hint');
     if (marker) show(marker);
   };
   document.addEventListener('mouseover', enter);
   document.addEventListener('focusin', enter);
   document.addEventListener('mouseout', (ev) => {
-    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+    if (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.field-hint')) hide();
   });
   document.addEventListener('focusout', (ev) => {
-    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+    if (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.field-hint')) hide();
   });
   // A bubble pinned to a rect goes stale the moment anything moves.
   window.addEventListener('scroll', hide, true);
@@ -858,7 +995,6 @@ function timeAgo(value) {
   return then.toLocaleDateString();
 }
 
-
 /* ── Delegated click handlers ──────────────────────────────────────────────
    Inline onclick attributes are why the Content-Security-Policy had to keep
    'unsafe-inline' for scripts, which is the directive that would otherwise
@@ -871,7 +1007,7 @@ function timeAgo(value) {
    yet — which is what every one of these call sites actually needed. */
 function delegateClick(selector, handler) {
   document.addEventListener('click', (ev) => {
-    const el = ev.target.closest && ev.target.closest(selector);
+    const el = /** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest(selector);
     if (!el) return;
     handler(el, ev);
   });
@@ -929,19 +1065,19 @@ function _runAct(el, ev, name) {
 }
 
 document.addEventListener('click', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-act]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-act]'));
   if (el) _runAct(el, ev, el.dataset.act);
 });
 document.addEventListener('change', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-change]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-change]'));
   if (el) _runAct(el, ev, el.dataset.change);
 });
 document.addEventListener('input', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-input]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-input]'));
   if (el) _runAct(el, ev, el.dataset.input);
 });
 document.addEventListener('submit', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-submit]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-submit]'));
   if (el) _runAct(el, ev, el.dataset.submit);
 });
 
@@ -1065,4 +1201,99 @@ function termPlain(text, opts) {
     if (ts && o.timestamps === 'time') line = `${ts[2]} ${line}`;
     return line.replace(_TERM_ESC, '').replace(_TERM_CTRL, '');
   }).join('\n');
+}
+
+// The min-max band of a bucketed metric series (phase 02a): two lines, the
+// bucket maxima and minima, oldest first, for a chart to fill between. Null
+// when no point carries both, which is every series of 24 hours or less.
+function bandSeries(points) {
+  const both = (points || []).filter(p => typeof p.min === 'number' && typeof p.max === 'number');
+  if (!both.length) return null;
+  const rows = both.map(p => ({ x: new Date(p.time).getTime(), min: p.min, max: p.max }))
+    .sort((a, b) => a.x - b.x);
+  return {
+    high: rows.map(r => ({ x: r.x, y: r.max })),
+    low: rows.map(r => ({ x: r.x, y: r.min })),
+  };
+}
+
+// ── Per-render styles without inline style attributes ────────────────────
+// The CSP refuses an inline style attribute in markup, so a value worked out
+// per render (a bar's width, a state colour, a node's position) is written as
+// `data-css="width:42%;color:var(--mint)"` and applied here through
+// `element.style`, which the CSP does not govern. Only the properties below
+// are accepted and no value may load anything, so markup injected past the
+// escaping still cannot restyle the page into a fake one or fetch a URL.
+// A MutationObserver applies them as markup lands; a caller that measures
+// layout straight after setting innerHTML calls applyDataCss(container) first.
+const _DATA_CSS_PROPS = new Set([
+  'width', 'height', 'min-width', 'max-width', 'min-height', 'max-height',
+  'left', 'top', 'right', 'bottom', 'transform',
+  'color', 'background', 'background-color', 'border-color', 'box-shadow',
+  'fill', 'stroke', 'opacity',
+]);
+const _DATA_CSS_UNSAFE = /url\s*\(|image-set|image\s*\(|expression|\\|[<>{}@"']/i;
+
+//: [[property, value], ...] for the declarations in a data-css value that are
+//: allowed; anything else is dropped silently, never half-applied.
+function parseDataCss(text) {
+  const out = [];
+  for (const chunk of String(text ?? '').split(';')) {
+    const at = chunk.indexOf(':');
+    if (at < 1) continue;
+    const prop = chunk.slice(0, at).trim().toLowerCase();
+    const value = chunk.slice(at + 1).trim();
+    if (!value || _DATA_CSS_UNSAFE.test(value)) continue;
+    if (!_DATA_CSS_PROPS.has(prop) && !/^--[a-z0-9-]+$/.test(prop)) continue;
+    out.push([prop, value]);
+  }
+  return out;
+}
+
+//: Applies every data-css at or under `root` and removes the attribute, so a
+//: second pass (the observer after a direct call) does nothing.
+function applyDataCss(root) {
+  if (!root || root.nodeType !== 1) return;
+  const els = root.matches && root.matches('[data-css]') ? [root] : [];
+  els.push(...(root.querySelectorAll ? root.querySelectorAll('[data-css]') : []));
+  for (const el of els) {
+    for (const [prop, value] of parseDataCss(el.getAttribute('data-css'))) {
+      el.style.setProperty(prop, value);
+    }
+    el.removeAttribute('data-css');
+  }
+}
+
+if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined'
+    && document.documentElement) {
+  new MutationObserver((records) => {
+    for (const r of records) r.addedNodes.forEach((n) => applyDataCss(/** @type {Element} */ (n)));
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  document.addEventListener('DOMContentLoaded', () => applyDataCss(document.body));
+}
+
+// ── Strings a person reads ────────────────────────────────────────────────
+// Every user-facing string a script builds goes through t() (or tn() when it
+// depends on a count), so a later language is a .po file, not a code change.
+// Django's JavaScript catalog (/jsi18n/) defines gettext and ngettext; without
+// it (English, or the node tests) the string passes through unchanged. Named
+// placeholders, not positional ones, so a translation can reorder them:
+// t('Restart {host}?', { host: name }).
+function _tFill(text, params) {
+  if (!params) return text;
+  return text.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(params, k)
+    ? String(params[k]) : m));
+}
+
+//: The translated form of `msg`, with {name} placeholders filled from params.
+function t(msg, params) {
+  const g = typeof gettext === 'function' ? gettext : (s) => s;
+  return _tFill(g(String(msg)), params);
+}
+
+//: The singular or plural form for `n` ({n} is filled in for you).
+function tn(singular, plural, n, params) {
+  const ng = typeof ngettext === 'function' ? ngettext
+    : (a, b, c) => (c === 1 ? a : b);
+  return _tFill(ng(String(singular), String(plural), n), Object.assign({ n }, params || {}));
 }

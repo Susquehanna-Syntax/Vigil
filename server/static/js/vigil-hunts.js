@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-hunts.js
 // Owns: the hunt results page. One page per run, opened from a run-detail
 // modal ("Open hunt results"). The matches table's columns come from the
@@ -5,39 +6,45 @@
 
 const HUNT_PAGE_SIZE = 100;
 
+/** @typedef {{hosts: any[], columns: string[]}} HuntPage */
+
+/** @type {{runId: (string|null), offset: number, total: number, columns: string[], stepOptions: string[], hostFilter?: string, backTo?: string}} */
 const huntResults = { runId: null, offset: 0, total: 0, columns: [], stepOptions: [] };
 
-const HUNT_STATE_TONE = {
+const HUNT_STATE_TONE = /** @type {Record<string, string>} */ ({
   matched: 'mint',
   not_matched: 'lav',
   pending: 'peach',
   error: 'rose',
   did_not_report: 'lemon',
   not_applicable: 'lav',
-};
+});
 
-const HUNT_STATE_LABEL = {
-  matched: 'Matched',
-  not_matched: 'Not matched',
-  pending: 'Pending',
-  error: 'Error',
-  did_not_report: 'Did not report',
-  not_applicable: 'Not applicable',
-};
+const HUNT_STATE_LABEL = /** @type {Record<string, string>} */ ({
+  matched: t('Matched'),
+  not_matched: t('Not matched'),
+  pending: t('Pending'),
+  error: t('Error'),
+  did_not_report: t('Did not report'),
+  not_applicable: t('Not applicable'),
+});
 
+/** @param {number|null|undefined} offset @returns {string} */
 function _huntDataUrl(offset) {
   const params = new URLSearchParams({ limit: String(HUNT_PAGE_SIZE), offset: String(offset || 0) });
-  const step = (document.getElementById('hunt-step')?.value || '').trim();
+  const step = (/** @type {HTMLSelectElement} */ (document.getElementById('hunt-step'))?.value || '').trim();
   const host = huntResults.hostFilter || '';
   if (step) params.set('step', step);
   if (host) params.set('host', host);
   return `/api/v1/tasks/runs/${huntResults.runId}/hunt/?${params.toString()}`;
 }
 
+/** @param {any} offset @returns {Promise<any>} */
 function _huntFetch(offset) {
   return apiJson(_huntDataUrl(offset));
 }
 
+/** @param {string} runId @returns {Promise<void>} */
 async function openHuntResults(runId) {
   if (!runId) return;
   // Back returns to whichever page the run was opened from (Tasks or Playbooks).
@@ -54,9 +61,9 @@ async function openHuntResults(runId) {
   huntResults.columns = [];
   huntResults.stepOptions = [];
 
-  const filter = document.getElementById('hunt-filter');
-  const stepSel = document.getElementById('hunt-step');
-  const stateSel = document.getElementById('hunt-state');
+  const filter = /** @type {HTMLInputElement|null} */ (document.getElementById('hunt-filter'));
+  const stepSel = /** @type {HTMLSelectElement|null} */ (document.getElementById('hunt-step'));
+  const stateSel = /** @type {HTMLSelectElement|null} */ (document.getElementById('hunt-state'));
   if (filter) filter.value = '';
   if (stepSel) stepSel.value = '';
   if (stateSel) stateSel.value = '';
@@ -64,15 +71,15 @@ async function openHuntResults(runId) {
   let body;
   try { body = await _huntFetch(0); }
   catch (e) {
-    showToast('Could not load hunt results for that run', 'error');
+    showToast(t('Could not load hunt results for that run'), 'error');
     return;
   }
   const run = await apiJson(`/api/v1/tasks/runs/${runId}/`).catch(() => null);
   const titleEl = document.getElementById('hunt-page-title');
   const subEl = document.getElementById('hunt-page-sub');
-  if (titleEl) titleEl.textContent = 'Hunt Results';
+  if (titleEl) titleEl.textContent = t('Hunt Results');
   if (subEl) {
-    const name = run ? (run.definition_name || run.name_snapshot || 'Run') : '';
+    const name = run ? (run.definition_name || run.name_snapshot || t('Run')) : '';
     const state = run ? run.state : '';
     subEl.textContent = [name, state].filter(Boolean).join(' · ');
   }
@@ -84,18 +91,19 @@ async function openHuntResults(runId) {
 // a second request.
 function _runHasHuntSteps(run) {
   const tasks = (run && run.tasks) || [];
-  return tasks.some((t) => {
+  return tasks.some((task) => {
     // relevant: probes are hunts too; their matches are the run's evidence.
-    if ((t.params || {}).relevant) return true;
-    const steps = ((t.params || {}).steps) || [];
+    if ((task.params || {}).relevant) return true;
+    const steps = ((task.params || {}).steps) || [];
     return steps.some((s) => s && typeof s === 'object'
       && String(s.action || '').startsWith('hunt_'));
   });
 }
 
+/** @param {any} body @param {boolean} reset @returns {void} */
 function _huntSetData(body, reset) {
   huntResults.total = body.total || 0;
-  huntResults.columns = body.columns || [];
+  huntResults.columns = /** @type {string[]} */ (body.columns || []);
 
   if (reset) {
     // A refetch from offset 0 replaces the rows rather than appending a copy.
@@ -112,9 +120,11 @@ function _huntSetData(body, reset) {
   _huntMarkActiveChip();
 }
 
+/** @param {any[]} hosts @returns {void} */
 function _huntRenderChips(hosts) {
   const el = document.getElementById('hunt-summary');
   if (!el) return;
+  /** @type {Record<string, number>} */
   const counts = {};
   for (const h of hosts) counts[h.state] = (counts[h.state] || 0) + 1;
   const order = ['matched', 'not_matched', 'pending', 'error', 'did_not_report', 'not_applicable'];
@@ -129,7 +139,7 @@ function _huntRenderChips(hosts) {
       `<span class="run-state t-${HUNT_STATE_TONE[state] || 'lav'}">${escHtml(HUNT_STATE_LABEL[state] || state)}</span>` +
       `<span class="hunt-chip-count">${escHtml(String(counts[state]))}</span>`;
     chip.addEventListener('click', () => {
-      const sel = document.getElementById('hunt-state');
+      const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('hunt-state'));
       if (!sel) return;
       sel.value = (sel.value === state) ? '' : state;
       _huntApplyClientFilter();
@@ -143,12 +153,13 @@ function _huntRenderChips(hosts) {
 }
 
 function _huntMarkActiveChip() {
-  const state = document.getElementById('hunt-state')?.value || '';
-  document.querySelectorAll('#hunt-summary .hunt-chip').forEach((c) => {
+  const state = (/** @type {HTMLSelectElement|null} */ (document.getElementById('hunt-state'))?.value || '');
+  document.querySelectorAll('#hunt-summary .hunt-chip').forEach((/** @type {HTMLElement} */ c) => {
     c.classList.toggle('active', c.dataset.state === state);
   });
 }
 
+/** @param {any[]} hosts @returns {void} */
 function _huntRenderHosts(hosts) {
   const tbody = document.getElementById('hunt-hosts-body');
   if (!tbody) return;
@@ -159,6 +170,7 @@ function _huntRenderHosts(hosts) {
     tr.title = 'Show only this host\'s matches (click again for all hosts)';
     if (huntResults.hostFilter === h.host_id) tr.classList.add('selected');
     tr.dataset.state = h.state || '';
+    /** @type {string[]} */
     const badges = [];
     if (h.truncated) badges.push('truncated');
     if (h.timed_out) badges.push('timed out');
@@ -170,20 +182,21 @@ function _huntRenderHosts(hosts) {
     tr.addEventListener('click', () => {
       huntResults.hostFilter = (huntResults.hostFilter === h.host_id) ? '' : h.host_id;
       _huntFetch(0).then((body) => _huntSetData(body, true)).catch((e) => {
-        showToast('Could not refilter hunt results', 'error');
+        showToast(t('Could not refilter hunt results'), 'error');
       });
     });
     tbody.appendChild(tr);
   }
 }
 
+/** @param {string|null|undefined} stepId @returns {void} */
 function _huntStepSeen(stepId) {
   if (!stepId) return;
   if (!huntResults.stepOptions.includes(stepId)) huntResults.stepOptions.push(stepId);
 }
 
 function _huntRenderStepOptions() {
-  const sel = document.getElementById('hunt-step');
+  const sel = /** @type {HTMLSelectElement} */ (document.getElementById('hunt-step'));
   if (!sel) return;
   const current = sel.value;
   sel.replaceChildren();
@@ -204,6 +217,7 @@ function _huntMatchCells(m) {
   return cols.map((c) => `<td>${escHtml(String(m[c] ?? ''))}</td>`).join('');
 }
 
+/** @param {any[]} matches @returns {void} */
 function _huntAppendMatches(matches) {
   const tbody = document.getElementById('hunt-matches-body');
   if (!tbody) return;
@@ -217,7 +231,7 @@ function _huntAppendMatches(matches) {
   const more = document.getElementById('hunt-more');
   if (more) more.hidden = huntResults.offset >= huntResults.total;
   const count = document.getElementById('hunt-matches-count');
-  if (count) count.textContent = `· ${huntResults.total}`;
+  if (count) count.textContent = `· ${huntResults.total}`; // i18n-ignore: a separator and a number, not words
   const empty = document.getElementById('hunt-empty');
   if (empty) empty.hidden = huntResults.total > 0;
 }
@@ -225,20 +239,21 @@ function _huntAppendMatches(matches) {
 // The API's ?host= / ?step= filters matches only, so hosts and their states
 // always arrive with the page. Client-side state filtering needs each match's
 // host state: it is looked up from the hosts table of the same fetch.
+/** @param {string|undefined|null} hostId @returns {string} */
 function _huntHostStateOf(hostId) {
-  const tr = document.querySelector(`#hunt-hosts-body tr[data-host="${escAttr(hostId)}"]`);
+  const tr = /** @type {HTMLElement|null} */ (document.querySelector(`#hunt-hosts-body tr[data-host="${escAttr(hostId)}"]`));
   return tr ? (tr.dataset.state || '') : '';
 }
 
 function _huntApplyClientFilter() {
-  const q = (document.getElementById('hunt-filter')?.value || '').trim().toLowerCase();
-  const state = document.getElementById('hunt-state')?.value || '';
-  document.querySelectorAll('#hunt-hosts-body tr').forEach((tr) => {
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('hunt-filter'))?.value || '').trim().toLowerCase();
+  const state = (/** @type {HTMLSelectElement|null} */ (document.getElementById('hunt-state'))?.value || '');
+  document.querySelectorAll('#hunt-hosts-body tr').forEach((/** @type {HTMLElement} */ tr) => {
     const stateOk = !state || tr.dataset.state === state;
     const qOk = !q || (tr.textContent || '').toLowerCase().includes(q);
     tr.style.display = (stateOk && qOk) ? '' : 'none';
   });
-  document.querySelectorAll('#hunt-matches-body tr').forEach((tr) => {
+  document.querySelectorAll('#hunt-matches-body tr').forEach((/** @type {HTMLElement} */ tr) => {
     const stateOk = !state || _huntHostStateOf(tr.dataset.host) === state;
     const qOk = !q || (tr.textContent || '').toLowerCase().includes(q);
     tr.style.display = (stateOk && qOk) ? '' : 'none';
@@ -249,16 +264,18 @@ function _huntExportCsv() {
   const tbody = document.getElementById('hunt-matches-body');
   const thead = document.getElementById('hunt-matches-head');
   if (!tbody || !thead) return;
-  const headers = Array.from(thead.querySelectorAll('th')).map((th) => th.textContent);
+  const headers = Array.from(thead.querySelectorAll('th')).map((/** @type {HTMLElement} */ th) => th.textContent);
+  /** @type {(string|null|undefined)[][]} */
   const rows = [];
-  tbody.querySelectorAll('tr').forEach((tr) => {
+  tbody.querySelectorAll('tr').forEach((/** @type {HTMLElement} */ tr) => {
     if (tr.style.display === 'none') return;
-    rows.push(Array.from(tr.querySelectorAll('td')).map((td) => td.textContent));
+    rows.push(Array.from(tr.querySelectorAll('td')).map((/** @type {HTMLElement} */ td) => td.textContent));
   });
 
   // RFC 4180: quote every field, double embedded quotes. Cells that would be
   // interpreted as spreadsheet formulas get a leading ' — the exported file is
   // for humans, and an agent-reported value must not run a formula on open.
+  /** @param {any} v @returns {string} */
   const encode = (v) => {
     let s = String(v ?? '');
     if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
@@ -282,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('hunt-step')?.addEventListener('change', () => {
     _huntFetch(0).then((body) => _huntSetData(body, true)).catch((e) => {
-      showToast('Could not refilter hunt results', 'error');
+      showToast(t('Could not refilter hunt results'), 'error');
     });
   });
 
@@ -298,14 +315,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('hunt-refresh')?.addEventListener('click', () => {
     if (!huntResults.runId) return;
     _huntFetch(0).then((body) => _huntSetData(body, true)).catch((e) => {
-      showToast('Could not refresh hunt results', 'error');
+      showToast(t('Could not refresh hunt results'), 'error');
     });
   });
 
   document.getElementById('hunt-more')?.addEventListener('click', () => {
     if (!huntResults.runId) return;
     _huntFetch(huntResults.offset).then((body) => _huntSetData(body, false)).catch((e) => {
-      showToast('Could not load more matches', 'error');
+      showToast(t('Could not load more matches'), 'error');
     });
   });
 

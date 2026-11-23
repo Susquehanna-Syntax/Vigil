@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-usersites.js
 // Owns: Settings → Users & Roles → "Sites" — per-site role grants and, for
 // operators, the per-app capability matrix.
@@ -25,14 +26,14 @@ async function openUserSites(user) {
   // nothing appeared on click until both had landed.
   const m = mountModal('user-sites', { wide: true });
   m.setBody(`
-    <div class="modal-title"><span>Site access — ${escHtml(user.username)}</span>
+    <div class="modal-title"><span>${escHtml(t('Site access — {username}', { username: user.username }))}</span>
       <button class="modal-close" id="us-boot-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="modal-skeleton">
       <div class="sk-line sk-w80"></div>
       <div class="sk-line"></div><div class="sk-line sk-w60"></div>
     </div>`);
-  m.modal.querySelector('#us-boot-x').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#us-boot-x')).onclick = () => m.close();
   requestAnimationFrame(m.open);
 
   let sites = [];
@@ -49,7 +50,7 @@ async function openUserSites(user) {
     ]);
   } catch (e) {
     m.close();
-    showToast('Could not load site roles', 'error');
+    showToast(t('Could not load site roles'), 'error');
     return;
   }
 
@@ -62,10 +63,12 @@ async function openUserSites(user) {
     // here, at the moment it happens, rather than in documentation.
     const warning = grants.length === 0
       ? `<div class="us-warning">
-           <strong>${escHtml(user.username)}</strong> currently has
-           <strong>${escHtml(ROLE_LABELS[user.role] || user.role)}</strong>
-           access to every site through their profile. Granting a site role
-           will limit them to only the sites listed here.
+           ${t('{username} currently has {role} access to every site through their profile. Granting a site role will limit them to only the sites listed here.', {
+             // The sentence comes from the catalog and is trusted; each value is
+             // escaped before it goes in, so the bold survives and nothing else does.
+             username: `<strong>${escHtml(user.username)}</strong>`,
+             role: `<strong>${escHtml(ROLE_LABELS[user.role] || user.role)}</strong>`,
+           })}
          </div>`
       : '';
 
@@ -78,17 +81,15 @@ async function openUserSites(user) {
                 ${USER_SITE_ROLES.map((r) =>
                   `<option value="${r}"${g.role === r ? ' selected' : ''}>${escHtml(ROLE_LABELS[r] || r)}</option>`).join('')}
               </select>
-              <button class="btn btn-rose btn-sm us-revoke" data-gid="${g.id}">Revoke</button>
+              <button class="btn btn-rose btn-sm us-revoke" data-gid="${g.id}">${escHtml(t('Revoke'))}</button>
             </div>
             ${g.role === 'operator' ? capabilityGrid(g) : `
-              <p class="muted us-note">${g.role === 'admin'
-                ? 'Full control of this site.'
-                : 'Read-only in this site.'}</p>`}
+              <p class="muted us-note">${escHtml(g.role === 'admin' ? t('Full control of this site.') : t('Read-only in this site.'))}</p>`}
           </div>`).join('')
-      : '<p class="muted">No site roles. Access comes from their profile role.</p>';
+      : `<p class="muted">${escHtml(t('No site roles. Access comes from their profile role.'))}</p>`;
 
     m.setBody(`
-      <div class="modal-title"><span>Site access — ${escHtml(user.username)}</span>
+      <div class="modal-title"><span>${escHtml(t('Site access — {username}', { username: user.username }))}</span>
         <button class="modal-close" id="us-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       ${warning}
@@ -101,12 +102,12 @@ async function openUserSites(user) {
           <select class="form-control" id="us-new-role">
             ${USER_SITE_ROLES.map((r) => `<option value="${r}">${escHtml(ROLE_LABELS[r] || r)}</option>`).join('')}
           </select>
-          <button class="btn btn-mint btn-sm" id="us-add">Grant</button>
+          <button class="btn btn-mint btn-sm" id="us-add">${escHtml(t('Grant'))}</button>
         </div>` : ''}
       ${companyWideSection()}
       <p class="muted" id="us-note"></p>
       <div class="confirm-actions">
-        <button class="btn btn-mint btn-sm" id="us-close">Done</button>
+        <button class="btn btn-mint btn-sm" id="us-close">${escHtml(t('Done'))}</button>
       </div>`);
     wire();
   }
@@ -116,10 +117,8 @@ async function openUserSites(user) {
     const held = new Set(companyWide.results.filter((g) => String(g.user_id) === String(user.id))
       .map((g) => `${g.app}:${g.verb}`));
     return `<div class="us-grant">
-        <div class="us-grant-head"><span class="us-site">Company-wide access</span></div>
-        <p class="muted us-note">Lets ${escHtml(user.username)} use these modules across every site, beyond their
-          own sites. View widens what they can read there; the other verbs let them act on other sites' items in
-          that module only. Global items stay with administrators of the whole install.</p>
+        <div class="us-grant-head"><span class="us-site">${escHtml(t('Company-wide access'))}</span></div>
+        <p class="muted us-note">${escHtml(t('Lets {username} use these modules across every site, beyond their own sites. View widens what they can read there; the other verbs let them act on other sites\' items in that module only. Global items stay with administrators of the whole install.', { username: user.username }))}</p>
         <div class="us-matrix">` +
       Object.entries(companyWide.grantable).map(([app, verbs]) => `
           <div class="us-matrix-row">
@@ -188,18 +187,18 @@ async function openUserSites(user) {
       return true;
     } catch (e) {
       // 402 carries the upgrade body; show its detail rather than a raw code.
-      note(e.message || 'Could not save', true);
+      note(e.message || t('Could not save'), true);
       return false;
     }
   }
 
   function wire() {
-    m.modal.querySelector('#us-x').onclick = () => m.close();
-    m.modal.querySelector('#us-close').onclick = () => m.close();
-    m.modal.querySelectorAll('[data-cw-app]').forEach((box) =>
+    /** @type {HTMLElement} */ (m.modal.querySelector('#us-x')).onclick = () => m.close();
+    /** @type {HTMLElement} */ (m.modal.querySelector('#us-close')).onclick = () => m.close();
+    m.modal.querySelectorAll('[data-cw-app]').forEach((/** @type {HTMLInputElement} */ box) =>
       box.addEventListener('change', () => toggleCompanyWide(box)));
 
-    m.modal.querySelectorAll('.us-role').forEach((sel) => {
+    m.modal.querySelectorAll('.us-role').forEach((/** @type {HTMLSelectElement} */ sel) => {
       sel.addEventListener('change', async () => {
         const g = grants.find((x) => String(x.id) === sel.dataset.gid);
         if (!g) return;
@@ -210,18 +209,18 @@ async function openUserSites(user) {
       });
     });
 
-    m.modal.querySelectorAll('.us-matrix input[type=checkbox]').forEach((cb) => {
+    m.modal.querySelectorAll('.us-matrix input[type=checkbox]').forEach((/** @type {HTMLInputElement} */ cb) => {
       cb.addEventListener('change', async () => {
         const g = grants.find((x) => String(x.id) === cb.dataset.gid);
         if (!g) return;
         const boxes = m.modal.querySelectorAll(
           `.us-matrix input[data-gid="${g.id}"]:checked`);
-        const caps = Array.from(boxes).map((b) => [b.dataset.app, b.dataset.verb]);
+        const caps = Array.from(boxes).map((/** @type {HTMLInputElement} */ b) => [b.dataset.app, b.dataset.verb]);
         if (!await save(g, g.role, caps)) cb.checked = !cb.checked;
       });
     });
 
-    m.modal.querySelectorAll('.us-revoke').forEach((btn) => {
+    m.modal.querySelectorAll('.us-revoke').forEach((/** @type {HTMLElement} */ btn) => {
       btn.addEventListener('click', async () => {
         try {
           await apiJson(`/api/v1/sites/roles/${btn.dataset.gid}/`, { method: 'DELETE' });
@@ -234,8 +233,8 @@ async function openUserSites(user) {
     const add = m.modal.querySelector('#us-add');
     if (add) {
       add.addEventListener('click', async () => {
-        const site = m.modal.querySelector('#us-new-site').value;
-        const role = m.modal.querySelector('#us-new-role').value;
+        const site = /** @type {HTMLSelectElement} */ (m.modal.querySelector('#us-new-site')).value;
+        const role = /** @type {HTMLSelectElement} */ (m.modal.querySelector('#us-new-role')).value;
         try {
           const saved = await apiJson('/api/v1/sites/roles/', {
             method: 'POST',

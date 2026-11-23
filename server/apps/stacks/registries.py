@@ -4,7 +4,7 @@ and the agent's own lookup, limited to the hosts each credential covers."""
 import re
 
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -87,7 +87,10 @@ def registry_detail(request, cred_id):
 
 
 @scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
-@extend_schema(responses={200: StacksRegistryAuthSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("registry", str,
+                     description="Registry host to fetch credentials for, e.g. ghcr.io."),
+], responses={200: StacksRegistryAuthSerializer})
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_registry_auth(request):

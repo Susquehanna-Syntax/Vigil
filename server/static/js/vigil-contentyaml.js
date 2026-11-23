@@ -1,3 +1,4 @@
+// @ts-check
 /* "Edit as YAML" and "Submit to Community" for playbooks and automations.
  *
  * Tasks have had this since the beginning, because a task *is* its YAML — the
@@ -11,6 +12,8 @@
  * submission would carry — there is no second rendering to drift from it.
  */
 
+/** @typedef {{get: (id: string) => string, put: string, idField: string, dir: string}} ContentYamlEndpoint */
+/** @type {Record<string, ContentYamlEndpoint>} */
 const CONTENT_YAML_ENDPOINTS = {
   playbook: { get: id => `/api/v1/playbooks/${id}/yaml/`, put: '/api/v1/playbooks/yaml/',
               idField: 'playbook_id', dir: 'playbooks' },
@@ -18,10 +21,19 @@ const CONTENT_YAML_ENDPOINTS = {
                 idField: 'automation_id', dir: 'automations' },
 };
 
-const contentYamlState = { kind: null, id: null, filename: '' };
+const contentYamlState = /** @type {{kind: string|null, id: string|null, filename: string}} */ ({ kind: null, id: null, filename: '' });
 
+/** @param {string} suffix @returns {HTMLElement|null} */
 function _cyEl(suffix) { return document.getElementById('content-yaml-' + suffix); }
 
+/* Cross-file helpers (declared in types/globals.d.ts): loadPlaybooks and
+ * loadAutomations are guarded below with typeof, COMMUNITY_REPO_URL and
+ * _injectCommunityMetadata are read bare. Both of the last two are defined at
+ * vigil-tasks.js top level, and a <script src> tag does not put a top-level
+ * `const` on window the way it puts a function declaration — so the bare reads
+ * here work only because base.html loads vigil-tasks.js before this file. */
+
+/** @param {string} message @returns {void} */
 function _cyError(message) {
   const box = _cyEl('error');
   if (!box) return;
@@ -50,10 +62,10 @@ async function openContentYaml(kind, id) {
     contentYamlState.kind = kind;
     contentYamlState.id = id;
     contentYamlState.filename = data.filename || '';
-    _cyEl('text').value = data.yaml || '';
-    _cyEl('title').textContent = `Edit ${kind} as YAML`;
+    /** @type {HTMLTextAreaElement} */ (_cyEl('text')).value = data.yaml || '';
+    _cyEl('title').textContent = t('Edit {kind} as YAML', { kind });
     _cyEl('filename').textContent =
-      `Shared as ${cfg.dir}/${data.filename} in the community repo.`;
+      t('Shared as {dir}/{filename} in the community repo.', { dir: cfg.dir, filename: data.filename });
     _cyError('');
     _cyEl('overlay').classList.add('open');
     _cyEl('modal').classList.add('open');
@@ -61,25 +73,25 @@ async function openContentYaml(kind, id) {
     // The honest failure here is an automation pinned to one host, which
     // cannot be represented as a shareable document at all. The server says
     // why and what to change.
-    showToast(e.message || 'Could not read this as YAML', 'error');
+    showToast(e.message || t('Could not read this as YAML'), 'error');
   }
 }
 
 async function saveContentYaml() {
   const cfg = CONTENT_YAML_ENDPOINTS[contentYamlState.kind];
   if (!cfg) return;
-  const btn = _cyEl('save');
+  const btn = /** @type {HTMLButtonElement} */ (_cyEl('save'));
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
-    const body = { yaml: _cyEl('text').value };
+    const body = { yaml: /** @type {HTMLTextAreaElement} */ (_cyEl('text')).value };
     body[cfg.idField] = contentYamlState.id;
     await apiJson(cfg.put, { method: 'POST', body: JSON.stringify(body) });
-    showToast('Saved', 'success');
+    showToast(t('Saved'), 'success');
     closeContentYaml();
     if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
-    _cyError(e.message || 'Save failed');
+    _cyError(e.message || t('Save failed'));
   } finally {
     btn.disabled = false; btn.style.opacity = '1';
   }
@@ -87,10 +99,10 @@ async function saveContentYaml() {
 
 async function copyContentYaml() {
   try {
-    await copyText(_cyEl('text').value);
-    showToast('YAML copied to clipboard', 'success');
+    await copyText(/** @type {HTMLTextAreaElement} */ (_cyEl('text')).value);
+    showToast(t('YAML copied to clipboard'), 'success');
   } catch {
-    showToast('Clipboard blocked — select the text and copy it', 'error');
+    showToast(t('Clipboard blocked — select the text and copy it'), 'error');
   }
 }
 
@@ -104,13 +116,13 @@ async function copyContentYaml() {
 function submitContentYaml() {
   const cfg = CONTENT_YAML_ENDPOINTS[contentYamlState.kind];
   if (!cfg) return;
-  const yaml = _injectCommunityMetadata((_cyEl('text').value || '').trim());
-  if (!yaml) { showToast('Nothing to submit', 'error'); return; }
+  const yaml = _injectCommunityMetadata((/** @type {HTMLTextAreaElement} */ (_cyEl('text')).value || '').trim());
+  if (!yaml) { showToast(t('Nothing to submit'), 'error'); return; }
   const filename = contentYamlState.filename || `${contentYamlState.kind}.yaml`;
   const url = `${COMMUNITY_REPO_URL}/new/main/${cfg.dir}`
     + `?filename=${encodeURIComponent(filename)}&value=${encodeURIComponent(yaml)}`;
   window.open(url, '_blank', 'noopener');
-  showToast('Opening GitHub — review it there, then open the pull request', 'success');
+  showToast(t('Opening GitHub — review it there, then open the pull request'), 'success');
 }
 
 /* ── Wiring ───────────────────────────────────────────────────────────── */
@@ -126,12 +138,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Empty means "new", and there is no server-side document for that yet.
   document.getElementById('bl-yaml-btn')?.addEventListener('click', () => {
     const id = document.getElementById('bl-editor-modal')?.dataset.editing;
-    if (!id) { showToast('Save the playbook first, then edit it as YAML', 'error'); return; }
+    if (!id) { showToast(t('Save the playbook first, then edit it as YAML'), 'error'); return; }
     openContentYaml('playbook', id);
   });
   document.getElementById('auto-yaml-btn')?.addEventListener('click', () => {
     const id = document.getElementById('auto-editor-modal')?.dataset.editing;
-    if (!id) { showToast('Save the automation first, then edit it as YAML', 'error'); return; }
+    if (!id) { showToast(t('Save the automation first, then edit it as YAML'), 'error'); return; }
     openContentYaml('automation', id);
   });
 });

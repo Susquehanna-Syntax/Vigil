@@ -663,7 +663,7 @@ class RailAccentTests(TestCase):
 
         js = self._dashboards_js()
         accents = set(re.findall(r"(\w+):\s*'(?:sky|mint|lav|peach|lemon|rose)'", js))
-        labels = set(re.findall(r"(\w+):\s*'(?:Fleet|Health|Work in flight|Security|Utility|Business)'", js))
+        labels = set(re.findall(r"(\w+):\s*t\('(?:Fleet|Health|Work in flight|Security|Utility|Business|Jackil)'\)", js))
         for kind, spec in WIDGET_REGISTRY.items():
             group = spec["group"]
             self.assertIn(group, accents, f"{group!r} (used by {kind}) has no accent in the rail")

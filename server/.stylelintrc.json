@@ -1,0 +1,27 @@
+{
+  "ignoreFiles": ["static/css/vendor/**", "static/css/fonts.css"],
+  "rules": {
+    "color-no-hex": true,
+    "color-named": "never",
+    "function-disallowed-list": ["rgb", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color"],
+    "declaration-property-value-disallowed-list": {
+      "/.*/": ["/rgba\\(\\s*[\\d.]/"],
+      "/^border-(left|right|inline-start|inline-end|inline)(-color)?$/": ["/var\\(--(?!border\\)|glass-edge\\))/", "/[2-9]px/", "/\\d{2,}px/"],
+      "/^box-shadow$/": ["/inset\\s+-?[1-9][\\d.]*px\\s+0(px)?\\s+0/"]
+    }
+  },
+  "overrides": [
+    {
+      "files": ["static/css/tokens.css"],
+      "rules": {
+        "color-no-hex": null,
+        "color-named": null,
+        "function-disallowed-list": null,
+        "declaration-property-value-disallowed-list": {
+          "/^border-(left|right|inline-start|inline-end|inline)(-color)?$/": ["/var\\(--(?!border\\)|glass-edge\\))/", "/[2-9]px/", "/\\d{2,}px/"],
+          "/^box-shadow$/": ["/inset\\s+-?[1-9][\\d.]*px\\s+0(px)?\\s+0/"]
+        }
+      }
+    }
+  ]
+}

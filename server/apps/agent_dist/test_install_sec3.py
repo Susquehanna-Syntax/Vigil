@@ -30,8 +30,12 @@ class InstallShSec3Tests(SimpleTestCase):
         else:
             self.cfg.write_text(config)
             self.cfg.chmod(0o600)
-        body = (self.block.replace("/etc/vigil/agent.yml", str(self.cfg))
-                .replace("/etc/vigil", str(self.cfg.parent)))
+        # install.sh names its config directory $CONF_DIR, chosen near the top
+        # from uname. The extracted block starts below that choice, so the test
+        # supplies the Linux value and points it at a scratch file.
+        body = (self.block.replace("$CONF_DIR/agent.yml", str(self.cfg))
+                .replace('"$CONF_DIR"', str(self.cfg.parent))
+                .replace("$CONF_DIR", str(self.cfg.parent)))
         # chown/chmod to root are the real installer's job; here the file is ours.
         harness = ('VIGIL_SERVER="https://vigil.test"\nchown() { :; }\nchmod() { :; }\n'
                    + body + '\necho "MODE=$CFG_MODE"\n')
@@ -81,9 +85,9 @@ class InstallShSec3Tests(SimpleTestCase):
 
     def test_monitor_config_is_root_owned_and_group_readable(self):
         script = render_to_string("agent_install.sh", {"base_url": "https://vigil.test", "public_key": KEY})
-        self.assertIn("chown root:vigil-agent /etc/vigil/agent.yml", script)
-        self.assertIn("chmod 640 /etc/vigil/agent.yml", script)
-        self.assertNotIn("chown vigil-agent /etc/vigil/agent.yml", script)
+        self.assertIn("chown root:vigil-agent $CONF_DIR/agent.yml", script)
+        self.assertIn("chmod 640 $CONF_DIR/agent.yml", script)
+        self.assertNotIn("chown vigil-agent $CONF_DIR/agent.yml", script)
         self.assertIsNone(re.search(r"AGENT_MODE=\"\$\(sed", script), "mode must come from CFG_MODE")
 
     def test_a_reinstall_restarts_a_running_agent(self):

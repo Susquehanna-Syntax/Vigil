@@ -8,10 +8,10 @@ from django.utils import timezone
 
 from .models import PendingUpdate, SoftwareItem
 
-#: The sources that are a Linux host's own package manager — what "the
-#: updates this host is missing" means there. Store apps (snap, flatpak) are
-#: app policy territory, not patching.
-LINUX_PRIMARY_SOURCES = ("dpkg", "rpm", "apk", "pacman")
+#: The sources that are a Unix host's own package manager (FreeBSD's pkg
+#: included) — what "the updates this host is missing" means there. Store apps
+#: (snap, flatpak) are app policy territory, not patching.
+LINUX_PRIMARY_SOURCES = ("dpkg", "rpm", "apk", "pacman", "pkg")
 
 MAX_WINDOWS_UPDATES = 500
 

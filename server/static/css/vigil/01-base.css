@@ -1,0 +1,480 @@
+/* Vigil's layout and component styles, part 1: base, layout, buttons, modals and tabs. The */
+/* design tokens live in tokens.css; templates/_stylesheets.html loads it and every part in order. */
+
+/* Reduce motion, chosen in Settings: the same collapse as the OS setting. */
+html.rm-sim *, html.rm-sim *::before, html.rm-sim *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* The UA rule for [hidden] is display:none at the lowest specificity, so
+   any class that sets display beats it. `.auto-when { display: flex }`
+   did exactly that, and the cron fields showed on an event automation
+   whatever the trigger was set to. Hidden must mean hidden. */
+[hidden] { display: none !important; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════ */
+.layout {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════ */
+.sidebar {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 68px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 4px;
+  background: var(--glass);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border-right: 1px solid var(--glass-edge);
+}
+
+.sidebar-logo {
+  width: 38px; height: 38px;
+  background: var(--lavender);
+  border-radius: var(--r-sm);
+  margin-bottom: 24px;
+  display: grid; place-items: center;
+  font-family: 'Fraunces', serif;
+  font-weight: 700; font-size: 17px;
+  color: var(--on-accent);
+  transition: transform 0.5s var(--ease-out-expo);
+  cursor: default;
+}
+.sidebar-logo:hover { transform: rotate(-8deg) scale(1.08); }
+/* The logo image fills the Lavender square (08e). */
+.sidebar-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.badge-dot--alert { background: var(--rose); }
+.badge-dot--pending { background: var(--peach); }
+
+.sidebar-icon {
+  width: 42px; height: 42px;
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: var(--text-3);
+  position: relative;
+  transition: color 0.3s, background 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+}
+.sidebar-icon:hover { background: var(--wash); color: var(--text-2); transform: scale(1.06); }
+.sidebar-icon:active { transform: scale(0.92); transition-duration: 0.1s; }
+.sidebar-icon.active { background: var(--mint); color: var(--on-accent); }
+.sidebar-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.sidebar-icon .badge-dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+}
+
+.sidebar-icon[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; left: 54px;
+  background: var(--s3); color: var(--text-1);
+  font-size: 12px; font-weight: 500;
+  padding: 5px 12px; border-radius: 8px;
+  white-space: nowrap; pointer-events: none;
+  animation: tooltipIn 0.3s var(--ease-out-expo) both;
+}
+@keyframes tooltipIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar-spacer { flex: 1; }
+
+/* Expanded sidebar: each icon gets its page name (toggleSidebar in vigil-utils.js). */
+.sidebar-label { display: none; }
+.sidebar-toggle svg { transition: transform 0.3s var(--ease-out-expo); }
+:root[data-sidebar="expanded"] .layout { grid-template-columns: 196px 1fr; }
+:root[data-sidebar="expanded"] .sidebar { width: 196px; align-items: stretch; padding: 20px 12px; overflow-y: auto; }
+:root[data-sidebar="expanded"] .sidebar-logo { margin-left: 2px; }
+:root[data-sidebar="expanded"] .sidebar-icon {
+  width: auto; height: 38px; display: flex; align-items: center; justify-content: flex-start;
+  gap: 12px; padding: 0 11px; flex: none; }
+:root[data-sidebar="expanded"] .sidebar-icon:hover { transform: none; }
+:root[data-sidebar="expanded"] .sidebar-icon svg { flex: none; }
+:root[data-sidebar="expanded"] .sidebar-label { display: block; font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root[data-sidebar="expanded"] .sidebar-icon[data-tip]:hover::after { display: none; }
+:root[data-sidebar="expanded"] .sidebar-toggle svg { transform: rotate(180deg); }
+:root[data-sidebar="expanded"] .sidebar-avatar { margin-left: 4px; }
+:root[data-sidebar="expanded"] .sidebar-icon .badge-dot { left: 26px; right: auto; }
+.sidebar-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--peach);
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 600;
+  color: var(--on-accent); cursor: pointer;
+  transition: transform 0.4s var(--ease-out-expo);
+}
+.sidebar-avatar:hover { transform: scale(1.1); }
+
+/* ═══════════════════════════════════════════
+   MAIN
+   ═══════════════════════════════════════════ */
+.main {
+  --main-pad-top: 36px;
+  grid-column: 2;
+  padding: var(--main-pad-top) 44px 60px;
+  overflow-y: auto;
+  max-height: 100vh;
+}
+.main::-webkit-scrollbar { width: 6px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+
+/* ═══════════════════════════════════════════
+   PAGE SECTIONS
+   ═══════════════════════════════════════════ */
+.page { display: none; }
+.page.active { display: block; }
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 36px;
+}
+.page-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 500; font-size: 32px;
+  letter-spacing: -0.5px; line-height: 1.2;
+}
+.page-title span { color: var(--lavender-ink); }
+.page-sub {
+  font-size: 14px; color: var(--text-2); margin-top: 6px;
+}
+
+.section-label {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 16px;
+  margin-top: 40px;
+}
+.section-label:first-child { margin-top: 0; }
+
+/* ═══════════════════════════════════════════
+   STATS ROW
+   ═══════════════════════════════════════════ */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.stat-card {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+}
+.stat-card:hover { transform: translateY(-3px); background: var(--s2); }
+.stat-label {
+  font-size: 12px; color: var(--text-3);
+  font-weight: 500; margin-bottom: 8px;
+}
+.stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 28px; font-weight: 600; line-height: 1;
+}
+.stat-sub {
+  font-size: 12px; color: var(--text-3); margin-top: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════ */
+.btn {
+  border: none;
+  padding: 11px 22px;
+  border-radius: var(--r-md);
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center; gap: 7px;
+  text-decoration: none;
+  transition: transform 0.4s var(--ease-out-expo), opacity 0.2s, background 0.2s, border-color 0.2s, color 0.2s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.1s; }
+.btn-mint { background: var(--mint); color: var(--on-accent); }
+.btn-rose { background: var(--rose); color: var(--on-accent); }
+.btn-sky { background: var(--sky); color: var(--on-accent); }
+.btn-lav { background: var(--lavender); color: var(--on-accent); }
+.btn-peach { background: var(--peach); color: var(--on-accent); }
+.btn-lemon { background: var(--lemon); color: var(--on-accent); }
+.btn-outline {
+  background: none; color: var(--text-2);
+  border: 1.5px solid var(--border);
+}
+.btn-outline:hover { border-color: var(--text-3); color: var(--text-1); }
+.btn-sm { padding: 7px 14px; font-size: 12px; }
+.btn-ghost {
+  background: none; color: var(--text-2);
+  border: none; padding: 7px 14px;
+}
+.btn-ghost:hover { background: var(--wash); color: var(--text-1); }
+.btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ═══════════════════════════════════════════
+   MODAL
+   ═══════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--m-blur));
+  -webkit-backdrop-filter: blur(var(--m-blur));
+  z-index: 200;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--m-dur) var(--ease-out-expo);
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+/* A second scrim only dims: the modal underneath should read as a modal that
+   stepped back, not vanish into a second blur. vigil-modal.js sets it. */
+.modal-overlay.stacked { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.modal-overlay.stacked.open { opacity: 0.45; }
+
+/* Rise — the default: forms, editors, the deploy dialog. Closed modals are
+   visibility: hidden as well as transparent, so Tab can no longer walk into
+   the fields of every dialog on the page. Leaving is quicker than arriving —
+   the user has already decided. */
+.modal {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -44%);
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--s1);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  z-index: 201;
+  padding: 32px;
+  opacity: 0; pointer-events: none; visibility: hidden;
+  transition:
+    opacity calc(var(--m-dur) * 0.7) var(--ease-out-expo),
+    transform calc(var(--m-dur) * 0.7) var(--ease-out-expo),
+    filter 0.3s var(--ease-out-expo),
+    visibility 0s linear calc(var(--m-dur) * 0.7);
+}
+.modal.open {
+  opacity: 1; pointer-events: all; visibility: visible;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity var(--m-dur) var(--m-ease),
+    transform var(--m-dur) var(--m-ease),
+    filter 0.3s var(--ease-out-expo),
+    visibility 0s;
+}
+/* A modal with another on top of it steps back rather than vanishing. */
+.modal.open.recede { transform: translate(-50%, -50%) scale(0.95); filter: brightness(0.82); }
+
+/* Pop — back-out scale for small, quick decisions: confirm, prompt, pickers. */
+.modal.m-pop { transform: translate(-50%, -50%) scale(0.9); }
+.modal.m-pop.open { transform: translate(-50%, -50%) scale(1); --m-ease: var(--ease-out-back); }
+.modal.m-pop.open.recede { transform: translate(-50%, -50%) scale(0.95); }
+
+/* Sheet — a long picker on a phone slides up from the bottom instead. */
+@media (max-width: 600px) {
+  .modal.m-sheet-sm {
+    top: auto; bottom: 0; width: 100vw; max-width: 100vw;
+    border-radius: var(--r-xl) var(--r-xl) 0 0; border-bottom: none;
+    transform: translate(-50%, 100%);
+  }
+  .modal.m-sheet-sm.open { transform: translate(-50%, 0); }
+  .modal.m-sheet-sm::before {
+    content: ''; display: block; width: 40px; height: 4px; border-radius: 2px;
+    background: var(--s4); margin: -14px auto 18px;
+  }
+}
+
+/* Destructive — a typed confirmation that does not match shakes its field. */
+.shake { animation: shake 0.42s var(--ease-out-expo); }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); } 40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); } 80% { transform: translateX(2px); }
+}
+.modal::-webkit-scrollbar { width: 6px; }
+.modal::-webkit-scrollbar-track { background: transparent; }
+.modal::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+
+.modal-title {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 500;
+  margin-bottom: 24px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.modal-close {
+  width: 32px; height: 32px;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-3); border-radius: var(--r-sm);
+  display: grid; place-items: center; flex-shrink: 0;
+  transition: color 0.2s, background 0.2s, transform 0.4s var(--ease-out-back);
+}
+.modal-close:hover { background: var(--s3); color: var(--text-1); transform: rotate(90deg); }
+.modal-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.form-group { margin-bottom: 18px; }
+.form-label {
+  display: block;
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  letter-spacing: 0.3px; margin-bottom: 7px;
+}
+.form-control {
+  width: 100%;
+  background: var(--s2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: inherit; font-size: 14px;
+  padding: 10px 14px;
+  transition: border-color 0.3s var(--ease-out-expo); outline: none;
+}
+.form-control:focus { border-color: var(--sky-ink); }
+.form-control option { background: var(--s2); }
+textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+
+.risk-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+}
+.risk-low    { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.risk-standard { background: rgba(var(--rgb-sky), var(--tint-a)); color: var(--sky-ink); }
+.risk-high   { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+
+/* ═══════════════════════════════════════════
+   VULN BADGES + TABLE
+   ═══════════════════════════════════════════ */
+.vuln-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.vuln-critical { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.vuln-high     { background: rgba(var(--rgb-coral), var(--tint-a)); color: var(--coral-ink); }
+.vuln-medium   { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
+.vuln-none     { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+
+.vuln-table { width: 100%; border-collapse: collapse; }
+.vuln-table th, .vuln-table td {
+  text-align: left; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.vuln-table thead th {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3); background: var(--s1);
+}
+.vuln-table tbody tr { background: var(--s1); transition: background 0.2s; }
+.vuln-table tbody tr:hover { background: var(--s2); }
+.vuln-count {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px;
+}
+.vuln-count.c-rose   { color: var(--rose-ink); }
+.vuln-count.c-coral  { color: var(--coral-ink); }
+.vuln-count.c-lemon  { color: var(--lemon-ink); }
+.vuln-count.c-sky    { color: var(--sky-ink); }
+.vuln-count.c-dim    { color: var(--text-3); }
+.vuln-sync-note { font-size: 12px; color: var(--text-3); margin-top: 12px; }
+/* The exception chip's kind word (vigil-vulns.js) sits back a little. */
+.vuln-exception-kind { opacity: .7; }
+
+/* ═══════════════════════════════════════════
+   FILTER TABS
+   ═══════════════════════════════════════════ */
+.tab-bar {
+  display: flex; gap: 28px; overflow-x: auto;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--s3);
+}
+.tab {
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  letter-spacing: 0.01em;
+  padding: 10px 2px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-3);
+  border: none;
+  position: relative;
+  transition: color 0.3s var(--ease-out-expo);
+}
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.35s var(--ease-out-expo);
+}
+.tab:hover { color: var(--text-2); }
+.tab.active { color: var(--text-1); }
+/* Inset: the tab bar scrolls sideways and clips anything drawn outside a tab. */
+.tab:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; border-radius: 4px; }
+.tab.active::after { transform: scaleX(1); }
+.tab.t-rose.active { color: var(--rose-ink); }
+.tab.t-lemon.active { color: var(--lemon-ink); }
+.tab.t-mint.active { color: var(--mint-ink); }
+.tab.t-lav.active { color: var(--lavender-ink); }
+.tab.t-sky.active { color: var(--sky-ink); }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── About page (S6 08b) ─────────────────────────────────────────────── */
+.about-stats { grid-template-columns: repeat(2, 1fr); margin-bottom: 28px; }
+.about-version-c-mint { color: var(--mint-ink); font-size: 28px; }
+.about-version-c-sky { color: var(--sky-ink); font-size: 28px; }
+
+.about-panel { background: var(--s1); border-radius: var(--r-lg); padding: 24px; margin-bottom: 20px; }
+.about-section-label { margin-bottom: 12px; }
+.about-meta-grid {
+  display: grid; grid-template-columns: 160px 1fr; gap: 10px 18px; font-size: 13px;
+}
+.about-health-grid {
+  display: grid; grid-template-columns: 200px 1fr; gap: 10px 18px; font-size: 13px;
+}
+.about-meta-label, .about-muted { color: var(--text-3); }
+
+.about-scanner-list { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.about-fineprint { font-size: 11px; color: var(--text-3); margin-top: 14px; }
+.about-footer { text-align: center; font-size: 11px; color: var(--text-3); margin-top: 24px; }
+.about-footer-link { color: var(--text-3); }
+

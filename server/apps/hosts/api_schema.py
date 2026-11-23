@@ -39,15 +39,59 @@ class HostsHostSerializer(serializers.Serializer):
     agent_allow_reprovision = serializers.BooleanField()
     agent_runs_as_root = serializers.BooleanField(
         allow_null=True, help_text="Null until the agent reports it.")
+    agent_update = serializers.DictField(
+        allow_null=True,
+        help_text="How the agent's last self-update ended, as it reported: state "
+                  "(confirmed, rolled_back or not_applied), from_version, to_version, "
+                  "running, reason and at. Null when it has reported none.")
     reboot_required = serializers.BooleanField()
     last_checkin = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
+    depends_on = serializers.UUIDField(
+        allow_null=True, help_text="The host this one sits behind, or null.")
     site = serializers.CharField(allow_null=True, help_text="Owning site id.")
     site_name = serializers.CharField()
 
 
 class HostsDeletedSerializer(serializers.Serializer):
     deleted = serializers.CharField(help_text="The hostname that was removed.")
+
+
+class HostsAgentVersionRowSerializer(serializers.Serializer):
+    version = serializers.CharField(
+        allow_blank=True, help_text='The agent version the hosts report; "" means unknown.')
+    hosts = serializers.IntegerField()
+    current = serializers.BooleanField(
+        help_text="True when this is the version the server ships.")
+    outdated = serializers.BooleanField(
+        help_text="True only when the version is provably behind the server's.")
+
+
+class HostsAgentUpdateCountsSerializer(serializers.Serializer):
+    confirmed = serializers.IntegerField()
+    rolled_back = serializers.IntegerField()
+    not_applied = serializers.IntegerField()
+
+
+class HostsRolledBackRowSerializer(serializers.Serializer):
+    host_id = serializers.CharField()
+    hostname = serializers.CharField()
+    from_version = serializers.CharField(allow_blank=True)
+    to_version = serializers.CharField(allow_blank=True)
+    reason = serializers.CharField(allow_blank=True)
+    at = serializers.CharField(allow_null=True, help_text="When the agent reported it.")
+
+
+class HostsAgentVersionsSerializer(serializers.Serializer):
+    """The version-drift report: approved hosts only, self-updates from the last 30 days."""
+
+    expected = serializers.CharField(
+        allow_blank=True, help_text="The agent version this server ships; empty when unknown.")
+    total = serializers.IntegerField(help_text="Approved hosts in scope.")
+    versions = HostsAgentVersionRowSerializer(many=True)
+    outdated_hosts = serializers.IntegerField()
+    updates = HostsAgentUpdateCountsSerializer()
+    rolled_back = HostsRolledBackRowSerializer(many=True, help_text="Newest first, at most 50.")
 
 
 class HostsDeviceSerializer(serializers.Serializer):
@@ -68,6 +112,17 @@ class HostsDeviceSerializer(serializers.Serializer):
     extra = serializers.DictField(child=serializers.CharField(),
                                   help_text='Free-form facts, as {"Rack": "B4"}.')
     notes = serializers.CharField()
+    check_state = serializers.CharField(
+        allow_null=True, required=False,
+        help_text="What the device's checks last said: 'up' when every enabled "
+                  "check's latest result was ok, 'down' when any was not, and "
+                  "null when the device has no checks or none has ever reported. "
+                  "Read-only.")
+    can_edit_checks = serializers.BooleanField(
+        required=False,
+        help_text="Whether this user may add, change or delete the device's "
+                  "checks — an admin with the device in their write scope. The "
+                  "page offers only what it shows as true.")
     site_id = serializers.CharField(
         allow_null=True,
         help_text="The site the device is filed in; set by the view from the "
@@ -166,6 +221,12 @@ class HostsTagsWriteSerializer(serializers.Serializer):
     tags = serializers.ListField(child=serializers.CharField())
 
 
+class HostsDependsOnWriteSerializer(serializers.Serializer):
+    """The host this one depends on, or null to clear it."""
+
+    depends_on = serializers.UUIDField(allow_null=True)
+
+
 class HostsTotpSerializer(serializers.Serializer):
     """The second factor the gate consumes; nothing else in the body is read."""
 
@@ -252,6 +313,11 @@ class HostsCheckinBodySerializer(serializers.Serializer):
     runs_as_root = serializers.BooleanField(required=False)
     features = serializers.ListField(child=serializers.CharField(), required=False)
     reboot_required = serializers.BooleanField(required=False)
+    agent_update = serializers.DictField(
+        required=False,
+        help_text="How a self-update ended, sent until one check-in carrying it "
+                  "succeeds: state (confirmed, rolled_back or not_applied), "
+                  "from_version, to_version, running and reason.")
     tags = serializers.ListField(child=serializers.CharField(), required=False,
                                  help_text="Namespaced under agent:* on the way in.")
     inventory = serializers.DictField(required=False)
@@ -641,11 +707,118 @@ class HostsTopologyHostSerializer(serializers.Serializer):
     partial = serializers.BooleanField()
 
 
+class HostsDeviceCheckLatestSerializer(serializers.Serializer):
+    """The newest result of a device check, or null when it has none yet."""
+
+    ok = serializers.BooleanField()
+    latency_ms = serializers.FloatField(allow_null=True)
+    detail = serializers.CharField()
+    time = serializers.DateTimeField()
+    extra = serializers.DictField(help_text="Kind-specific values of the newest result, for example an SNMP check's labelled OIDs.")
+
+
+class HostsDeviceCheckSerializer(serializers.Serializer):
+    """One check on a device, as ``device_checks`` renders it."""
+
+    id = serializers.CharField()
+    kind = serializers.CharField(help_text="icmp, tcp, http, dns, snmp or ssh.")
+    params = serializers.DictField(help_text="Cleaned per kind; unknown keys are dropped.")
+    has_community = serializers.BooleanField(
+        help_text="Whether an SNMP community is stored. It is never returned.")
+    has_auth_password = serializers.BooleanField(
+        help_text="SNMPv3 only: whether an auth password is stored. It is never returned.")
+    has_priv_password = serializers.BooleanField(
+        help_text="SNMPv3 only: whether a privacy password is stored. It is never returned.")
+    has_key = serializers.BooleanField(
+        help_text="SSH only: whether a private key is stored. It is never returned; the public "
+                  "half is params.public_key.")
+    interval_seconds = serializers.IntegerField(help_text="30 to 86400 (an SSH check: 900 or more).")
+    enabled = serializers.BooleanField()
+    poller = serializers.CharField(
+        allow_null=True,
+        help_text="The host pinned to run this check, or null for any poller of the device's site.")
+    created_at = serializers.DateTimeField()
+    latest = HostsDeviceCheckLatestSerializer(allow_null=True)
+
+
+class HostsDeviceCheckWriteSerializer(serializers.Serializer):
+    """The body a device check is created or patched with. Every field is optional on PATCH."""
+
+    kind = serializers.CharField(required=False, help_text="icmp, tcp, http, dns, snmp or ssh (Business).")
+    params = serializers.DictField(
+        required=False,
+        help_text="Cleaned per kind; unknown keys are dropped. For SNMP: host, port, oids, "
+                  'interfaces and version ("2c", the default, or "3"); an SNMPv3 check also '
+                  "has user, auth (sha or sha256) and priv.")
+    community = serializers.CharField(
+        required=False,
+        help_text="SNMP v2c only. Stored encrypted and never returned.")
+    auth_password = serializers.CharField(
+        required=False,
+        help_text="SNMPv3 only. Stored encrypted and never returned.")
+    priv_password = serializers.CharField(
+        required=False,
+        help_text="SNMPv3 only. Stored encrypted and never returned.")
+    rotate_key = serializers.BooleanField(
+        required=False,
+        help_text="SSH only: make a new key pair. The new public key is in params.public_key.")
+    interval_seconds = serializers.IntegerField(required=False)
+    enabled = serializers.BooleanField(required=False)
+    poller = serializers.CharField(
+        required=False, allow_null=True,
+        help_text="A poller host of the device's site, or null for any.")
+
+
+class HostsDeviceCheckResultSerializer(serializers.Serializer):
+    """One stored result of a device check, newest last."""
+
+    time = serializers.DateTimeField()
+    ok = serializers.BooleanField()
+    latency_ms = serializers.FloatField(allow_null=True)
+    detail = serializers.CharField()
+
+
+class HostsDeviceCheckInterfaceSerializer(serializers.Serializer):
+    """One interface of a device check, at its newest sample in the window.
+
+    ``in_bps``/``out_bps`` are worked out from that sample and the one before
+    it; null means there was no usable pair — a first sample, a counter the
+    device never reported, or a counter reset.
+    """
+
+    time = serializers.DateTimeField()
+    index = serializers.IntegerField()
+    name = serializers.CharField(allow_blank=True)
+    up = serializers.BooleanField(allow_null=True)
+    speed_mbps = serializers.IntegerField(allow_null=True)
+    in_bps = serializers.IntegerField(allow_null=True)
+    out_bps = serializers.IntegerField(allow_null=True)
+
+
+class HostsDeviceCheckInterfacePointSerializer(serializers.Serializer):
+    """One point of one interface's rate series: a sample paired with its predecessor."""
+
+    time = serializers.DateTimeField()
+    in_bps = serializers.IntegerField(allow_null=True)
+    out_bps = serializers.IntegerField(allow_null=True)
+
+
+class HostsDeviceCheckInterfaceSeriesSerializer(serializers.Serializer):
+    """One interface's rate over the window, oldest first."""
+
+    index = serializers.IntegerField()
+    name = serializers.CharField(allow_blank=True)
+    series = HostsDeviceCheckInterfacePointSerializer(many=True)
+
+
 class HostsTopologyDeviceSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()
     type = serializers.CharField()
     ip = serializers.CharField()
+    site_id = serializers.CharField(allow_null=True)
+    check_state = serializers.CharField(allow_null=True)
+    poller_id = serializers.CharField(allow_null=True)
 
 
 class HostsTopologyLinkSerializer(serializers.Serializer):

@@ -10,9 +10,10 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-rollout.js"
-CSS = ROOT / "static/css/vigil.css"
 
 
 def _code_only(src: str) -> str:
@@ -79,9 +80,9 @@ class WaveColumnTests(SimpleTestCase):
             self.assertIn(needed, wave)
         self.assertNotIn("display:flex", wave)
 
-        css = CSS.read_text()
+        css = design_css()
         block = re.search(r"\.rlt-wave \{([^}]*)\}", css)
-        self.assertIsNotNone(block, "vigil.css has no .rlt-wave rule")
+        self.assertIsNotNone(block, "the stylesheets have no .rlt-wave rule")
         self.assertIn(
             "grid-template-columns: 14px minmax(110px, 160px) minmax(0, 1fr) "
             "96px minmax(0, 180px) 92px",

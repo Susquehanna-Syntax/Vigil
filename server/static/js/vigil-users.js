@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-users.js
 // Owns: Settings → Users & Roles pane — list users + seats, create, change
 //   role, delete. Backend: GET/POST /api/v1/accounts/users/,
@@ -5,19 +6,22 @@
 // HTML: templates/pages/_settings.html (data-pane="users")
 // Depends on: vigil-utils.js (apiJson, showToast, confirmModal, escHtml)
 
-const ROLE_LABELS = { admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
+/** @type {Record<string, string>} */
+const ROLE_LABELS = { admin: t('Admin'), operator: t('Operator'), viewer: t('Viewer') };
 
+/** @returns {Promise<void>} */
 async function loadUsers() {
   const list = document.getElementById('users-list');
   if (!list) return;
   try {
     const data = await apiJson('/api/v1/accounts/users/');
     const seats = document.getElementById('users-seats');
-    if (seats) seats.textContent = `Seats: ${data.seats_used} / ${data.seats_allowed}`;
-    const me = (window.VIGIL_CONFIG && window.VIGIL_CONFIG.username) || '';
+    if (seats) seats.textContent = t('Seats: {used} / {allowed}', { used: data.seats_used, allowed: data.seats_allowed });
+    const me = /** @type {string} */ ((/** @type {any} */ (window.VIGIL_CONFIG) && /** @type {any} */ (window.VIGIL_CONFIG).username) || '');
+    /** @type {Record<string, any>} */
     const byId = {};
     list.innerHTML = '';
-    data.users.forEach((u) => {
+    data.users.forEach((/** @type {any} */ u) => {
       byId[String(u.id)] = u;
       const isMe = u.username === me;
       const row = document.createElement('div');
@@ -29,45 +33,46 @@ async function loadUsers() {
       // ids are integers. No free text goes into an attribute value.
       row.innerHTML =
         `<div class="user-row-main">` +
-          `<span class="user-row-name">${escHtml(u.username)}${isMe ? ' <span class="muted">(you)</span>' : ''}</span>` +
+          `<span class="user-row-name">${escHtml(u.username)}${isMe ? ` <span class="muted">${escHtml(t('(you)'))}</span>` : ''}</span>` +
           `<span class="user-row-email muted">${escHtml(u.email || '')}</span>` +
         `</div>` +
         `<div class="user-row-actions">` +
           (u.by_site
-            ? `<span class="muted user-role-bysite" data-tip="Set with the Sites button">By site</span>`
+            ? `<span class="muted user-role-bysite" data-tip="${escAttr(t('Set with the Sites button'))}">${escHtml(t('By site'))}</span>`
             : `<select class="form-control user-role-select" data-uid="${u.id}"${isMe ? ' disabled' : ''}>${opts}</select>`) +
-          `<button class="btn btn-sky btn-sm user-sites" data-uid="${u.id}">Sites</button>` +
-          (isMe ? '' : `<button class="btn btn-rose btn-sm user-del" data-uid="${u.id}">Delete</button>`) +
+          `<button class="btn btn-sky btn-sm user-sites" data-uid="${u.id}">${escHtml(t('Sites'))}</button>` +
+          (isMe ? '' : `<button class="btn btn-rose btn-sm user-del" data-uid="${u.id}">${escHtml(t('Delete'))}</button>`) +
         `</div>`;
       list.appendChild(row);
     });
     // Wire role selects and delete buttons; names come from the lookup map, not
     // from a data- attribute, so no user-supplied text is interpolated anywhere.
-    list.querySelectorAll('.user-role-select').forEach((sel) => {
+    list.querySelectorAll('.user-role-select').forEach((/** @type {HTMLSelectElement} */ sel) => {
       sel.addEventListener('change', () => changeRole(sel.dataset.uid, sel.value));
     });
-    list.querySelectorAll('.user-sites').forEach((btn) => {
+    list.querySelectorAll('.user-sites').forEach((/** @type {HTMLElement} */ btn) => {
       const u = byId[btn.dataset.uid];
       btn.addEventListener('click', () => openUserSites(u));
     });
-    list.querySelectorAll('.user-del').forEach((btn) => {
+    list.querySelectorAll('.user-del').forEach((/** @type {HTMLElement} */ btn) => {
       const u = byId[btn.dataset.uid];
       btn.addEventListener('click', () => deleteUser(btn.dataset.uid, u ? u.username : ''));
     });
   } catch (e) {
-    list.innerHTML = `<p class="muted">Could not load users: ${escHtml(e.message)}</p>`;
+    list.innerHTML = `<p class="muted">${escHtml(t('Could not load users: {message}', { message: e.message }))}</p>`;
   }
 }
 
+/** @returns {Promise<void>} */
 async function createUser() {
-  const username = document.getElementById('nu-username').value.trim();
-  const email = document.getElementById('nu-email').value.trim();
-  const password = document.getElementById('nu-password').value;
-  const role = document.getElementById('nu-role').value;
+  const username = /** @type {HTMLInputElement} */ (document.getElementById('nu-username')).value.trim();
+  const email = /** @type {HTMLInputElement} */ (document.getElementById('nu-email')).value.trim();
+  const password = /** @type {HTMLInputElement} */ (document.getElementById('nu-password')).value;
+  const role = /** @type {HTMLSelectElement} */ (document.getElementById('nu-role')).value;
   const result = document.getElementById('nu-result');
   result.textContent = '';
   if (!username || !password) {
-    result.textContent = 'Username and password are required.';
+    result.textContent = t('Username and password are required.');
     return;
   }
   try {
@@ -75,11 +80,11 @@ async function createUser() {
       method: 'POST',
       body: JSON.stringify({ username, email, password, role }),
     });
-    showToast(`Created ${username}`, 'success');
-    document.getElementById('nu-username').value = '';
-    document.getElementById('nu-email').value = '';
-    document.getElementById('nu-password').value = '';
-    document.getElementById('nu-role').value = 'viewer';
+    showToast(t('Created {username}', { username }), 'success');
+    /** @type {HTMLInputElement} */ (document.getElementById('nu-username')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('nu-email')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('nu-password')).value = '';
+    /** @type {HTMLSelectElement} */ (document.getElementById('nu-role')).value = 'viewer';
     loadUsers();
   } catch (e) {
     // 402 (operator without a Business license) and 400 (dupe / missing) land here.
@@ -87,13 +92,14 @@ async function createUser() {
   }
 }
 
+/** @param {string|null} uid @param {string} role @returns {Promise<void>} */
 async function changeRole(uid, role) {
   try {
     await apiJson(`/api/v1/accounts/users/${uid}/role/`, {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     });
-    showToast('Role updated', 'success');
+    showToast(t('Role updated'), 'success');
     loadUsers();
   } catch (e) {
     // e.g. Operator needs a Business license — surface it and snap the select back.
@@ -102,12 +108,13 @@ async function changeRole(uid, role) {
   }
 }
 
+/** @param {string|null} uid @param {string} username @returns {Promise<void>} */
 async function deleteUser(uid, username) {
-  const ok = await confirmModal(`Delete user "${username}"? This cannot be undone.`, { danger: true });
+  const ok = await confirmModal(t('Delete user "{username}"? This cannot be undone.', { username }), { danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/accounts/users/${uid}/`, { method: 'DELETE' });
-    showToast(`Deleted ${username}`, 'success');
+    showToast(t('Deleted {username}', { username }), 'success');
     loadUsers();
   } catch (e) {
     // Last-admin / self guards return 400 with a detail message.

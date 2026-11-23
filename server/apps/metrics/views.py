@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +14,7 @@ from rest_framework.response import Response
 from vigil import scoping
 from apps.hosts.models import Host
 
+from . import rollups
 from .api_schema import (
     MetricCatalogEntrySerializer,
     MetricErrorSerializer,
@@ -50,6 +52,7 @@ def metric_history(request, host_id, category, metric_name):
         return Response({"error": "limit must be an integer"}, status=400)
     limit = max(1, min(limit, 1000))
 
+    start = end = None
     for param, lookup in (("from", "time__gte"), ("to", "time__lte")):
         raw = request.query_params.get(param)
         if not raw:
@@ -59,7 +62,34 @@ def metric_history(request, host_id, category, metric_name):
             return Response(
                 {"error": f"{param} must be an ISO-8601 datetime"}, status=400
             )
+        if timezone.is_naive(ts):
+            # Read in TIME_ZONE, as the ORM reads a naive filter value, so the
+            # bucket arithmetic below compares like with like.
+            ts = timezone.make_aware(ts)
         qs = qs.filter(**{lookup: ts})
+        if param == "from":
+            start = ts
+        else:
+            end = ts
+    if end is None:
+        end = timezone.now()
+
+    # A range longer than a day answers one point per hour (to 30 days) or per
+    # day (longer), each with the bucket's average, minimum and maximum so a
+    # chart can draw a band and spikes still show. Stride sampling such a range
+    # scans tens of thousands of raw rows per series and cannot reach past the
+    # raw retention at all; on TimescaleDB these buckets are precomputed.
+    if start is not None and limit != 1:
+        bucket = rollups.pick_bucket(start, end)
+        if bucket != "raw":
+            rows = rollups.history(host.pk, category, metric_name, start, end, bucket)
+            response = Response([{**r, "time": r["time"].isoformat()} for r in rows])
+            response["X-Vigil-Bucket"] = bucket
+            response["X-Vigil-Sampled"] = "0"
+            response["X-Vigil-Total-Points"] = str(len(rows))
+            # The oldest buckets were left out to stay under the row cap.
+            response["X-Vigil-Truncated"] = "1" if len(rows) >= rollups.MAX_ROWS else "0"
+            return response
 
     # Sample across the whole window rather than truncating to the newest N.
     #
@@ -116,6 +146,7 @@ def metric_history(request, host_id, category, metric_name):
     response = Response(payload)
     # Tells the caller the series is sampled, so a UI can say so rather than
     # implying it is showing every measurement.
+    response["X-Vigil-Bucket"] = "raw"
     response["X-Vigil-Sampled"] = "1" if total > limit else "0"
     response["X-Vigil-Total-Points"] = str(total)
     return response
@@ -231,6 +262,10 @@ def _label_key(labels):
                          description="`category/metric[:limit]`, comma-separated."),
         OpenApiParameter("hosts", str, description="Comma-separated host ids; the whole fleet otherwise."),
         OpenApiParameter("from", str, description="ISO-8601 lower bound on the point time."),
+        OpenApiParameter("host", OpenApiTypes.UUID,
+                         description=f"Host id to report, repeated once per host, at most "
+                                     f"{MAX_RECENT_HOSTS}. Default: up to the first "
+                                     f"{MAX_RECENT_HOSTS} visible hosts."),
     ],
     responses={(200, "application/json"): MetricsRecentSerializer,
                (400, "application/json"): MetricErrorSerializer})

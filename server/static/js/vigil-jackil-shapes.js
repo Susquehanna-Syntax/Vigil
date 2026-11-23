@@ -1,3 +1,4 @@
+// @ts-check
 /* ── Jackil widget shapes (J1 p03d) ────────────────────────────────────────
    Ported from Jackil's jackil-widgets.js, drawn in Vigil's look. Every name
    is _jk-prefixed: Vigil's dashboard code already owns global names like
@@ -25,11 +26,11 @@ function _jkStat(body, data) {
   // count: say the words, don't draw a big zero.
   if (data.tone === 'muted' && !data.value && !data.sub) {
     body.innerHTML = `<div class="jk-empty"><span class="muted-note">`
-      + `${escHtml(data.label || 'Nothing to show')}</span></div>`;
+      + `${escHtml(data.label || t('Nothing to show'))}</span></div>`;
     return;
   }
   const inner =
-    `<div class="jk-stat-value" style="color: ${_jkInk(_jkPastel(data.tone))}">${escHtml(data.value)}</div>`
+    `<div class="jk-stat-value" data-css="color: ${_jkInk(_jkPastel(data.tone))}">${escHtml(data.value)}</div>`
     + `<div class="jk-stat-label">${escHtml(data.label)}</div>`
     + (data.sub ? `<div class="jk-stat-sub">${escHtml(data.sub)}</div>` : '');
   body.innerHTML = data.href
@@ -42,7 +43,7 @@ function _jkList(body, data) {
   const items = data.items || [];
   if (!items.length) {
     body.innerHTML = `<div class="jk-empty"><span class="muted-note">`
-      + `${escHtml(data.empty || 'Nothing here yet')}</span></div>`;
+      + `${escHtml(data.empty || t('Nothing here yet'))}</span></div>`;
     return;
   }
   // Row shape follows Vigil's _dashCard: a fully tinted card — no coloured
@@ -117,7 +118,7 @@ function _jkGauge(body, data) {
 function _jkLegend(data) {
   if ((data.series || []).length < 2) return '';
   return `<div class="jk-legend">${(data.series || []).map((s, si) =>
-    `<span><i style="background:${JK_SERIES_COLORS[si % JK_SERIES_COLORS.length]}"></i>`
+    `<span><i data-css="background:${JK_SERIES_COLORS[si % JK_SERIES_COLORS.length]}"></i>`
     + `${escHtml(s.name)}</span>`).join('')}</div>`;
 }
 

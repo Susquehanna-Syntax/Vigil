@@ -3,7 +3,7 @@ import logging
 from collections import Counter, defaultdict
 
 from django.db.models import Count, F, Q
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -67,7 +67,19 @@ def _row(base: dict, *, host_id=None, hostname=None, name_field="name",
     return out
 
 
-@extend_schema(responses={200: SoftwareAppListSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("q", str, description="Case-insensitive substring match on the app name."),
+    OpenApiParameter("source", str, enum=SoftwareItem.Source.values,
+                     description="Which install source to list apps from. Default: every source."),
+    OpenApiParameter("outdated", str, enum=["1"],
+                     description="Set to 1 to list only apps at least one host has out of date."),
+    OpenApiParameter("unmanaged", str, enum=["1"],
+                     description="Set to 1 to list only apps at least one host does not manage."),
+    OpenApiParameter("limit", int,
+                     description=f"How many apps to return, most-installed first. Default {DEFAULT_LIMIT}, "
+                                 f"at most {MAX_LIMIT}."),
+    OpenApiParameter("offset", int, description="How many of the ordered apps to skip. Default 0."),
+], responses={200: SoftwareAppListSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("software")

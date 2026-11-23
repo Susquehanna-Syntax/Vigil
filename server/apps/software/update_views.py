@@ -3,7 +3,7 @@ fleet-wide approve / decline every policy reads."""
 
 from django.db.models import Count, Max, Min, Q
 from django.utils.timezone import now
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -33,8 +33,17 @@ def _decisions() -> dict:
     return {(d.kind, d.key): d for d in UpdateDecision.objects.select_related("decided_by")}
 
 
-@extend_schema(responses={200: SoftwareUpdateListSerializer,
-                         403: SoftwareDetailSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("kind", str, enum=PendingUpdate.Kind.values,
+                     description="Which update feed to list. Default: every kind."),
+    OpenApiParameter("q", str,
+                     description="Case-insensitive substring match on the update key or title."),
+    OpenApiParameter("severity", str,
+                     description="Exact severity to list, matched case-insensitively."),
+    OpenApiParameter("decision", str, enum=[*UpdateDecision.Decision.values, "undecided"],
+                     description="Fleet decision to filter by: approved, declined, or undecided."),
+], responses={200: SoftwareUpdateListSerializer,
+              403: SoftwareDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def update_list(request):
@@ -82,6 +91,13 @@ def update_list(request):
                           "``key`` are plain query filters: with neither the "
                           "view matches rows whose kind and key are both "
                           "empty, which is why it answers 200 with no results.",
+               parameters=[
+                   OpenApiParameter("kind", str, enum=PendingUpdate.Kind.values,
+                                    description="Which update feed the key belongs to."),
+                   OpenApiParameter("key", str,
+                                    description="The update key whose missing hosts to list: the KB for a Windows "
+                                                "update, the package id for a Linux one."),
+               ],
                responses={200: SoftwareUpdateHostsSerializer,
                           403: SoftwareDetailSerializer})
 @api_view(["GET"])

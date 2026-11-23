@@ -185,37 +185,37 @@ class CollectAllTests(unittest.TestCase):
     def test_config_drives_the_watch_list_and_the_gpu_width(self):
         config = AgentConfig(server_url="https://vigil.example", agent_token="t",
                              process_watch=["postgres"], gpu_extended=True)
-        with patch.object(collector, "collect_cpu", return_value=[]), \
-             patch.object(collector, "collect_memory", return_value=[]), \
-             patch.object(collector, "collect_disk", return_value=[]), \
-             patch.object(collector, "collect_network", return_value=[]), \
-             patch.object(collector, "collect_temperatures", return_value=[]), \
-             patch.object(collector, "collect_top_processes", return_value=[]) as procs, \
-             patch.object(collector, "collect_gpu", return_value=[]) as gpu:
+        with patch.object(collector.aggregate, "collect_cpu", return_value=[]), \
+             patch.object(collector.aggregate, "collect_memory", return_value=[]), \
+             patch.object(collector.aggregate, "collect_disk", return_value=[]), \
+             patch.object(collector.aggregate, "collect_network", return_value=[]), \
+             patch.object(collector.aggregate, "collect_temperatures", return_value=[]), \
+             patch.object(collector.aggregate, "collect_top_processes", return_value=[]) as procs, \
+             patch.object(collector.aggregate, "collect_gpu", return_value=[]) as gpu:
             collector.collect_all(config)
         procs.assert_called_once_with(watch=["postgres"])
         gpu.assert_called_once_with(True)
 
     def test_no_config_watches_nothing(self):
-        with patch.object(collector, "collect_cpu", return_value=[]), \
-             patch.object(collector, "collect_memory", return_value=[]), \
-             patch.object(collector, "collect_disk", return_value=[]), \
-             patch.object(collector, "collect_network", return_value=[]), \
-             patch.object(collector, "collect_temperatures", return_value=[]), \
-             patch.object(collector, "collect_top_processes", return_value=[]) as procs, \
-             patch.object(collector, "collect_gpu", return_value=[]) as gpu:
+        with patch.object(collector.aggregate, "collect_cpu", return_value=[]), \
+             patch.object(collector.aggregate, "collect_memory", return_value=[]), \
+             patch.object(collector.aggregate, "collect_disk", return_value=[]), \
+             patch.object(collector.aggregate, "collect_network", return_value=[]), \
+             patch.object(collector.aggregate, "collect_temperatures", return_value=[]), \
+             patch.object(collector.aggregate, "collect_top_processes", return_value=[]) as procs, \
+             patch.object(collector.aggregate, "collect_gpu", return_value=[]) as gpu:
             collector.collect_all()
         procs.assert_called_once_with(watch=[])
         gpu.assert_called_once_with(False)
 
     def test_one_broken_collector_does_not_lose_the_others(self):
-        with patch.object(collector, "collect_cpu", return_value=[{"category": "cpu"}]), \
-             patch.object(collector, "collect_memory", side_effect=RuntimeError("boom")), \
-             patch.object(collector, "collect_disk", return_value=[]), \
-             patch.object(collector, "collect_network", return_value=[]), \
-             patch.object(collector, "collect_temperatures", return_value=[]), \
-             patch.object(collector, "collect_top_processes", return_value=[]), \
-             patch.object(collector, "collect_gpu", return_value=[{"category": "gpu"}]):
+        with patch.object(collector.aggregate, "collect_cpu", return_value=[{"category": "cpu"}]), \
+             patch.object(collector.aggregate, "collect_memory", side_effect=RuntimeError("boom")), \
+             patch.object(collector.aggregate, "collect_disk", return_value=[]), \
+             patch.object(collector.aggregate, "collect_network", return_value=[]), \
+             patch.object(collector.aggregate, "collect_temperatures", return_value=[]), \
+             patch.object(collector.aggregate, "collect_top_processes", return_value=[]), \
+             patch.object(collector.aggregate, "collect_gpu", return_value=[{"category": "gpu"}]):
             points = collector.collect_all()
         self.assertEqual([p["category"] for p in points], ["cpu", "gpu"])
 

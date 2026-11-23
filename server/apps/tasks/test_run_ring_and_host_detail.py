@@ -14,11 +14,12 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 CHARTS_JS = ROOT / "static/js/vigil-charts.js"
 TASKS_JS = ROOT / "static/js/vigil-tasks.js"
 RUNHISTORY_JS = ROOT / "static/js/vigil-runhistory.js"
-CSS = ROOT / "static/css/vigil.css"
 
 
 def _source(path, start_marker):
@@ -55,7 +56,7 @@ class RingSortsTests(SimpleTestCase):
     def test_slices_are_clickable(self):
         src = _source(CHARTS_JS, "function wireRunSummary(")
         self.assertIn(".donut-slice", src)
-        css = CSS.read_text()
+        css = design_css()
         rule = re.search(r"\.donut-slice\s*\{([^}]*)\}", css)
         self.assertIsNotNone(rule)
         self.assertIn("cursor: pointer", rule.group(1))
@@ -68,7 +69,7 @@ class RingSortsTests(SimpleTestCase):
 class HostRunDetailTests(SimpleTestCase):
     def test_host_detail_exists(self):
         src = _host_run_sources()
-        self.assertIn("String(t.host) === String(hostId)", src)
+        self.assertIn("String(task.host) === String(hostId)", src)
         self.assertIn("escHtml(JSON.stringify(", src)
 
     def test_both_dialogs_link_hosts(self):

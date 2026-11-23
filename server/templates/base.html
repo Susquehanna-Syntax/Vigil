@@ -1,9 +1,9 @@
-{% load static tz %}<!DOCTYPE html>
+{% load static tz i18n %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Vigil — Dashboard{% endblock %}</title>
+<title>{% block title %}{% translate "Vigil — Dashboard" %}{% endblock %}</title>
 {# SQSY typefaces, self-hosted — see static/css/fonts.css #}
 <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
 
@@ -19,12 +19,24 @@
 <link rel="stylesheet" href="{% static 'css/vendor/gridstack.min.css' %}">
 <script src="{% static 'js/vendor/gridstack-all.js' %}"></script>
 
-<!-- Styles: static/css/vigil.css — all design tokens, layout, and component styles -->
-<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+<!-- Styles: static/css/tokens.css (design tokens) and static/css/vigil/*.css (layout and components) -->
+{% include "_stylesheets.html" %}
 <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}
 <script nonce="{{ request.csp_nonce }}">
+  // A style element a script creates (xterm.js themes each terminal that
+  // way) needs this page's nonce, or style-src refuses it.
+  (function () {
+    var nonce = document.currentScript && document.currentScript.nonce;
+    if (!nonce) return;
+    var create = document.createElement.bind(document);
+    document.createElement = function (tag, options) {
+      var el = create(tag, options);
+      if (String(tag).toLowerCase() === 'style') el.nonce = nonce;
+      return el;
+    };
+  })();
   // Apply the saved theme and density before first paint to avoid a flash.
   (function () {
     try {
@@ -56,88 +68,88 @@
 
   {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
   <nav class="sidebar">
-    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;"></div>
+    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="{% translate "Vigil" %}"></div>
     {# Header site switcher (S1 04g). Logic: vigil-siteswitch.js; hidden unless the user sees more than one site. #}
-    <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="Sites"
-      role="button" tabindex="0" aria-label="Choose the sites to show" hidden>
+    <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="{% translate "Sites" %}"
+      role="button" tabindex="0" aria-label="{% translate "Choose the sites to show" %}" hidden>
       <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       <span class="site-switch-count" id="site-switch-count" hidden></span>
-      <span class="sidebar-label" id="site-switch-label">Sites</span>
+      <span class="sidebar-label" id="site-switch-label">{% translate "Sites" %}</span>
     </div>
 
-    <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
+    <div class="sidebar-icon active" data-page="dashboard" data-tip="{% translate "Dashboard" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="search" data-tip="Search (Ctrl+K)">
+    <div class="sidebar-icon" data-page="search" data-tip="{% translate "Search (Ctrl+K)" %}">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
+    <div class="sidebar-icon" data-page="inventory" data-tip="{% translate "Inventory" %}">
       <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="apps" data-tip="Apps">
+    <div class="sidebar-icon" data-page="apps" data-tip="{% translate "Apps" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6"/><circle cx="8.5" cy="6.5" r=".6"/><rect x="7" y="12" width="4" height="4" rx="1"/><line x1="13" y1="13" x2="17" y2="13"/><line x1="13" y1="15.5" x2="16" y2="15.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="store" data-tip="Store">
+    <div class="sidebar-icon" data-page="store" data-tip="{% translate "Store" %}">
       <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="policies" data-tip="Policies">
+    <div class="sidebar-icon" data-page="policies" data-tip="{% translate "Policies" %}">
       <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
+    <div class="sidebar-icon" data-page="tasks" data-tip="{% translate "Tasks" %}">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="playbooks" data-tip="Deployments">
+    <div class="sidebar-icon" data-page="playbooks" data-tip="{% translate "Deployments" %}">
       <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="reports" data-tip="Reports">
+    <div class="sidebar-icon" data-page="reports" data-tip="{% translate "Reports" %}">
       <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="12" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="11" rx="0.5"/><rect x="16" y="10" width="3" height="8" rx="0.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
+    <div class="sidebar-icon" data-page="vulns" data-tip="{% translate "Vulnerabilities" %}">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="firewall" data-tip="Firewall">
+    <div class="sidebar-icon" data-page="firewall" data-tip="{% translate "Firewall" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="3" y1="14.5" x2="21" y2="14.5"/><line x1="9" y1="4" x2="9" y2="9.5"/><line x1="15" y1="9.5" x2="15" y2="14.5"/><line x1="9" y1="14.5" x2="9" y2="20"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="reprovision" data-tip="Reprovision">
+    <div class="sidebar-icon" data-page="reprovision" data-tip="{% translate "Reprovision" %}">
       <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="6" r="0.6"/><rect x="2" y="15" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="18" r="0.6"/><path d="M12 9v10"/><polyline points="9 16 12 19 15 16"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
+    <div class="sidebar-icon" data-page="monitor" data-tip="{% translate "Monitor" %}">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="containers" data-tip="Containers">
+    <div class="sidebar-icon" data-page="containers" data-tip="{% translate "Containers" %}">
       <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="topology" data-tip="Topology">
+    <div class="sidebar-icon" data-page="topology" data-tip="{% translate "Topology" %}">
       <svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7" y1="7.5" x2="10.5" y2="16"/><line x1="17" y1="7.5" x2="13.5" y2="16"/><line x1="7.5" y1="6" x2="16.5" y2="6"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
+    <div class="sidebar-icon" data-page="alerts" data-tip="{% translate "Alerts" %}">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
+      {% if alert_count %}<div class="badge-dot badge-dot--alert"></div>{% endif %}
     </div>
-    <div class="sidebar-icon" data-page="statuspages" data-tip="Status Pages">
+    <div class="sidebar-icon" data-page="statuspages" data-tip="{% translate "Status Pages" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="community" data-tip="Community">
+    <div class="sidebar-icon" data-page="community" data-tip="{% translate "Community" %}">
       <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="settings" data-tip="Settings">
+    <div class="sidebar-icon" data-page="settings" data-tip="{% translate "Settings" %}">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      {% if pending_count %}<div class="badge-dot" style="background: var(--peach);"></div>{% endif %}
+      {% if pending_count %}<div class="badge-dot badge-dot--pending"></div>{% endif %}
     </div>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-icon sidebar-toggle" id="sidebar-toggle" data-act="toggleSidebar" data-tip="Show page names"
-      role="button" tabindex="0" aria-label="Show page names" aria-expanded="false">
+    <div class="sidebar-icon sidebar-toggle" id="sidebar-toggle" data-act="toggleSidebar" data-tip="{% translate "Show page names" %}"
+      role="button" tabindex="0" aria-label="{% translate "Show page names" %}" aria-expanded="false">
       <svg viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
     </div>
-    <div class="sidebar-icon" data-tip="Theme: Dark" id="theme-toggle" data-act="toggleTheme">
+    <div class="sidebar-icon" data-tip="{% translate "Theme: Dark" %}" id="theme-toggle" data-act="toggleTheme">
       <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="about" data-tip="About">
+    <div class="sidebar-icon" data-page="about" data-tip="{% translate "About" %}">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
     </div>
-    <a class="sidebar-icon" data-tip="Sign out" href="/logout/" title="Sign out">
+    <a class="sidebar-icon" data-tip="{% translate "Sign out" %}" href="/logout/" title="{% translate "Sign out" %}">
       <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
     </a>
     <div class="sidebar-avatar">V</div>
@@ -163,116 +175,125 @@
   </button>
   <div class="detail-header">
     <div class="detail-hostname" id="detail-hostname">—</div>
-    <div class="detail-meta" style="display:flex;align-items:center;gap:6px;">
+    <div class="detail-meta detail-meta-inline">
       <span id="detail-os-logo"></span>
       <span id="detail-meta">—</span>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Status</div>
-    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+    <div class="detail-section-title">{% translate "Status" %}</div>
+    <div class="detail-status-row">
       <div class="status-dot" id="detail-status-dot"></div>
-      <span id="detail-status-text" style="font-size: 14px; font-weight: 500;">—</span>
-      <span class="mode-badge" id="detail-mode-badge" style="margin-left: auto;">—</span>
+      <span id="detail-status-text" class="detail-status-text">—</span>
+      <span class="mode-badge" id="detail-mode-badge">—</span>
     </div>
-    <div style="font-size: 12px; color: var(--text-3);">
-      Last check-in: <span class="mono" id="detail-last-checkin">—</span>
+    <div class="detail-sub-line">
+      {% translate "Last check-in:" %} <span class="mono" id="detail-last-checkin">—</span>
     </div>
-    <div style="font-size: 12px; color: var(--text-3); display:flex; align-items:center; gap:8px;">
-      Agent: <span class="mono" id="detail-agent-version">—</span>
-      <button class="btn btn-ghost btn-sm" id="detail-update-agent-btn"
-              style="display:none; padding:2px 8px; color:var(--sky-ink);"
-              data-act="forceUpdateAgent">Update</button>
+    <div class="detail-sub-line detail-agent-line">
+      {% translate "Agent:" %} <span class="mono" id="detail-agent-version">—</span>
+      <button class="btn btn-ghost btn-sm detail-agent-btn" id="detail-update-agent-btn"
+              style="display:none;"
+              data-act="forceUpdateAgent">{% translate "Update" %}</button>
     </div>
+    <div id="detail-agent-update" class="detail-agent-update" hidden></div>
   </div>
 
   <div class="detail-section" id="detail-jackil-section" style="display:none;">
-    <div class="detail-section-title">Related in Jackil</div>
-    <div id="detail-jackil-body" style="font-size: 13px;"></div>
+    <div class="detail-section-title">{% translate "Related in Jackil" %}</div>
+    <div id="detail-jackil-body" class="detail-jackil-body"></div>
   </div>
 
   <div class="detail-section" id="detail-score-section" style="display:none;">
-    <div class="detail-section-title">Security score</div>
-    <div style="display:flex;align-items:playbook;gap:12px;">
-      <span class="mono" id="detail-score" style="font-size:28px;font-weight:600;line-height:1;">—</span>
-      <span style="font-size:12px;color:var(--text-3);">/ 100</span>
+    <div class="detail-section-title">{% translate "Security score" %}</div>
+    <div class="detail-score-row">
+      <span class="mono detail-score" id="detail-score">—</span>
+      <span class="detail-sub-line">/ 100</span>
     </div>
-    <div style="font-size:12px;color:var(--text-3);margin-top:6px;">
-      Last scan: <span class="mono" id="detail-last-scan">never</span>
+    <div class="detail-sub-line detail-sub-line-below">
+      {% translate "Last scan:" %} <span class="mono" id="detail-last-scan">{% translate "never" %}</span>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Resources</div>
+    <div class="detail-section-title">{% translate "Resources" %}</div>
     <div class="metric-grid">
       <div class="metric-card">
-        <div class="metric-card-label">CPU Usage</div>
-        <div class="metric-card-value" style="color: var(--sky-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
+        <div class="metric-card-label">{% translate "CPU Usage" %}</div>
+        <div class="metric-card-value metric-card-value-sky">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-sky"></div></div>
       </div>
       <div class="metric-card">
-        <div class="metric-card-label">Memory</div>
-        <div class="metric-card-value" style="color: var(--lavender-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
+        <div class="metric-card-label">{% translate "Memory" %}</div>
+        <div class="metric-card-value metric-card-value-lavender">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-lavender"></div></div>
       </div>
       <div class="metric-card">
-        <div class="metric-card-label">Disk</div>
-        <div class="metric-card-value" style="color: var(--mint-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
+        <div class="metric-card-label">{% translate "Disk" %}</div>
+        <div class="metric-card-value metric-card-value-mint">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-mint"></div></div>
       </div>
       <div class="metric-card">
-        <div class="metric-card-label">Swap</div>
-        <div class="metric-card-value" style="color: var(--peach-ink);">—</div>
-        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
+        <div class="metric-card-label">{% translate "Swap" %}</div>
+        <div class="metric-card-value metric-card-value-peach">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill metric-card-fill-peach"></div></div>
       </div>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">CPU History (1h)</div>
-    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+    <div class="detail-section-title">{% translate "CPU History (1h)" %}</div>
+    <div class="detail-chart-box">
       <canvas id="detail-chart-cpu"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Network I/O</div>
-    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+    <div class="detail-section-title">{% translate "Network I/O" %}</div>
+    <div class="detail-chart-box">
       <canvas id="detail-chart-net"></canvas>
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Docker Containers</div>
-    <div style="background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">
-      Container metrics will appear here once reported by the agent.
+    <div class="detail-section-title">{% translate "Docker Containers" %}</div>
+    <div class="detail-containers-empty">
+      {% translate "Container metrics will appear here once reported by the agent." %}
     </div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Tags</div>
-    <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
+    <div class="detail-section-title">{% translate "Tags" %}</div>
+    <div id="detail-tags-row" class="host-tag-row detail-tags-gap"></div>
     <div class="host-tag-add-row">
-      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40" style="font-size:12px;padding:7px 10px;">
+      <input type="text" class="form-control detail-tag-input" id="detail-tag-input" placeholder="{% translate "Add a tag: type to search or create" %}" aria-label="{% translate "Add a tag" %}" maxlength="40">
     </div>
-    <div class="confirm-hint" style="margin-top:6px;">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
+    <div class="confirm-hint detail-hint-below">{% translate "Server-side tags. Agent.yml tags are merged in (server values always win)." %}</div>
   </div>
 
   <div class="detail-section">
-    <div class="detail-section-title">Quick Actions</div>
+    <div class="detail-section-title">{% translate "Depends on" %}</div>
+    <select class="form-control detail-depends-select" id="detail-depends-on" aria-label="{% translate "The host this one depends on" %}">
+      <option value="">{% translate "Nothing" %}</option>
+    </select>
+    <div class="confirm-hint detail-depends-hint">{% translate "The switch, firewall or hypervisor this host sits behind. While that host is offline, this host's offline alert is kept off the notification channels: the other host's alert is the one that goes out." %}</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">{% translate "Quick Actions" %}</div>
     <div class="detail-actions" id="detail-actions">
       <!-- populated by JS based on host mode -->
     </div>
   </div>
 
-  <div class="detail-section" style="margin-top:auto; padding-top:24px; border-top:1px solid var(--s3);">
-    <button type="button" class="btn btn-outline btn-rose-ghost" style="width:100%;" id="detail-delete-btn"
+  <div class="detail-section detail-section-last">
+    <button type="button" class="btn btn-outline btn-rose-ghost detail-delete-btn" id="detail-delete-btn"
             data-act="deleteHostFromDetailPanel" data-a1="$el">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-      Remove Agent
+      {% translate "Remove Agent" %}
     </button>
-    <div class="confirm-hint" style="margin-top:6px;">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
+    <div class="confirm-hint detail-hint-below">{% translate "Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running." %}</div>
   </div>
 </div>
 
@@ -280,7 +301,7 @@
 <div class="modal-overlay" id="deploy-overlay" data-act="closeDeployModal"></div>
 <div class="modal modal-xwide" id="deploy-modal">
   <div class="modal-title">
-    <span id="deploy-modal-title">Deploy Task</span>
+    <span id="deploy-modal-title">{% translate "Deploy Task" %}</span>
     <button class="modal-close" data-act="closeDeployModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -291,11 +312,11 @@
       <!-- LEFT: tabbed view of definition / inputs / policy -->
       <div>
         <div class="deploy-tabs" role="tablist">
-          <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">YAML</button>
-          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Inputs</button>
-          <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">Schedule</button>
-          <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">Retry</button>
-          <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">Success</button>
+          <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">{% translate "YAML" %}</button>
+          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">{% translate "Inputs" %}</button>
+          <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">{% translate "Schedule" %}</button>
+          <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">{% translate "Retry" %}</button>
+          <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">{% translate "Success" %}</button>
         </div>
 
         <div class="deploy-tab-panels">
@@ -313,22 +334,22 @@
 
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
-            <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-weight:600;">
+            <label class="deploy-run-now">
               <input type="checkbox" id="deploy-schedule-run-now" checked data-change="_onRunNowToggle">
-              Run now (no schedule window — dispatch on next check-in)
+              {% translate "Run now (no schedule window — dispatch on next check-in)" %}
             </label>
-            <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
-            <div class="deploy-policy-grid" id="deploy-schedule-fields" style="margin-top:10px;">
+            <div class="deploy-policy-help">{% blocktranslate %}When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.{% endblocktranslate %}</div>
+            <div class="deploy-policy-grid deploy-policy-grid-top" id="deploy-schedule-fields">
               <div>
-                <label class="deploy-input-label">Start time</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing.">?</span>
+                <label class="deploy-input-label">{% translate "Start time" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing." %}">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
               </div>
               <div>
-                <label class="deploy-input-label">End time (inclusive)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The latest time of day this task is allowed to start. A task already running is not interrupted when the window closes.">?</span>
+                <label class="deploy-input-label">{% translate "End time (inclusive)" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "The latest time of day this task is allowed to start. A task already running is not interrupted when the window closes." %}">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-end" value="17:00" disabled>
               </div>
               <div class="full">
-                <label class="deploy-input-label">Allowed days</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Which days of the week the window applies to. Leave them all on for every day.">?</span>
+                <label class="deploy-input-label">{% translate "Allowed days" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "Which days of the week the window applies to. Leave them all on for every day." %}">?</span>
                 <div class="deploy-day-row" id="deploy-day-chips"></div>
               </div>
             </div>
@@ -336,14 +357,14 @@
 
           <!-- Retry (on-failure policy) -->
           <div class="deploy-panel" data-panel="retry">
-            <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <div class="deploy-policy-help">{% translate "When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries." %}</div>
+            <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
-                <label class="deploy-input-label">Retry attempts</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many extra times to try a step that fails. 0 means one attempt and no retries.">?</span>
+                <label class="deploy-input-label">{% translate "Retry attempts" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "How many extra times to try a step that fails. 0 means one attempt and no retries." %}">?</span>
                 <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
               </div>
               <div>
-                <label class="deploy-input-label">Delay between retries (seconds)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How long to wait before trying again. Useful when the thing you are waiting on takes a moment to settle, like a service restarting.">?</span>
+                <label class="deploy-input-label">{% translate "Delay between retries (seconds)" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "How long to wait before trying again. Useful when the thing you are waiting on takes a moment to settle, like a service restarting." %}">?</span>
                 <input type="number" min="0" max="3600" class="form-control" id="deploy-retry-delay" value="30">
               </div>
             </div>
@@ -351,20 +372,20 @@
 
           <!-- Success Criteria -->
           <div class="deploy-panel" data-panel="criteria">
-            <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <div class="deploy-policy-help">{% translate "Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them." %}</div>
+            <div class="deploy-policy-grid deploy-policy-grid-top">
               <div>
-                <label class="deploy-input-label">Expected exit code</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The exit code that counts as success. Usually 0. Anything else marks the step failed.">?</span>
+                <label class="deploy-input-label">{% translate "Expected exit code" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "The exit code that counts as success. Usually 0. Anything else marks the step failed." %}">?</span>
                 <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
               </div>
               <div></div>
               <div class="full">
-                <label class="deploy-input-label">Output must contain</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Plain text that has to appear in the command's output for the step to count as successful. Leave blank to skip this check.">?</span>
-                <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="(optional)">
+                <label class="deploy-input-label">{% translate "Output must contain" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "Plain text that has to appear in the command's output for the step to count as successful. Leave blank to skip this check." %}">?</span>
+                <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="{% translate "(optional)" %}">
               </div>
               <div class="full">
-                <label class="deploy-input-label">Output must match regex</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives.">?</span>
-                <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
+                <label class="deploy-input-label">{% translate "Output must match regex" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives." %}">?</span>
+                <input type="text" class="form-control deploy-criteria-regex" id="deploy-criteria-regex" placeholder="{% translate "(optional)" %}">
               </div>
             </div>
           </div>
@@ -373,33 +394,33 @@
 
       <!-- RIGHT: searchable host table OR tag picker -->
       <div class="deploy-right-col">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
-          <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
-          <div class="deploy-tabs" style="margin-bottom:0;">
-            <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">Hosts</button>
-            <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">By Tag</button>
+        <div class="deploy-target-head">
+          <div class="deploy-col-title deploy-col-title-flush">{% translate "Target" %}</div>
+          <div class="deploy-tabs deploy-tabs-flush">
+            <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">{% translate "Hosts" %}</button>
+            <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">{% translate "By Tag" %}</button>
           </div>
         </div>
 
         <div id="deploy-target-hosts">
-          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" data-input="filterDeployHosts">
+          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="{% translate "Search hosts by hostname, IP, or mode…" %}" data-input="filterDeployHosts">
           <div class="deploy-host-table">
             <div class="deploy-host-head">
-              <div><input type="checkbox" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
-              <div>Hostname</div>
-              <div>Mode</div>
+              <div><input type="checkbox" class="deploy-select-all" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked"></div>
+              <div>{% translate "Hostname" %}</div>
+              <div>{% translate "Mode" %}</div>
             </div>
             <div id="deploy-host-rows">
-              <div class="host-pick-empty">No online, executable hosts available.</div>
+              <div class="host-pick-empty">{% translate "No online, executable hosts available." %}</div>
             </div>
           </div>
-          <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+          <div class="confirm-hint confirm-hint-tight" id="deploy-host-summary">{% translate "Select one or more hosts." %}</div>
         </div>
 
         <div id="deploy-target-tags" style="display:none;">
-          <div class="deploy-policy-help" style="margin-bottom:10px;">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
+          <div class="deploy-policy-help deploy-tag-help">{% translate "Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag." %}</div>
           <div class="deploy-day-row" id="deploy-tag-chips"></div>
-          <div class="confirm-hint" id="deploy-tag-summary" style="margin-top:10px;">No tags selected.</div>
+          <div class="confirm-hint confirm-hint-wide" id="deploy-tag-summary">{% translate "No tags selected." %}</div>
         </div>
       </div>
 
@@ -408,16 +429,16 @@
     <!-- Hosts whose agent allowlist would refuse this task (M7): skipped unless ticked. -->
     <div class="deploy-refusals" id="deploy-refusals" hidden>
       <span id="deploy-refusals-text"></span>
-      <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> Send to them anyway</label>
+      <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> {% translate "Send to them anyway" %}</label>
     </div>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
+    <div class="deploy-footer">
       <span id="deploy-risk-label"></span>
-      <div style="display:flex;gap:10px;">
-        <button type="button" class="btn btn-ghost" data-act="closeDeployModal">Cancel</button>
+      <div class="deploy-footer-actions">
+        <button type="button" class="btn btn-ghost" data-act="closeDeployModal">{% translate "Cancel" %}</button>
         <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-          Deploy
+          {% translate "Deploy" %}
         </button>
       </div>
     </div>
@@ -428,60 +449,60 @@
 <div class="modal-overlay" id="wave-editor-overlay" data-act="closeWaveEditor"></div>
 <div class="modal" id="wave-editor-modal">
   <div class="modal-title">
-    <span id="wave-editor-title">New Wave</span>
+    <span id="wave-editor-title">{% translate "New Wave" %}</span>
     <button class="modal-close" data-act="closeWaveEditor">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;">
+  <div class="wave-editor-body">
     <div class="form-group">
-      <label class="form-label">Name</label>
-      <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
+      <label class="form-label">{% translate "Name" %}</label>
+      <input type="text" class="form-control" id="wave-name" placeholder="{% translate "Canary, Broad, Rest of fleet…" %}" maxlength="120">
     </div>
     <div class="form-group" id="wave-site-field" hidden>
-      <label class="form-label" for="wave-site">Site</label>
+      <label class="form-label" for="wave-site">{% translate "Site" %}</label>
       <select class="form-control" id="wave-site"></select>
-      <div class="muted-note" style="margin-top:6px;">Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists.</div>
+      <div class="muted-note muted-note-below-field">{% translate "Whose ladder it is. A site's rollouts walk their own site's waves when it has any, else the global ones. Fixed once the wave exists." %}</div>
     </div>
     <div class="form-group">
-      <label class="form-label">Groups <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = ungrouped)</span></label>
-      <input type="text" class="form-control" id="wave-group-tags" placeholder="servers, workstations">
-      <div class="muted-note" style="margin-top:6px;">
-        A group is just a tag. A rollout walks one group's waves in order, so
-        keep separate ladders for machines that should not patch together. A
-        wave can sit on more than one ladder — a canary wave is often the first
-        rung of both. Order only has to be unique within a group.
+      <label class="form-label">{% translate "Groups" %} <span class="form-label-optional">{% translate "(comma-separated; blank = ungrouped)" %}</span></label>
+      <input type="text" class="form-control" id="wave-group-tags" placeholder="{% translate "servers, workstations" %}">
+      <div class="muted-note muted-note-below-field">
+        {% translate "A group is just a tag. A rollout walks one group's waves in order, so" %}
+        {% translate "keep separate ladders for machines that should not patch together. A" %}
+        {% translate "wave can sit on more than one ladder — a canary wave is often the first" %}
+        {% translate "rung of both. Order only has to be unique within a group." %}
       </div>
     </div>
-    <div style="display:flex;gap:12px;">
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Order</label>
+    <div class="wave-row">
+      <div class="form-group">
+        <label class="form-label">{% translate "Order" %}</label>
         <input type="number" class="form-control" id="wave-order" min="1" value="1">
-        <div class="confirm-hint" style="margin-top:4px;">Lower numbers patch first.</div>
+        <div class="confirm-hint confirm-hint-flush">{% translate "Lower numbers patch first." %}</div>
       </div>
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Validation window (hours)</label>
+      <div class="form-group">
+        <label class="form-label">{% translate "Validation window (hours)" %}</label>
         <input type="number" class="form-control" id="wave-validation" min="0" max="720" value="24">
-        <div class="confirm-hint" style="margin-top:4px;">How long to wait after this wave before starting the next. 0 advances immediately.</div>
+        <div class="confirm-hint confirm-hint-flush">{% translate "How long to wait after this wave before starting the next. 0 advances immediately." %}</div>
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Host tags</label>
-      <input type="text" class="form-control" id="wave-tags" placeholder="canary, staging">
-      <div class="confirm-hint" style="margin-top:4px;">
-        Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
-        Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
+      <label class="form-label">{% translate "Host tags" %}</label>
+      <input type="text" class="form-control" id="wave-tags" placeholder="{% translate "canary, staging" %}">
+      <div class="confirm-hint confirm-hint-flush">
+        {% translate "Comma-separated. Any host carrying" %} <em>{% translate "any" %}</em> {% translate "of these tags is in the wave." %}
+        {% translate "Tags are edited on the host itself &mdash; this only chooses which ones the wave matches." %}
       </div>
-      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky-ink);"></div>
+      <div class="confirm-hint confirm-hint-tight wave-match-preview" id="wave-match-preview"></div>
     </div>
-    <label class="form-check" style="margin-bottom:4px;">
+    <label class="form-check wave-enabled-check">
       <input type="checkbox" id="wave-enabled" checked>
-      <span>Enabled &mdash; a disabled wave is skipped entirely</span>
+      <span>{% translate "Enabled &mdash; a disabled wave is skipped entirely" %}</span>
     </label>
   </div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" data-act="closeWaveEditor">Cancel</button>
-    <button class="btn btn-mint" id="wave-save-btn" data-act="saveWave">Save wave</button>
+    <button class="btn btn-ghost" data-act="closeWaveEditor">{% translate "Cancel" %}</button>
+    <button class="btn btn-mint" id="wave-save-btn" data-act="saveWave">{% translate "Save wave" %}</button>
   </div>
 </div>
 
@@ -493,59 +514,59 @@ settings before deciding anything.
 <div class="modal-overlay" id="rollout-detail-overlay" data-act="closeRolloutDetail"></div>
 <div class="modal modal-wide" id="rollout-detail-modal">
   <div class="modal-title">
-    <span id="rollout-detail-title">Rollout</span>
+    <span id="rollout-detail-title">{% translate "Rollout" %}</span>
     <button class="modal-close" data-act="closeRolloutDetail">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;" id="rollout-detail-body"></div>
-  <div class="modal-actions" id="rollout-detail-actions" style="align-items:center;gap:10px;"></div>
+  <div class="modal-scroll-body" id="rollout-detail-body"></div>
+  <div class="modal-actions modal-actions-centered" id="rollout-detail-actions"></div>
 </div>
 
 {# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; Start asks for TOTP (totpPrompt) like a deploy. #}
 <div class="modal-overlay" id="rollout-start-overlay" data-act="closeRolloutStart"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
   <div class="modal-title">
-    Start Rollout
+    {% translate "Start Rollout" %}
     <button class="modal-close" data-act="closeRolloutStart">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg viewBox="0 0 24 24" class="wave-editor-close-icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div style="overflow-y:auto;">
-    <div class="totp-sub" style="margin-bottom:14px;">
-      Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the
-      failure limit, and sit out its validation window.<br>
-      Which hosts land in which wave comes from the wave's tags &mdash; change the tags to change
-      who gets patched.
+  <div class="modal-scroll-body">
+    <div class="totp-sub totp-sub-tight">
+      {% translate "Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the" %}
+      {% translate "failure limit, and sit out its validation window." %}<br>
+      {% translate "Which hosts land in which wave comes from the wave's tags &mdash; change the" %}
+      {% translate "tags to change who gets patched." %}
     </div>
-    <div class="form-group" style="margin-bottom:12px;">
-      <label class="form-label">Task definition</label>
+    <div class="form-group form-group-12">
+      <label class="form-label">{% translate "Task definition" %}</label>
       <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
-        <span id="rollout-start-def-label">Choose a task or playbook…</span>
+        <span id="rollout-start-def-label">{% translate "Choose a task or playbook…" %}</span>
       </button>
       <input type="hidden" id="rollout-start-def">
-      <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
+      <div class="confirm-hint confirm-hint-flush" id="rollout-start-def-hint">{% translate "Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching." %}</div>
     </div>
     <div id="rollout-start-inputs" class="inputs-form" hidden></div>
-    <div class="form-group" style="margin-bottom:14px;">
-      <label class="form-label">Wave groups <span style="color:var(--text-3);font-weight:400;">(none picked = every enabled wave)</span></label>
-      <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="Wave groups"></div>
-      <div class="confirm-hint" id="rollout-start-group-hint" style="margin-top:4px;">Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it.</div>
+    <div class="form-group form-group-tight">
+      <label class="form-label">{% translate "Wave groups" %} <span class="form-label-optional">{% translate "(none picked = every enabled wave)" %}</span></label>
+      <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="{% translate "Wave groups" %}"></div>
+      <div class="confirm-hint confirm-hint-flush" id="rollout-start-group-hint">{% translate "Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it." %}</div>
     </div>
-    <div style="display:flex;gap:12px;margin-bottom:14px;">
-      <div class="form-group" style="flex:1;margin-bottom:0;">
-        <label class="form-label">Halt above failure&nbsp;%</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all.">?</span>
+    <div class="rollout-start-pair">
+      <div class="form-group">
+        <label class="form-label">{% translate "Halt above failure&nbsp;%" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all." %}">?</span>
         <input type="number" class="form-control" id="rollout-start-threshold" min="0" max="100" value="10">
       </div>
-      <div class="form-group" style="flex:1;margin-bottom:0;">
-        <label class="form-label">Min results before halt</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately.">?</span>
+      <div class="form-group">
+        <label class="form-label">{% translate "Min results before halt" %}</label><span class="field-hint" tabindex="0" aria-label="{% translate "About this field" %}" data-hint="{% translate "How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately." %}">?</span>
         <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
       </div>
     </div>
   </div>
-  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-    <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">Cancel</button>
-    <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">Start rollout</button>
+  <div class="rollout-start-actions">
+    <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">{% translate "Cancel" %}</button>
+    <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">{% translate "Start rollout" %}</button>
   </div>
 </div>
 
@@ -553,31 +574,31 @@ settings before deciding anything.
 <div class="modal-overlay" id="community-submit-overlay" data-act="closeCommunitySubmit"></div>
 <div class="modal" id="community-submit-modal">
   <div class="modal-title">
-    Submit to Community
+    {% translate "Submit to Community" %}
     <button class="modal-close" data-act="closeCommunitySubmit">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div class="totp-sub" style="margin-bottom:14px;">
-    The Vigil community catalog lives on GitHub at
-    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
-    Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR.
+  <div class="totp-sub totp-sub-tight">
+    {% translate "The Vigil community catalog lives on GitHub at" %}
+    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" class="community-catalog-link">{% translate "Susquehanna-Syntax/Vigil-Approved-Scripts" %}</a>.
+    {% translate "Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR." %}
   </div>
-  <div class="totp-sub" style="margin-bottom:18px;">
-    <strong>How submission works:</strong>
-    <ol style="margin:6px 0 0 18px;padding:0;line-height:1.7;">
-      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" style="background:var(--s2);padding:2px 6px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">task.yaml</code> under <code style="background:var(--s2);padding:2px 6px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">tasks/</code>.</li>
-      <li>Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account.</li>
-      <li>Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.</li>
-      <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry.</li>
+  <div class="totp-sub totp-sub-loose">
+    <strong>{% translate "How submission works:" %}</strong>
+    <ol class="community-submit-steps">
+      <li>{% blocktranslate %}Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" class="code-tight">task.yaml</code> under <code class="code-tight">tasks/</code>.{% endblocktranslate %}</li>
+      <li>{% translate "Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account." %}</li>
+      <li>{% blocktranslate %}Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.{% endblocktranslate %}</li>
+      <li>{% translate "A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry." %}</li>
     </ol>
   </div>
-  <div class="totp-sub" style="margin-bottom:18px;font-size:11px;color:var(--text-3);">
-    <strong>Auto-added to your YAML</strong> if you haven't set them: <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">author</code> (your Vigil username) and <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">created</code> (today's date). Required by the catalog so every entry is attributed.
+  <div class="totp-sub totp-sub-loose totp-sub-fine">
+    <strong>{% translate "Auto-added to your YAML" %}</strong> {% blocktranslate %}if you haven't set them: <code class="code-tight-sm">author</code> (your Vigil username) and <code class="code-tight-sm">created</code> (today's date). Required by the catalog so every entry is attributed.{% endblocktranslate %}
   </div>
-  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
-    <button class="btn btn-ghost" data-act="copyCommunityYaml">Copy YAML</button>
-    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" data-act="closeCommunitySubmit">Open GitHub PR</a>
+  <div class="community-submit-actions">
+    <button class="btn btn-ghost" data-act="copyCommunityYaml">{% translate "Copy YAML" %}</button>
+    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" data-act="closeCommunitySubmit">{% translate "Open GitHub PR" %}</a>
   </div>
 </div>
 
@@ -587,27 +608,27 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="ssh-overlay" data-act="closeSshModal"></div>
 <div class="modal" id="ssh-modal">
   <div class="modal-title">
-    <span id="ssh-modal-title">SSH to host</span>
+    <span id="ssh-modal-title">{% translate "SSH to host" %}</span>
     <button class="modal-close" data-act="closeSshModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div class="totp-sub" style="margin-bottom:16px;">
-    Opens a normal SSH session in your own terminal. Copy the command below, or use the
-    <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">ssh://</code>
-    link if your OS has a handler registered. Vigil doesn't connect to the host for you.
+  <div class="totp-sub totp-sub-mid">
+    {% translate "Opens a normal SSH session in your own terminal. Copy the command below, or use the" %}
+    <code class="code-tight-sm">{% translate "ssh://" %}</code>
+    {% translate "link if your OS has a handler registered. Vigil doesn't connect to the host for you." %}
   </div>
   <div class="form-group">
-    <label class="form-label" for="ssh-user">Username</label>
-    <input type="text" class="form-control" id="ssh-user" placeholder="root" data-input="updateSshCommand">
+    <label class="form-label" for="ssh-user">{% translate "Username" %}</label>
+    <input type="text" class="form-control" id="ssh-user" placeholder="{% translate "root" %}" data-input="updateSshCommand">
   </div>
   <div class="ssh-cmd-row">
-    <code class="ssh-cmd" id="ssh-cmd">ssh host</code>
-    <button class="btn btn-sky btn-sm" data-act="copySshCommand">Copy</button>
+    <code class="ssh-cmd" id="ssh-cmd">{% translate "ssh host" %}</code>
+    <button class="btn btn-sky btn-sm" data-act="copySshCommand">{% translate "Copy" %}</button>
   </div>
-  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:18px;">
-    <a id="ssh-uri-link" class="btn btn-ghost" href="#">Open ssh://</a>
-    <button class="btn btn-ghost" data-act="closeSshModal">Close</button>
+  <div class="community-submit-actions community-submit-actions-tall">
+    <a id="ssh-uri-link" class="btn btn-ghost" href="#">{% translate "Open ssh://" %}</a>
+    <button class="btn btn-ghost" data-act="closeSshModal">{% translate "Close" %}</button>
   </div>
 </div>
 
@@ -615,196 +636,266 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="device-overlay" data-act="closeDeviceModal"></div>
 <div class="modal" id="device-modal">
   <div class="modal-title">
-    <span id="device-modal-title">Add Device</span>
+    <span id="device-modal-title">{% translate "Add Device" %}</span>
     <button class="modal-close" data-act="closeDeviceModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
   <input type="hidden" id="device-id">
   <div class="form-group">
-    <label class="form-label" for="device-name">Name</label>
-    <input type="text" class="form-control" id="device-name" placeholder="e.g. Core Switch" maxlength="200">
+    <label class="form-label" for="device-name">{% translate "Name" %}</label>
+    <input type="text" class="form-control" id="device-name" placeholder="{% translate "e.g. Core Switch" %}" maxlength="200">
   </div>
   <div class="form-group" id="device-site-field" hidden>
-    <label class="form-label" for="device-site">Site</label>
+    <label class="form-label" for="device-site">{% translate "Site" %}</label>
     <select class="form-control" id="device-site"></select>
-    <div class="confirm-hint" style="margin-top:6px;">Who may see and change it.</div>
+    <div class="confirm-hint detail-hint-below">{% translate "Who may see and change it." %}</div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div class="device-editor-pair">
     <div class="form-group">
-      <label class="form-label" for="device-type">Type</label>
+      <label class="form-label" for="device-type">{% translate "Type" %}</label>
       <select class="form-control" id="device-type">
-        <option value="router">Router</option>
-        <option value="switch">Switch</option>
-        <option value="firewall">Firewall</option>
-        <option value="access_point">Access Point</option>
-        <option value="printer">Printer</option>
-        <option value="nas">NAS</option>
-        <option value="server">Server</option>
-        <option value="workstation">Workstation</option>
-        <option value="camera">Camera</option>
-        <option value="ups">UPS</option>
-        <option value="iot">IoT Device</option>
-        <option value="other" selected>Other</option>
+        <option value="router">{% translate "Router" %}</option>
+        <option value="switch">{% translate "Switch" %}</option>
+        <option value="firewall">{% translate "Firewall" %}</option>
+        <option value="access_point">{% translate "Access Point" %}</option>
+        <option value="printer">{% translate "Printer" %}</option>
+        <option value="nas">{% translate "NAS" %}</option>
+        <option value="server">{% translate "Server" %}</option>
+        <option value="workstation">{% translate "Workstation" %}</option>
+        <option value="camera">{% translate "Camera" %}</option>
+        <option value="ups">{% translate "UPS" %}</option>
+        <option value="iot">{% translate "IoT Device" %}</option>
+        <option value="other" selected>{% translate "Other" %}</option>
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="device-ip">IP Address</label>
+      <label class="form-label" for="device-ip">{% translate "IP Address" %}</label>
       <input type="text" class="form-control" id="device-ip" placeholder="10.0.0.1">
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div class="device-editor-pair">
     <div class="form-group">
-      <label class="form-label" for="device-mac">MAC Address</label>
-      <input type="text" class="form-control" id="device-mac" placeholder="aa:bb:cc:dd:ee:ff" maxlength="17">
+      <label class="form-label" for="device-mac">{% translate "MAC Address" %}</label>
+      <input type="text" class="form-control" id="device-mac" placeholder='{% translate "aa:bb:cc:dd:ee:ff" %}' maxlength="17">
     </div>
     <div class="form-group">
-      <label class="form-label" for="device-vendor">Vendor</label>
-      <input type="text" class="form-control" id="device-vendor" placeholder="Ubiquiti" maxlength="120">
+      <label class="form-label" for="device-vendor">{% translate "Vendor" %}</label>
+      <input type="text" class="form-control" id="device-vendor" placeholder="{% translate "Ubiquiti" %}" maxlength="120">
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-location">Location</label>
-    <input type="text" class="form-control" id="device-location" placeholder="Rack 1 / Office" maxlength="160">
+    <label class="form-label" for="device-location">{% translate "Location" %}</label>
+    <input type="text" class="form-control" id="device-location" placeholder="{% translate "Rack 1 / Office" %}" maxlength="160">
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div class="device-editor-pair">
     <div class="form-group">
-      <label class="form-label" for="device-serial">Serial</label>
-      <input type="text" class="form-control" id="device-serial" placeholder="SN-0001" maxlength="120">
+      <label class="form-label" for="device-serial">{% translate "Serial" %}</label>
+      <input type="text" class="form-control" id="device-serial" placeholder="{% translate "SN-0001" %}" maxlength="120">
     </div>
     <div class="form-group">
-      <label class="form-label" for="device-warranty">Warranty ends</label>
+      <label class="form-label" for="device-warranty">{% translate "Warranty ends" %}</label>
       <input type="date" class="form-control" id="device-warranty">
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-owner">Owner</label>
-    <input type="text" class="form-control" id="device-owner" placeholder="A name or an email address" maxlength="200">
+    <label class="form-label" for="device-owner">{% translate "Owner" %}</label>
+    <input type="text" class="form-control" id="device-owner" placeholder="{% translate "A name or an email address" %}" maxlength="200">
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-extra">Extra facts</label>
-    <textarea class="form-control" id="device-extra" rows="3" placeholder="One fact per line, as Key: value"></textarea>
+    <label class="form-label" for="device-extra">{% translate "Extra facts" %}</label>
+    <textarea class="form-control" id="device-extra" rows="3" placeholder="{% translate "One fact per line, as Key: value" %}"></textarea>
   </div>
   <div class="form-group">
-    <label class="form-label" for="device-notes">Notes</label>
-    <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
+    <label class="form-label" for="device-notes">{% translate "Notes" %}</label>
+    <textarea class="form-control" id="device-notes" placeholder="{% translate "Anything worth remembering about this device" %}"></textarea>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose-ink);" data-act="deleteDeviceFromModal">Delete</button>
-    <div style="display:flex;gap:10px;margin-left:auto;">
-      <button class="btn btn-ghost" data-act="closeDeviceModal">Cancel</button>
-      <button class="btn btn-sky" data-act="saveDevice">Save Device</button>
+  <div class="form-group device-checks" id="device-checks" hidden>
+    <label class="form-label">{% translate "Checks" %}</label>
+    <div id="device-checks-list" class="device-checks-list"></div>
+    <div class="device-check-add" id="device-check-add" hidden>
+      <select class="form-control" id="device-check-kind" data-change="setDeviceCheckKind" data-a1="$el" aria-label="{% translate "Check kind" %}">
+        <option value="icmp">{% translate "Ping" %}</option><option value="tcp">{% translate "TCP port" %}</option>
+        <option value="http">{% translate "HTTP(S)" %}</option><option value="dns">{% translate "DNS" %}</option>
+        <option value="snmp">{% translate "SNMP" %}</option>
+        <option value="ssh" id="device-check-kind-ssh">{% translate "SSH config backup" %}</option>
+      </select>
+      <input class="form-control" id="device-check-target" placeholder="{% translate "Address, URL or name" %}" aria-label="{% translate "Check target" %}">
+      <input class="form-control" id="device-check-port" type="number" min="1" max="65535" placeholder="{% translate "Port" %}" hidden aria-label="{% translate "Port" %}">
+      <select class="form-control" id="device-check-snmp-version" data-change="setDeviceCheckSnmpVersion" data-a1="$el" aria-label="{% translate "SNMP version" %}" hidden>
+        <option value="2c">v2c</option><option value="3">v3</option>
+      </select>
+      <input class="form-control" id="device-check-community" type="password" autocomplete="off" placeholder="{% translate "Community" %}" aria-label="{% translate "SNMP community" %}" hidden>
+      <div class="device-check-v3" id="device-check-v3" hidden>
+        <input class="form-control" id="device-check-v3-user" autocomplete="off" placeholder="{% translate "User" %}" aria-label="{% translate "SNMPv3 user" %}">
+        <select class="form-control" id="device-check-v3-auth" aria-label="{% translate "SNMPv3 authentication" %}">
+          <option value="sha256">{% translate "SHA-256" %}</option><option value="sha">{% translate "SHA-1" %}</option>
+        </select>
+        <input class="form-control" id="device-check-v3-auth-password" type="password" autocomplete="off" placeholder="{% translate "Auth password" %}" aria-label="{% translate "SNMPv3 auth password" %}">
+        <input class="form-control" id="device-check-v3-priv-password" type="password" autocomplete="off" placeholder="{% translate "Privacy password (optional)" %}" title="{% translate "Leave blank to authenticate without encrypting" %}" aria-label="{% translate "SNMPv3 privacy password, optional: blank means not encrypted" %}">
+      </div>
+      <textarea class="form-control device-check-oids" id="device-check-oids" rows="3" placeholder="{% translate "Optional, one per line: label = OID, for example if_in = 1.3.6.1.2.1.2.2.1.10.1" %}" aria-label="{% translate "SNMP values to read" %}" hidden></textarea>
+      <label class="device-check-walk" id="device-check-walk" hidden><input type="checkbox" id="device-check-interfaces"> {% translate "Read the interface table" %}</label>
+      <div class="device-check-ssh" id="device-check-ssh" hidden>
+        <input class="form-control" id="device-check-ssh-user" autocomplete="off" placeholder="{% translate "User" %}" aria-label="{% translate "SSH user" %}">
+        <input class="form-control" id="device-check-ssh-command" list="device-check-ssh-commands" placeholder="{% translate "Command, for example show running-config" %}" aria-label="{% translate "Command that prints the configuration" %}">
+      </div>
+      <datalist id="device-check-ssh-commands">
+        <option value="show running-config"></option>
+        <option value="cat /conf/config.xml"></option>
+        <option value="/export"></option>
+      </datalist>
+      <select class="form-control" id="device-check-interval" aria-label="{% translate "How often" %}">
+        <option value="60">{% translate "Every minute" %}</option><option value="300">{% translate "Every 5 minutes" %}</option>
+        <option value="900">{% translate "Every 15 minutes" %}</option><option value="3600">{% translate "Every hour" %}</option>
+        <option value="21600">{% translate "Every 6 hours" %}</option><option value="86400">{% translate "Every day" %}</option>
+      </select>
+      <button class="btn btn-sm btn-mint" type="button" data-act="addDeviceCheck">{% translate "Add check" %}</button>
+    </div>
+  </div>
+  <div class="device-editor-foot">
+    <button class="btn btn-ghost device-delete-btn" id="device-delete-btn" style="display:none;" data-act="deleteDeviceFromModal">{% translate "Delete" %}</button>
+    <div class="device-editor-foot-actions">
+      <button class="btn btn-ghost" data-act="closeDeviceModal">{% translate "Cancel" %}</button>
+      <button class="btn btn-sky" data-act="saveDevice">{% translate "Save Device" %}</button>
     </div>
   </div>
 </div>
 
+{# Device discovery modal — opened by openDiscovery() in vigil-discovery.js (S9) #}
+<div class="modal-overlay" id="discovery-overlay" data-act="closeDiscovery"></div>
+<div class="modal modal-wide discovery-modal" id="discovery-modal">
+  <div class="modal-title">
+    <span>{% translate "Discover devices" %}</span>
+    <button class="modal-close" data-act="closeDiscovery">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form id="discovery-form" class="discovery-form" data-submit="startDiscoveryScan" data-a1="$event" hidden>
+    <label class="form-label discovery-sr" for="discovery-poller">{% translate "Poller" %}</label>
+    <select class="form-control" id="discovery-poller"></select>
+    <label class="form-label discovery-sr" for="discovery-cidr">{% translate "Network" %}</label>
+    <input class="form-control" id="discovery-cidr" placeholder="10.0.0.0/24" autocomplete="off">
+    <label class="form-label discovery-sr" for="discovery-ports">{% translate "Ports" %}</label>
+    <input class="form-control" id="discovery-ports" placeholder="{% translate "Ports (optional)" %}" autocomplete="off">
+    <label class="form-label discovery-sr" for="discovery-community">{% translate "SNMP community" %}</label>
+    <input class="form-control" id="discovery-community" type="password" autocomplete="off" placeholder="{% translate "Community (optional)" %}">
+    <button class="btn btn-sm btn-mint" type="submit">{% translate "Scan" %}</button>
+  </form>
+  <div class="discovery-help" id="discovery-help" hidden>{% blocktranslate %}Private IPv4 networks only, up to 1024 addresses.
+    Without ports it tries 22, 23, 80, 443, 445, 3389, 8080 and 8443; with an SNMP community it also reads each
+    host's name. The poller scans on its next check-in.{% endblocktranslate %}</div>
+  <div id="discovery-scans" class="discovery-scans"></div>
+  <div id="discovery-result" class="discovery-result" hidden></div>
+</div>
+
 {# Task run detail modal — opened by openTaskDetail() in vigil-tasks.js #}
 <div class="modal-overlay" id="task-detail-overlay" data-act="closeTaskDetail"></div>
-<div class="modal modal-wide" id="task-detail-modal" style="max-height:80vh;display:flex;flex-direction:column;">
-  <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-    <span id="task-detail-title">Task Run</span>
+<div class="modal modal-wide modal-column" id="task-detail-modal">
+  <div class="modal-title modal-title-tight">
+    <span id="task-detail-title">{% translate "Task Run" %}</span>
     <button class="modal-close" data-act="closeTaskDetail">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div id="task-detail-meta" style="font-size:12px;color:var(--text-3);margin-bottom:16px;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;"></div>
-  <div id="task-detail-jackil" style="display:none; flex-shrink:0; margin-bottom: 12px; font-size: 13px;">
-    <div class="detail-section-title">Related in Jackil</div>
+  <div id="task-detail-meta" class="task-detail-meta"></div>
+  <div id="task-detail-jackil" style="display:none;" class="task-detail-jackil">
+    <div class="detail-section-title">{% translate "Related in Jackil" %}</div>
     <div id="task-detail-jackil-body"></div>
   </div>
-  <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
+  <div id="task-detail-steps" class="task-detail-steps"></div>
   <div class="confirm-actions" id="task-detail-actions" hidden>
-    <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">Open hunt results</button>
+    <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">{% translate "Open hunt results" %}</button>
   </div>
 </div>
 
 {# Enrollment wizard — opened by openEnrollWizard() in vigil-enroll.js #}
 <div class="modal-overlay" id="enroll-overlay" data-act="closeEnrollWizard"></div>
-<div class="modal modal-wide" id="enroll-modal" style="max-height:80vh;display:flex;flex-direction:column;">
-  <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-    <span id="enroll-title">Add Host</span>
+<div class="modal modal-wide modal-column" id="enroll-modal">
+  <div class="modal-title modal-title-tight">
+    <span id="enroll-title">{% translate "Add Host" %}</span>
     <button class="modal-close" data-act="closeEnrollWizard">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
 
   {# Step indicator #}
-  <div class="enroll-steps" id="enroll-steps" style="display:flex;gap:8px;margin-bottom:20px;flex-shrink:0;">
+  <div class="enroll-steps" id="enroll-steps">
     <div class="auth-step-pill active" id="enroll-pip-1">1</div>
     <div class="auth-step-pill" id="enroll-pip-2">2</div>
     <div class="auth-step-pill" id="enroll-pip-3">3</div>
     <div class="auth-step-pill" id="enroll-pip-4">4</div>
-    <div style="font-size:12px;color:var(--text-3);margin-left:4px;align-self:center;" id="enroll-step-label">Generate token</div>
+    <div class="enroll-step-label" id="enroll-step-label">{% translate "Generate token" %}</div>
   </div>
 
   {# Step 1: token + install command #}
-  <div id="enroll-s1" style="flex:1;overflow-y:auto;">
-    <div class="totp-sub" style="margin-bottom:16px;">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
-    <div class="tab-bar" style="margin-bottom:14px;">
-      <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">Linux &amp; macOS</button>
-      <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">Windows</button>
+  <div id="enroll-s1" class="enroll-step-body">
+    <div class="totp-sub totp-sub-mid">{% translate "A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here." %}</div>
+    <div class="tab-bar tab-bar-tight">
+      <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">{% translate "Linux &amp; macOS" %}</button>
+      <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">{% translate "Windows" %}</button>
     </div>
-    <div style="margin-bottom:14px;">
-      <label class="deploy-input-label" for="enroll-profile">Agent profile</label>
+    <div class="enroll-profile-field">
+      <label class="deploy-input-label" for="enroll-profile">{% translate "Agent profile" %}</label>
       <select class="form-control" id="enroll-profile" data-change="enrollUseProfile"></select>
-      <div class="confirm-hint" style="margin-top:4px;">Start from a saved profile, adjust anything below, then create the command.</div>
+      <div class="confirm-hint confirm-hint-flush">{% translate "Start from a saved profile, adjust anything below, then create the command." %}</div>
     </div>
     <div id="enroll-config"></div>
-    <div style="display:flex;gap:8px;margin:14px 0;">
-      <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">Create install command</button>
-      <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">Save as profile</button>
+    <div class="enroll-command-actions">
+      <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">{% translate "Create install command" %}</button>
+      <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">{% translate "Save as profile" %}</button>
     </div>
     <div class="confirm-hint apf-error" id="enroll-stale" hidden></div>
     <div class="confirm-hint" id="enroll-notes" hidden></div>
-    <div style="margin-bottom:12px;" id="enroll-cmd-block" hidden>
-      <label class="deploy-input-label">One-liner install command</label>
-      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" data-act="copyEnrollCmd" title="Click to copy"></div>
-      <div class="confirm-hint" style="margin-top:4px;">Valid for 24 hours, once.</div>
+    <div class="enroll-cmd-block" id="enroll-cmd-block" hidden>
+      <label class="deploy-input-label">{% translate "One-liner install command" %}</label>
+      <div class="code-block mono enroll-cmd" id="enroll-cmd" data-act="copyEnrollCmd" title="{% translate "Click to copy" %}"></div>
+      <div class="confirm-hint confirm-hint-flush">{% translate "Valid for 24 hours, once." %}</div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
-      <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">Copy command</button>
+    <div class="enroll-cmd-copy">
+      <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">{% translate "Copy command" %}</button>
       <button class="btn btn-sky btn-sm" data-act="enrollGoStep2">
-        I ran the command — Next
-        <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        {% translate "I ran the command — Next" %}
+        <svg viewBox="0 0 24 24" class="btn-icon-xs"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
     </div>
-    <div class="confirm-hint" id="enroll-cmd-hint">Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.</div>
+    <div class="confirm-hint" id="enroll-cmd-hint">{% translate "Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below." %}</div>
   </div>
 
   {# Step 2: polling #}
-  <div id="enroll-s2" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-    <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Waiting for agent to connect…</div>
-    <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
-    <div style="margin-top:20px;">
-      <div class="status-dot pending" style="display:inline-block;animation:pulse 1.5s infinite;"></div>
+  <div id="enroll-s2" class="enroll-step-body enroll-step-centered" style="display:none;">
+    <div class="enroll-step-icon"><svg viewBox="0 0 24 24" class="enroll-icon-clock"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div class="enroll-step-title">{% translate "Waiting for agent to connect…" %}</div>
+    <div class="totp-sub">{% translate "The agent will appear here within a few seconds of running the command." %}</div>
+    <div class="enroll-pulse-row">
+      <div class="status-dot pending enroll-pulse-dot"></div>
     </div>
   </div>
 
   {# Step 3: approve #}
-  <div id="enroll-s3" style="flex:1;overflow-y:auto;display:none;">
-    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint-ink);">Agent detected!</div>
-    <div class="enroll-card" style="margin-bottom:20px;">
+  <div id="enroll-s3" class="enroll-step-body" style="display:none;">
+    <div class="enroll-step-title enroll-step-title-mid enroll-step-title-mint">{% translate "Agent detected!" %}</div>
+    <div class="enroll-card enroll-card-below">
       <div class="status-dot pending"></div>
       <div class="enroll-info">
         <div class="enroll-hostname" id="enroll-detected-hostname">—</div>
         <div class="enroll-meta" id="enroll-detected-meta">—</div>
-        <div class="enroll-meta" id="enroll-replaces" style="display:none;margin-top:6px;"></div>
+        <div class="enroll-meta enroll-replaces" id="enroll-replaces" style="display:none;"></div>
       </div>
     </div>
-    <div class="totp-sub" style="margin-bottom:14px;">Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks.</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">Approve &amp; Activate</button>
-      <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">Cancel</button>
+    <div class="totp-sub totp-sub-tight">{% translate "Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks." %}</div>
+    <div class="enroll-approve-actions">
+      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">{% translate "Approve &amp; Activate" %}</button>
+      <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">{% translate "Cancel" %}</button>
     </div>
   </div>
 
   {# Step 4: done #}
-  <div id="enroll-s4" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint-ink);">Host enrolled successfully</div>
-    <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
-    <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">Done</button>
+  <div id="enroll-s4" class="enroll-step-body enroll-step-centered" style="display:none;">
+    <div class="enroll-step-icon"><svg viewBox="0 0 24 24" class="enroll-icon-check"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+    <div class="enroll-step-title enroll-step-title-done enroll-step-title-mint">{% translate "Host enrolled successfully" %}</div>
+    <div class="totp-sub totp-sub-wide" id="enroll-done-msg">{% translate "The agent is now online and monitoring." %}</div>
+    <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">{% translate "Done" %}</button>
   </div>
 </div>
 
@@ -814,9 +905,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 {# Bridge: passes server-rendered config to JS. Source: vigil/urls.py dashboard() view. #}
 {# Security: only non-secret values that Django has already rendered to the page. #}
 {#   No CSRF token here — vigil-utils.js getCsrf() reads from the cookie/DOM. #}
-{# Inline, and nonced: apps/accounts/csp.py mints request.csp_nonce per   #}
-{#   request, so script-src carries no 'unsafe-inline'. The <script src>  #}
-{#   tags below need no nonce — script-src 'self' already covers them.    #}
+{# Inline, and nonced: apps/accounts/csp.py mints request.csp_nonce per     #}
+{#   request, so script-src carries no 'unsafe-inline'. The tags with a src  #}
+{#   attribute below need no nonce — 'self' already covers them.            #}
 {% block config %}
 <script nonce="{{ request.csp_nonce }}">
   window.VIGIL_CONFIG = {
@@ -828,6 +919,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 {% endblock %}
 
 <!-- vigil-utils.js — getCsrf, apiPost/apiJson, showToast, escHtml, formatBytes, groupByLabel, computeRates. Load first: every other script depends on this. -->
+{# Django's translation catalog: gettext/ngettext for t() and tn() in vigil-utils.js. #}
+<script src="{% url 'javascript-catalog' %}"></script>
 <script src="{% static 'js/vigil-utils.js' %}"></script>
 <!-- vigil-modal.js — focus, Esc, focus trap, inert page and stacking for every dialog -->
 <script src="{% static 'js/vigil-modal.js' %}"></script>
@@ -897,6 +990,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-topology.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
+<!-- vigil-discovery.js — the Discover dialog: scan a network from a poller and add what it found as devices (S9) -->
+<script src="{% static 'js/vigil-discovery.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->
 <script src="{% static 'js/vigil-instance-settings.js' %}"></script>
 <!-- vigil-api-keys.js — Settings → API & Webhooks pane (scoped keys, webhooks) -->
@@ -904,6 +999,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <!-- vigil-settings.js — TOTP enroll / confirm / disable -->
 <script src="{% static 'js/vigil-settings.js' %}"></script>
 <script src="{% static 'js/vigil-settings-access.js' %}"></script>
+<script src="{% static 'js/vigil-channels.js' %}"></script>
+<!-- vigil-maintenance.js — Settings → Notifications pane: maintenance windows -->
+<script src="{% static 'js/vigil-maintenance.js' %}"></script>
 <!-- vigil-users.js — Users & Roles pane (list/create/role/delete) -->
 <script src="{% static 'js/vigil-users.js' %}"></script>
 <!-- vigil-usersites.js — per-site role grants + operator capability matrix -->

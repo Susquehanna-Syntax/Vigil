@@ -15,5 +15,10 @@ it is told to).
 # business — the feature only says it understands being asked at all.
 # stack_build (2026.15.1): stack_deploy and docker_compose_up take build: true
 # and run ``up --build``, so a Git stack's new commit is rebuilt, not reused.
+# update_guard (2026.17): update_agent has the new build prove itself before
+# the swap, keeps the old binary until a check-in confirms the new one, rolls
+# back if none does, and reports the outcome as ``agent_update``.
+# device_checks (S9): this agent runs the signed device checks it is handed
+# when its own agent.yml says ``poller: true``, and reports ``check_results``.
 FEATURES = ("relevant", "branches", "boost", "signed_v2", "stack_source",
-            "remote_sessions", "stack_build")
+            "remote_sessions", "stack_build", "update_guard", "device_checks")

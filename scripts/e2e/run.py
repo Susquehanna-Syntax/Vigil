@@ -32,6 +32,11 @@ BASE = os.environ.get("E2E_BASE", "http://localhost:8010")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/e2e"
 TOTP = "JBSWY3DPEHPK3PXP"          # matches seed.py
 PASSWORD = "e2e-pass-123"
+# path to axe.min.js; CI sets it (see the Fetch axe-core step)
+AXE = os.environ.get("E2E_AXE", "")
+AXE_SHA256 = "b511cd9dec01c76f4b2ad1723b66b6db37d4c2eb4ed199076e1829d9ee7b75e3"
+AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]
+BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axe-baseline.json")
 os.makedirs(OUT, exist_ok=True)
 
 failures: list[str] = []
@@ -157,6 +162,126 @@ def every_page(s: Session):
     assert not bad, json.dumps(bad, indent=1)
 
 
+def load_axe() -> str | None:
+    if not AXE:
+        return None
+    with open(AXE, "rb") as f:
+        raw = f.read()
+    if hashlib.sha256(raw).hexdigest() != AXE_SHA256:
+        raise RuntimeError("axe.min.js does not match the pinned hash")
+    return raw.decode("utf-8")
+
+
+def axe_findings(s: Session, source: str) -> tuple[list[tuple[str, str]], list[dict]]:
+    # page.evaluate runs outside the content Security-Policy; a script tag would be blocked.
+    s.page.evaluate(source)
+    violations = s.page.evaluate(
+        """tags => axe.run(document, {
+             runOnly: {type: "tag", values: tags},
+             resultTypes: ["violations"]
+           }).then(r => r.violations)""",
+        AXE_TAGS,
+    )
+    pairs: list[tuple[str, str]] = []
+    cut: list[dict] = []
+    for v in violations:
+        nodes = []
+        for node in v["nodes"]:
+            target = " ".join(node["target"])
+            pairs.append((v["id"], target))
+            nodes.append({"target": target,
+                          "failureSummary": node["failureSummary"][:300]})
+        cut.append({"id": v["id"], "impact": v.get("impact"), "help": v.get("help"),
+                    "helpUrl": v.get("helpUrl"), "nodes": nodes})
+    return sorted(set(pairs)), cut
+
+
+@flow("every page passes axe (WCAG 2.1 AA), apart from the baseline")
+def axe_pages(s: Session):
+    source = load_axe()
+    if source is None:
+        if os.environ.get("CI"):
+            raise AssertionError("E2E_AXE is not set: CI must fetch axe-core")
+        print("skip axe: E2E_AXE not set")
+        return
+    found: list[str] = []
+    report: dict[str, list] = {}
+    pages = s.page.eval_on_selector_all(".sidebar-icon[data-page]", "els => els.map(e => e.dataset.page)")
+    assert len(pages) > 10, pages
+    for name in pages:
+        s.go(name)
+        for theme in ("dark", "light"):
+            s.page.evaluate("t => setTheme(t)", theme)
+            s.page.wait_for_timeout(300)
+            pairs, violations = axe_findings(s, source)
+            report[f"{name} {theme}"] = violations
+            found.extend(f"{name} {theme} {rule_id} {target}" for rule_id, target in pairs)
+    with open(f"{OUT}/axe-report.json", "w") as f:
+        json.dump(report, f, indent=1)
+    found = sorted(set(found))
+    with open(f"{OUT}/axe-found.json", "w") as f:
+        json.dump(found, f, indent=1)
+    baseline = []
+    if os.path.exists(BASELINE):
+        with open(BASELINE) as f:
+            baseline = json.load(f)
+    new = sorted(set(found) - set(baseline))
+    gone = sorted(set(baseline) - set(found))
+    print(f"axe: {len(found)} findings, {len(new)} new, {len(gone)} fixed")
+    for key in gone:
+        print(f"axe fixed (remove from the baseline): {key}")
+    assert not new, "\n".join(new[:40])
+    errors = s.drain()
+    assert errors == [], errors
+
+
+@flow("tabs switch from the keyboard")
+def keyboard_tabs(s: Session):
+    s.go("alerts")
+    bar = '.tab-bar[data-tab-group="alerts"]'
+    # Where the keyboard is, and what it did. One tab holds the bar's place in the
+    # tab order; it is the selected one, it is the one under the focus, and its
+    # panel is the one on screen.
+    state = """sel => {
+      const tabs = [...document.querySelectorAll(sel + ' .tab')];
+      const on = tabs.findIndex(t => t.classList.contains('active'));
+      const tab = tabs[on];
+      return {count: tabs.length, on,
+              selected: tab ? tab.getAttribute('aria-selected') : null,
+              held: tabs.filter(t => t.getAttribute('tabindex') === '0').length,
+              focused: document.activeElement === tab,
+              panel: !!(tab && document.getElementById(tab.dataset.tab)
+                        && document.getElementById(tab.dataset.tab).classList.contains('active'))};
+    }"""
+
+    assert s.page.locator(bar + " .tab").count() >= 3, s.page.locator(bar + " .tab").count()
+    # A real browser has no keyboard position until the user gives it one. Focusing
+    # a tab from a script is what Tab does, and a bar leaves only its selected tab
+    # in the tab order, so that is where the keys start.
+    s.page.evaluate(
+        "sel => document.querySelector(sel).querySelector('.tab[aria-selected=\"true\"]').focus()", bar)
+    s.page.keyboard.press("ArrowRight")
+    s.page.wait_for_timeout(200)
+    after = s.page.evaluate(state, bar)
+    assert after["on"] == 1, after
+    assert after["selected"] == "true", after
+    assert after["focused"], after
+    assert after["panel"], after
+    assert after["held"] == 1, after
+
+    s.page.keyboard.press("Home")
+    s.page.wait_for_timeout(200)
+    first = s.page.evaluate(state, bar)
+    assert first["on"] == 0, first
+    assert first["selected"] == "true", first
+    assert first["focused"], first
+    assert first["panel"], first
+    assert first["held"] == 1, first
+    s.shot("keyboard-tabs")
+    problems = s.drain()
+    assert not problems, problems
+
+
 @flow("approve a pending host with a TOTP code")
 def approve_host(s: Session):
     pending = [h for h in s.api("/api/v1/hosts/") if h["hostname"] == "e2e-pending-1"]
@@ -235,6 +360,9 @@ def security_key(s: Session, browser):
     pg.fill("input[name=password]", PASSWORD)
     pg.click("button[type=submit]")
     pg.wait_for_selector("#login-key-btn")
+    # The button is in the HTML, its handler in vigil-login-verify.js: a click
+    # before that script has run does nothing, which a loaded machine shows.
+    pg.wait_for_load_state("networkidle")
     pg.click("#login-key-btn")
     deadline = time.time() + 15
     while "/login" in pg.url and time.time() < deadline:
@@ -295,6 +423,8 @@ def main():
         browser = p.chromium.launch()
         admin = Session(browser, "e2e-admin").login()
         every_page(admin)
+        axe_pages(admin)
+        keyboard_tabs(admin)
         approve_host(admin)
         deploy_task(admin)
         rollout_playbook(admin)

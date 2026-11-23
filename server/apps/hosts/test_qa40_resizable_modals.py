@@ -17,9 +17,10 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-modal.js"
-CSS = ROOT / "static/css/vigil.css"
 
 
 def _function(src: str, name: str) -> str:
@@ -54,7 +55,7 @@ def _try_bodies(text: str):
 class ResizableModalTests(SimpleTestCase):
     def setUp(self):
         self.src = JS.read_text()
-        self.css = CSS.read_text()
+        self.css = design_css()
 
     @skipUnless(shutil.which("node"), "node is not installed")
     def test_clamp(self):

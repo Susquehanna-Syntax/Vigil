@@ -1,7 +1,8 @@
 # Vigil UI standards
 
-Vigil's interface follows the SQSY design language. Its tokens live at the top
-of `server/static/css/vigil.css`, and the class names match the design
+Vigil's interface follows the SQSY design language. Its tokens live in
+`server/static/css/tokens.css`, the styles in the numbered parts under
+`server/static/css/vigil/`, and the class names match the design
 language, so markup copies straight across. This page covers what to reach
 for, and what not to do, when you add a page, dialog or widget.
 
@@ -98,13 +99,24 @@ Leaving is 0.7× as long as arriving.
   (`role="switch"`, `aria-checked`).
 - **Empty states:** use muted `--text-3` text in the space the content would
   fill, and name the next step.
+- **Load failures:** call `showLoadFailure(container, what, err, retry)` in the
+  `catch` of a page's main load, so the failure sits where the content would
+  and offers Try again. A toast is for a failed action, not a failed load.
 - **Polling:** use `pollingInterval()` and `clearPollingInterval()`, never
   bare `setInterval`. A test enforces this.
 - **Event handlers:** no inline handlers. Use `data-act="fnName"` (with
   `data-a1` … for arguments) or `addEventListener`, so the CSP never needs
   `'unsafe-inline'`.
+- **Inline styles:** no new `style="..."` in templates or generated markup;
+  `vigil/test_inline_styles.py` holds every file to its current count. Put the
+  look in a class in `static/css/vigil/`; set `element.style` from a script for
+  a value that changes per render.
 
 ## Checking a change
+
+Admins can open `/ui-kit/` to see every shared component in the current theme,
+with a switch for the other three. Check a change to a shared component there in
+all four themes before checking it on a page that happens to use it.
 
 Look at the page in all four themes at 1440 and 420 pixels wide: Settings →
 Display, or the theme icon in the sidebar. There should be no horizontal

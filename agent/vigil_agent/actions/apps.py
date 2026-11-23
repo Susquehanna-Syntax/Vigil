@@ -43,14 +43,15 @@ from ..config import AgentConfig
 from ..executor import ActionOutput, logger
 
 
-_PRIMARY_SOURCES = frozenset({"dpkg", "rpm", "apk", "pacman"})
+_PRIMARY_SOURCES = frozenset({"dpkg", "rpm", "apk", "pacman", "pkg"})
 _STORE_SOURCES = frozenset({"snap", "flatpak"})
 _WINDOWS_SOURCES = frozenset({"winget", "chocolatey", "scoop", "registry"})
 #: The inventory names each manager's packages by its database, not its CLI:
 #: apt installs show up as ``dpkg``, dnf/yum/zypper as ``rpm``. ``source`` in a
 #: task and in the outputs uses the inventory's name, as the Apps page does.
 _MANAGER_SOURCE = {"apt": "dpkg", "apt-get": "dpkg", "dnf": "rpm", "yum": "rpm",
-                   "zypper": "rpm", "apk": "apk", "pacman": "pacman"}
+                   "zypper": "rpm", "apk": "apk", "pacman": "pacman",
+                   "pkg": "pkg"}
 #: The Windows sources whose commands are the package manager's own; the
 #: registry is the unmanaged remainder and can only ever be removed.
 _MANAGER_SOURCES_WINDOWS = frozenset({"winget", "chocolatey"})
@@ -597,6 +598,11 @@ def _pin_commands(source: str, version: str, unpin: bool) -> list[list[str]]:
         return [["unhold"]]
     if source in ("snap", "flatpak") and version:
         raise RuntimeError(f"{source} cannot pin a version")
+    if source == "pkg" and version:
+        # pkg installs what its repository has and cannot fetch an older one by
+        # name, so a version would be silently ignored. Lock the installed one.
+        raise RuntimeError("pkg cannot pin a chosen version: pin without a version "
+                           "to lock the one installed")
     # Where the hold is a thing of its own, the version has to arrive before it
     # does; a store's pin is the version itself, and apk's hold *is* a
     # constraint.
@@ -648,6 +654,9 @@ def _pin_hold_argv(source: str, app: str, version: str,
                 "apk pins by version and this host reports no version for "
                 f"{app} — give one, or install the app first")
         return ["apk", "add", f"{app}={version}"]
+    if source == "pkg":
+        # FreeBSD's own hold: a locked package is left alone by upgrades.
+        return ["pkg", "lock", "-y", app]
     if manager == "zypper":
         return ["zypper", "--non-interactive", "addlock", app]
     if source == "rpm":
@@ -669,6 +678,8 @@ def _unpin_argv(source: str, app: str, manager: str) -> list[str]:
     if source == "apk":
         # A plain install drops the version constraint the pin put there.
         return ["apk", "add", app]
+    if source == "pkg":
+        return ["pkg", "unlock", "-y", app]
     if manager == "zypper":
         return ["zypper", "--non-interactive", "removelock", app]
     if source == "rpm":
@@ -973,3 +984,26 @@ def _app_ensure(params: dict, config: AgentConfig) -> str:
         f"{action} {app}: {version_before or 'absent'} → {version_after or 'absent'}",
         {"changed": True, "action": action, "version_before": version_before,
          "version_after": version_after})
+
+
+def _app_inventory(_params: dict, _config: AgentConfig) -> ActionOutput:
+    """Re-collect the installed-software list now.
+
+    The payload is not sent from here — it goes out with the next check-in,
+    which is where the server accepts a software list at all.
+    """
+    payload = software.collect_now()
+    items = payload.get("items", [])
+    errors = payload.get("errors", [])
+    outdated = sum(
+        1 for i in items
+        if i.get("latest") and i.get("latest") != i.get("version")
+    )
+    unmanaged = sum(1 for i in items if not i.get("managed"))
+    return ActionOutput(
+        f"{len(items)} installed item(s), {outdated} outdated, {unmanaged} unmanaged; "
+        f"sending with the next check-in"
+        + (f" (errors: {', '.join(sorted(errors))})" if errors else ""),
+        {"count": len(items), "outdated": outdated, "unmanaged": unmanaged,
+         "errors": len(errors)},
+    )

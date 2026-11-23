@@ -8,7 +8,7 @@ user's own plus community ones (what the task library lists).
 import re
 
 from django.db.models import Count, Q
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -144,7 +144,10 @@ _KINDS = (
 )
 
 
-@extend_schema(responses=HostsSearchSerializer)
+@extend_schema(parameters=[
+    OpenApiParameter("q", str, required=True,
+                     description=f"Text to search for, at least two characters and at most {MAX_QUERY}; shorter queries return no groups."),
+], responses=HostsSearchSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def search(request):

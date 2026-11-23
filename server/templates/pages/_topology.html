@@ -1,11 +1,11 @@
-{# Topology page section — the network as one map: sites, tags, hosts, ports, firewalls, stacks and connections (QA-32) #}
-{# Logic: static/js/vigil-topology.js | Styles: vigil.css .topo-* | Data: client-side fetch /api/v1/hosts/topology/ #}
+{% load i18n %}{# Topology page section — the network as one map: sites, tags, hosts, ports, firewalls, stacks and connections (QA-32) #}
+{# Logic: static/js/vigil-topology.js | Styles: css/vigil/*.css .topo-* | Data: client-side fetch /api/v1/hosts/topology/ #}
     <section id="page-topology" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Topology<span>.</span></div>
-          <div class="page-sub">Your hosts by site, with their addresses, ports, firewalls, stacks and connections</div>
+          <div class="page-title">{% translate "Topology" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Your hosts by site, with their addresses, ports, firewalls, stacks and connections" %}</div>
         </div>
         <div class="right">
           <span class="topo-count" id="topo-count"></span>
@@ -13,18 +13,18 @@
       </div>
 
       <div class="topo-bar">
-        <input type="search" class="form-control topo-search" id="topo-q" placeholder="Search hosts, addresses or tags…"
-          autocomplete="off" spellcheck="false" aria-label="Search the map">
-        <select class="form-control topo-site" id="topo-site" aria-label="Filter by site">
-          <option value="">All sites</option>
+        <input type="search" class="form-control topo-search" id="topo-q" placeholder="{% translate "Search hosts, addresses or tags…" %}"
+          autocomplete="off" spellcheck="false" aria-label="{% translate "Search the map" %}">
+        <select class="form-control topo-site" id="topo-site" aria-label="{% translate "Filter by site" %}">
+          <option value="">{% translate "All sites" %}</option>
         </select>
-        <div class="topo-tags" id="topo-tags" aria-label="Tag boxes"></div>
+        <div class="topo-tags" id="topo-tags" aria-label="{% translate "Tag boxes" %}"></div>
         <div class="topo-toggles">
-          <button type="button" class="btn btn-sm btn-outline" id="topo-t-links" data-topo-toggle="links" aria-pressed="true">Links</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-t-containers" data-topo-toggle="containers" aria-pressed="false">Containers</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-t-external" data-topo-toggle="external" aria-pressed="false">External</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-fit">Fit</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-refresh">Refresh</button>
+          <button type="button" class="btn btn-sm btn-outline" id="topo-t-links" data-topo-toggle="links" aria-pressed="true">{% translate "Links" %}</button>
+          <button type="button" class="btn btn-sm btn-outline" id="topo-t-containers" data-topo-toggle="containers" aria-pressed="false">{% translate "Containers" %}</button>
+          <button type="button" class="btn btn-sm btn-outline" id="topo-t-external" data-topo-toggle="external" aria-pressed="false">{% translate "External" %}</button>
+          <button type="button" class="btn btn-sm btn-outline" id="topo-fit">{% translate "Fit" %}</button>
+          <button type="button" class="btn btn-sm btn-outline" id="topo-refresh">{% translate "Refresh" %}</button>
         </div>
       </div>
 

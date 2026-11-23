@@ -1,0 +1,447 @@
+/* ═══════════════════════════════════════════
+   Reports — Deployments → Reports sub-tab (QA-42)
+   ═══════════════════════════════════════════ */
+.rpt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+.rpt-card {
+  background: var(--s1); border: 1.5px solid var(--border); border-radius: var(--r-md);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.rpt-card-head { display: flex; align-items: center; gap: 10px; }
+.rpt-card-title {
+  font-family: 'Fraunces', serif; font-size: 15px; font-weight: 500; color: var(--text-1);
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Chart.js needs a boxed height or maintainAspectRatio: false collapses it. */
+.rpt-chart { height: 220px; position: relative; }
+.rpt-empty { font-size: 12px; padding: 20px 0; }
+.rpt-note { font-size: 12px; margin-bottom: 12px; }
+.rpt-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.rpt-head-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 500; color: var(--text-1); }
+.rpt-head-range { font-size: 12px; }
+.rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rpt-table th {
+  text-align: left; font-weight: 600; color: var(--text-3); font-size: 10px;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.rpt-table td {
+  padding: 5px 8px; border-bottom: 1px solid var(--border); color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.rpt-table tr:last-child td { border-bottom: none; }
+.rpt-table .run-state { text-align: left; }
+.rpt-picks {
+  max-height: 180px; overflow-y: auto; margin-top: 8px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); padding: 6px;
+}
+.rpt-pick {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: var(--r-sm);
+}
+.rpt-pick:hover { background: var(--s3); color: var(--text-1); }
+.rpt-none { font-size: 12px; padding: 8px; }
+.rpt-widgets { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.rpt-widget-row {
+  display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) auto auto auto;
+  gap: 8px; align-items: center;
+}
+.rpt-widget-kind {
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .rpt-grid { grid-template-columns: minmax(0, 1fr); }
+  .rpt-widget-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .rpt-widget-kind { grid-column: 1 / -1; }
+}
+/* Six sub-tabs are wider than a phone: the row scrolls on its own rather than
+   widening the page (QA-42 added the sixth). */
+@media (max-width: 640px) {
+  .sub-tabs { overflow-x: auto; scrollbar-width: none; }
+  .sub-tab { flex: 0 0 auto; padding: 10px 12px; }
+}
+
+/* QA-45: or-if exits */
+.fce.t-elif { stroke: var(--sky-ink); }
+:root[data-theme="light"] .fce.t-elif { stroke: color-mix(in srgb, var(--sky) 70%, var(--mix-ink) 30%); }
+.fce-add.t-elif { border-color: var(--sky); }
+.fcn-port.p-elif { background: var(--sky); }
+.fi-elif { padding: 0 7px; border-radius: 999px; color: var(--on-accent); font-weight: 600; font-size: 12px; background: var(--sky); }
+#bl-inspector .fi + .fi { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+#bl-inspector > .fi-actions, #bl-inspector > .muted-note { margin-top: 12px; }
+
+/* QA-47: report grid */
+/* The card is the grid cell, so it fills it and lets its own body take the
+   slack; a chart holding its natural height would leave the cell empty below
+   it and the resize handle out of reach. */
+.rpt-gs .rpt-card { height: 100%; box-sizing: border-box; overflow: hidden; }
+.rpt-gs .rpt-card-body { flex: 1; min-height: 0; overflow: auto; }
+/* .rpt-chart keeps its boxed height outside the grid; inside it the card body
+   is the box, and Chart.js fills whatever the operator dragged out. */
+.rpt-gs .rpt-chart { height: 100%; min-height: 120px; }
+.rpt-gs-editing .rpt-card { border-color: var(--sky); cursor: move; }
+
+/* QA-48: report editor */
+.modal.rpt-editor-modal { width: min(1080px, calc(100vw - 32px)); }
+.rpt-hint { font-size: 12px; margin-bottom: 8px; }
+.rpt-wcard {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px;
+  border: 1.5px solid var(--border); border-radius: var(--r-md); background: var(--s1); padding: 14px;
+}
+.rpt-wcard + .rpt-wcard { margin-top: 10px; }
+.rpt-wset { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rpt-wfield { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.rpt-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.rpt-axes { display: flex; flex-direction: column; gap: 8px; }
+.rpt-axes[hidden] { display: none; }
+.rpt-wsrc-picks { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-left: 22px; }
+.rpt-wbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.rpt-wprev { height: 200px; position: relative; min-width: 0; overflow: auto; }
+.rpt-wprev .rpt-chart { height: 200px; }
+.rpt-how { font-size: 12px; color: var(--text-3); }
+@media (max-width: 640px) { .rpt-wcard { grid-template-columns: minmax(0, 1fr); } }
+
+/* QA-49: container logs as a terminal */
+/* The dialog is a column and the log fills what is left of it, so dragging
+   the QA-40 grip grows the log, not empty space under it. */
+.modal.ctr-logs-modal { display: flex; flex-direction: column; height: 80vh; overflow: hidden;
+  width: min(1100px, calc(100vw - 32px)); }
+.modal.ctr-logs-modal.is-resized .ctr-logs { height: auto; }
+.ctr-logs-modal .ctr-logs { flex: 1 1 auto; min-height: 120px; height: auto; }
+.ctr-logs-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.ctr-logs-bar .ctr-logs-state { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.ctr-logs-bar [aria-pressed="true"] { border-color: var(--sky-ink); color: var(--sky-ink); }
+/* A terminal is dark whatever the page theme, like the window it stands for. */
+.term {
+  --term-bg: var(--term-bg-color); --term-fg: var(--term-fg-color); --term-dim: var(--term-dim-color);
+  --term-k: var(--term-k-color); --term-r: var(--term-r-color); --term-g: var(--term-g-color); --term-y: var(--term-y-color);
+  --term-b: var(--term-b-color); --term-m: var(--term-m-color); --term-c: var(--term-c-color); --term-w: var(--term-w-color);
+  --term-bk: var(--term-bk-color); --term-br: var(--term-br-color); --term-bg-g: var(--term-bg-g-color); --term-by: var(--term-by-color);
+  --term-bb: var(--term-bb-color); --term-bm: var(--term-bm-color); --term-bc: var(--term-bc-color); --term-bw: var(--term-bw-color);
+  background: var(--term-bg); color: var(--term-fg);
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; tab-size: 8;
+  white-space: pre; overflow-wrap: normal; word-break: normal;
+}
+.term.term-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.term .term-ts { color: var(--term-dim); }
+.term .term-bold { font-weight: 700; }
+.term .term-dim { opacity: .65; }
+.term .term-italic { font-style: italic; }
+.term .term-ul { text-decoration: underline; }
+.term .term-k { color: var(--term-k); } .term .term-r { color: var(--term-r); }
+.term .term-g { color: var(--term-g); } .term .term-y { color: var(--term-y); }
+.term .term-b { color: var(--term-b); } .term .term-m { color: var(--term-m); }
+.term .term-c { color: var(--term-c); } .term .term-w { color: var(--term-w); }
+.term .term-bk { color: var(--term-bk); } .term .term-br { color: var(--term-br); }
+.term .term-bg { color: var(--term-bg-g); } .term .term-by { color: var(--term-by); }
+.term .term-bb { color: var(--term-bb); } .term .term-bm { color: var(--term-bm); }
+.term .term-bc { color: var(--term-bc); } .term .term-bw { color: var(--term-bw); }
+
+/* QA-50: inventory cells are for copying; the host name opens the panel */
+.inv-table tbody td { user-select: text; cursor: text; }
+.inv-host-link {
+  font: inherit; font-weight: 600; color: var(--text-1); background: none; border: 0; padding: 0;
+  cursor: pointer; text-decoration: underline; text-decoration-color: var(--border);
+  text-underline-offset: 3px; user-select: text;
+}
+.inv-host-link:hover { color: var(--sky-ink); text-decoration-color: currentColor; }
+.inv-host-link:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; border-radius: 2px; }
+
+/* QA-51: the topology map moves */
+.topo-canvas { position: relative; }
+#topo-svg:focus-visible { outline: 2px solid var(--sky); outline-offset: -2px; }
+#topo-svg.topo-panning, #topo-svg.topo-panning .topo-card { cursor: grabbing; }
+.topo-zoom {
+  position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.topo-zoom-btn {
+  min-width: 32px; height: 32px; padding: 0 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--s1); color: var(--text-1);
+  font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+}
+.topo-zoom-btn.topo-zoom-fit { font-size: 11px; }
+.topo-zoom-btn:hover { background: var(--s2); }
+.topo-zoom-btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+/* ── QA-64: agent profiles — the settings form, its action picker, and the
+   Reimage tab. Appended; nothing above this line changed. ─────────────── */
+
+.apf { display: flex; flex-direction: column; gap: 16px; }
+.apf-section { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; background: var(--s1); }
+.apf-advanced summary { cursor: pointer; }
+.apf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.apf-field { display: flex; flex-direction: column; gap: 4px; }
+.apf-field-label { font-size: 12px; color: var(--text-2); }
+.apf-narrow { max-width: 180px; }
+.apf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+
+/* The agent profile form's own looks, moved out of vigil-agentprofile-form.js
+   (08j). `.tab-bar` gives a tab strip room beneath itself; the mode tabs sit in
+   a card that already spaces its children, so this pulls the bar back to 6px
+   above and below it. The 1px underline it keeps is the strip's own. */
+.apf-mode-tabs { margin: 6px 0; }
+/* Two elements that are a direct child of `.apf-section` but do not wear
+   `.apf-check` or `.apf-narrow`, so nothing above touches them and these two
+   classes beat the (0,1,0) `.apf-field` / `.confirm-hint` margins they follow. */
+.apf-field.apf-under-section, .apf-grid.apf-under-section { margin-top: 10px; }
+.confirm-hint.apf-hint-tight { margin: 4px 0 8px; }
+/* The checkbox under a field, 8px below it where `.apf-section > .apf-check`
+   further down gives every other checkbox 10px; one class more than that rule. */
+.apf-section > .apf-check.apf-under-input-label { margin-top: 8px; }
+
+/* The allowlist picker is the widest part of the form and needs its own scroll
+   box: an agent's full action list is longer than any dialog holding it. */
+.apf-action-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.apf-action-search { flex: 1; }
+.apf-actions { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px; background: var(--s2); }
+.apf-actions details { margin-bottom: 6px; }
+.apf-actions summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.apf-action { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 4px; border-radius: var(--r-sm); }
+.apf-action:hover { background: var(--s3); }
+.apf-action-name { color: var(--text-3); font-size: 11px; }
+
+.apf-fallbacks { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.apf-fallback-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.apf-fallback-name { flex: 1; }
+
+/* Validation text sits under the field it refuses, in the colour every other
+   refusal in the app uses. */
+.apf-error { color: var(--rose-ink); font-size: 12px; margin-top: 6px; }
+/* Checkbox rows and the narrow fields under them get room to breathe. */
+.apf-section > .apf-check, .apf-section > .apf-narrow { margin-top: 10px; }
+.apf-section > .deploy-input-label + .apf-check { margin-top: 6px; }
+
+/* ═══════════════════════════════════════════
+   QA-58: THE CONNECT MENU AND THE WEB TERMINAL
+   ═══════════════════════════════════════════ */
+
+/* One popover per host, anchored to the button that opened it. Fixed rather
+   than absolute: host cards clip their overflow, and a menu inside one is a
+   menu with its bottom cut off. The reason line wraps rather than ellipsis —
+   "Turn on allow_remote_shell in this host's agent.yml." is the thing the
+   operator came here to read. */
+.connect-menu { position: fixed; z-index: 500; min-width: 240px; max-width: 300px;
+  background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 8px 24px var(--shadow-pop); padding: 4px; opacity: 0; pointer-events: none;
+  visibility: hidden; transition: opacity calc(var(--m-dur) * 0.6) var(--ease-out-expo); }
+.connect-menu.open { opacity: 1; pointer-events: auto; visibility: visible; }
+.connect-item { display: block; width: 100%; text-align: left; background: none;
+  border: 0; border-radius: var(--r-sm); padding: 7px 9px; color: var(--text-1);
+  font: inherit; font-size: 13px; cursor: pointer; }
+.connect-item:hover { background: var(--s2); }
+.connect-item-label { display: block; }
+/* aria-disabled, not [disabled]: the hover that reveals the reason needs a
+   button that still receives events. */
+.connect-item-off { cursor: default; }
+.connect-item-off .connect-item-label { color: var(--text-3); }
+.connect-item-off:hover { background: none; }
+.connect-item-reason { display: block; margin-top: 2px; font-size: 11px; line-height: 1.35;
+  color: var(--text-3); white-space: normal; }
+.connect-note { padding: 7px 9px 4px; font-size: 11px; color: var(--text-3);
+  border-top: 1px solid var(--border); margin-top: 4px; }
+
+/* The terminal dialog. Same resize: both + is-resized contract as the container
+   logs dialog (QA-40/QA-49): it is a column and the terminal takes what is left,
+   so dragging the grip grows the screen rather than the space under it. */
+.modal.term-modal { display: flex; flex-direction: column; height: 70vh; overflow: hidden;
+  width: min(1000px, calc(100vw - 32px)); }
+.term-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+/* Left, because .run-state is right-aligned where it heads a run table. */
+.term-bar .run-state { flex: 1; min-width: 0; text-align: left; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.term-bar #term-end { margin-left: auto; }
+.modal.term-modal.is-resized .term-host { height: auto; }
+/* xterm paints its own background from the theme we hand it, so this padding is
+   the only frame around it and --bg keeps that frame on-theme. */
+.term-modal .term-host { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px; }
+.term-modal .xterm { height: 100%; }
+/* Relays: rows and the one-time key dialog's code blocks. Padding/border-bottom
+   match .enroll-card so the list reads as the same kind of row it sits next to
+   in Settings; the pills are tinted whole, never a coloured side border. */
+.settings-section-later { margin-top: 32px; }
+
+.relay-row {
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  padding: 14px 0; border-bottom: 1px solid var(--border);
+}
+.relay-row:last-child { border-bottom: none; }
+.relay-main { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.relay-name { font-weight: 600; font-size: 0.9rem; }
+.relay-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink);
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle;
+}
+.relay-meta { font-size: 0.76rem; color: var(--text-3); }
+.relay-url { font-size: 0.8rem; color: var(--text-2); word-break: break-all; }
+.relay-status-cell { display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; max-width: 100%; }
+.relay-status-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.relay-status {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+}
+.relay-status.ok { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.relay-status.bad { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.relay-status.off { background: var(--s2); color: var(--text-3); }
+.relay-err { font-size: 0.72rem; color: var(--text-3); max-width: 260px; }
+.relay-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Maintenance window form: the seven weekday boxes, spaced so each label reads with its own box. */
+.maint-days { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+
+/* Commands and the compose snippet are set with textContent, so they keep the
+   server's line breaks. */
+.relay-code {
+  background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 12px 14px; margin: 6px 0 8px;
+  font-size: 12px; line-height: 1.6; color: var(--text-1);
+  white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto;
+}
+.relay-key-sub { margin-top: 14px; }
+:root[data-density="compact"] .relay-row { padding: 9px 0; }
+
+/* The plan note under the relay count links to License: in the app's accent, not browser blue. */
+#relays-usage a { color: var(--sky-ink); text-decoration: none; }
+#relays-usage a:hover { text-decoration: underline; }
+
+/* The remote desktop dialog (QA-59). Same resize: both + is-resized contract as
+   the terminal's: it is a column and the display takes what is left, so dragging
+   the grip grows the desktop instead of the space under it. 80vh rather than the
+   terminal's 70vh because a Windows desktop is the thing being looked at. */
+.modal.rdp-modal { display: flex; flex-direction: column; height: 80vh; overflow: hidden;
+  width: min(1200px, calc(100vw - 32px)); resize: both; }
+.modal.rdp-modal.is-resized .rdp-display { height: auto; }
+.rdp-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.rdp-bar .run-state { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.rdp-bar #rdp-end { margin-left: auto; }
+/* Guacamole paints the desktop into a canvas of its own sizing, so this box only
+   frames it: flex 1 to take the dialog's height and never scroll, black because a
+   desktop mid-draw shows whatever it has drawn so far. */
+.rdp-display { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
+  background: var(--rdp-display-bg); border: 1px solid var(--border); border-radius: var(--r-md); }
+
+/* Security keys (QA-65): the "Use security key" button is the primary answer
+   to a confirmation prompt, so it sits above the code field at full width and
+   the code becomes the fallback the sub-line names. Rows reuse .relay-row from
+   Settings — a key row and a relay row are the same kind of row. */
+.totp-key-slot { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.totp-key-btn { width: 100%; justify-content: center; }
+.totp-key-error { font-size: 0.76rem; color: var(--rose-ink); }
+#security-keys-list .relay-actions .btn { min-width: 76px; }
+:root[data-density="compact"] #security-keys-add-btn { margin-top: 2px; }
+
+/* ── Jackil widgets (J1 p03d) ── */
+.jk-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
+.jk-stat { display: flex; flex-direction: column; justify-content: center; height: 100%;
+           text-decoration: none; color: inherit; border-radius: var(--r-md); padding: 4px 2px; }
+.jk-stat-value { font-size: 34px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); }
+.jk-stat-label { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.jk-stat-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+.jk-cards { display: flex; flex-direction: column; gap: 6px; }
+.jk-card {
+  --edge-rgb: var(--rgb-grey);
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px;
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  transition: background .18s, border-color .18s, transform .18s var(--ease-out-expo);
+}
+a.jk-card { text-decoration: none; }
+.jk-card:hover {
+  background: rgba(var(--edge-rgb), var(--tint-a-hover));
+  border-color: rgba(var(--edge-rgb), 0.55);
+  transform: translateX(2px);
+}
+.jk-card-main { flex: 1; min-width: 0; }
+.jk-card-title {
+  font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jk-card-sub {
+  margin-top: 2px; font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jk-card-right {
+  flex-shrink: 0; text-align: right;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
+}
+.jk-card.edge-rose  { --edge-rgb: var(--rgb-rose); }
+.jk-card.edge-peach { --edge-rgb: var(--rgb-peach); }
+.jk-card.edge-lemon { --edge-rgb: var(--rgb-lemon); }
+.jk-card.edge-mint  { --edge-rgb: var(--rgb-mint); }
+.jk-card.edge-sky   { --edge-rgb: var(--rgb-sky); }
+.jk-card.edge-lav   { --edge-rgb: var(--rgb-lavender); }
+.jk-card.edge-grey  { --edge-rgb: var(--rgb-grey); }
+/* A neutral row sits on the surface instead of a grey-brown tint, which read
+   as a heavy block on Paper (Jackil M8b). */
+.jk-card.edge-grey  { background: transparent; border-color: var(--border); }
+
+.jk-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.jk-table th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--text-3); padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.jk-table td { padding: 6px; border-bottom: 1px solid var(--border); }
+.jk-table td.num { font-family: var(--font-mono); text-align: right; }
+.jk-table th.num { text-align: right; }
+
+.jk-gauge { display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%; position: relative; }
+.jk-gauge-dial { position: relative; flex-shrink: 0; margin-bottom: 4px; }
+.jk-gauge-ring { display: block; width: 62px; height: 62px; transform: rotate(-90deg); }
+.jk-gauge .gauge-bg { fill: none; stroke: var(--s3); stroke-width: 7; }
+.jk-gauge .gauge-fill { fill: none; stroke-width: 7; stroke-linecap: round;
+                        transition: stroke-dashoffset .5s var(--ease-out-expo); }
+.jk-gauge-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                 font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+
+.jk-series { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.jk-series-plot { flex: 1; min-height: 0; position: relative; }
+.jk-series-plot svg { position: absolute; inset: 0; display: block; }
+.jk-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-2); margin-top: 6px; }
+.jk-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.axis-text { font-size: 10px; fill: var(--text-3); font-family: var(--font-mono); }
+
+/* Header site switcher (S1 04g, vigil-siteswitch.js). */
+.site-switch[hidden] { display: none; }
+.site-switch { margin-top: -16px; margin-bottom: 12px; }
+.site-switch.site-switch-narrowed { color: var(--mint-ink); }
+.site-switch-count {
+  position: absolute; bottom: 3px; right: 3px;
+  min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px;
+  background: var(--mint); color: var(--on-accent);
+  font-size: 10px; font-weight: 600; line-height: 15px; text-align: center;
+}
+.site-switch-count[hidden] { display: none; }
+:root[data-sidebar="expanded"] .site-switch-count { left: 24px; right: auto; }
+.ss-note { font-size: 13px; margin: -12px 0 14px; }
+.ss-search { margin-bottom: 10px; }
+.ss-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow-y: auto; margin-bottom: 18px; }
+.ss-site { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-sm);
+  font-size: 14px; color: var(--text-1); cursor: pointer; }
+.ss-site:hover { background: var(--wash); }
+.ss-site[hidden] { display: none; }
+.ss-site input:disabled + span { color: var(--text-2); }
+
+/* Settings a site admin may read but not change (S1 04h, vigil-settings-access.js). */
+.settings-nav-item[hidden] { display: none; }
+.settings-greyed-note { font-size: 13px; color: var(--text-2); background: var(--wash);
+  border-radius: var(--r-sm); padding: 10px 14px; margin: 0 0 18px; }
+.settings-greyed :is(input, select, textarea, button):disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* A multi-select list (maintenance window hosts): the browser's own highlight
+   for a chosen option reads dimmer than an unchosen one on the dark surface,
+   so chosen options get the mint tint and full-strength text. */
+select.form-control[multiple] { padding: 6px; background-image: none; }
+select.form-control[multiple] option { padding: 4px 8px; border-radius: var(--r-sm, 6px); }
+select.form-control[multiple] option:checked {
+  background: rgba(var(--rgb-mint), var(--tint-a)) linear-gradient(0deg, rgba(var(--rgb-mint), var(--tint-a)), rgba(var(--rgb-mint), var(--tint-a)));
+  color: var(--mint-ink); font-weight: 600;
+}
+
+/* A channel's JSON template (the ticket channel's request body). */
+.form-control.channel-json { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }

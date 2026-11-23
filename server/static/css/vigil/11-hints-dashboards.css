@@ -1,0 +1,464 @@
+/* ── Field hint ───────────────────────────────────────────────────────────
+   A small "?" beside a control that reveals a longer explanation on hover or
+   keyboard focus. Used where the explanation is worth having but not worth
+   permanently spending three lines of the panel on — the Rollouts toolbar is
+   the first of these. Multi-line: put &#10; in the data-hint — attr() yields
+   the attribute's literal text, so a CSS \A escape would show as "\A". */
+.field-hint {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: none;
+  /* Never flush against whatever sits beside it. In a flex toolbar the
+     container's gap does most of the work; in normal flow, next to a label,
+     this is the only thing keeping the "?" off the text. */
+  margin: 0 3px;
+  vertical-align: middle;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  /* Sky rather than --text-3: at 18px on a dark surface the dim grey read as
+     a decorative dot and people did not realise it was there to be hovered. */
+  background: var(--s2); color: var(--sky-ink);
+  border-color: color-mix(in srgb, var(--sky) 45%, var(--border));
+  font-size: 11px; font-weight: 700; line-height: 1;
+  cursor: help; user-select: none;
+  transition: color 0.2s var(--ease-out-expo), border-color 0.2s var(--ease-out-expo);
+}
+/* Labels in these editors are display:block, which pushed a following hint
+   onto its own line underneath — reading as unrelated to the label it
+   explains. Only labels that actually have a hint are affected. */
+.bl-field > label:has(+ .field-hint),
+.form-group > .form-label:has(+ .field-hint) {
+  display: inline-block;
+  margin-right: 2px;
+}
+
+.field-hint:hover, .field-hint:focus-visible {
+  color: var(--sky-ink); border-color: var(--sky); outline: none;
+}
+/* The bubble is a real element on <body>, not a ::after on the marker — see
+   vigil-utils.js attachFieldHints(). Anything absolutely positioned inside
+   .modal is clipped by it: the modal sets overflow-y:auto to scroll, which
+   makes it a scroll container horizontally too, so a 380px bubble hanging off
+   an 18px marker near the modal's edge was simply cut off. Fixed positioning
+   on body escapes that, and the script clamps it to the viewport. */
+.field-hint-bubble {
+  position: fixed;
+  width: max-content; max-width: min(380px, calc(100vw - 24px));
+  background: var(--s3); color: var(--text-2);
+  font-size: 12px; font-weight: 400; line-height: 1.55;
+  text-align: left; white-space: pre-line;
+  padding: 10px 13px; border-radius: 8px;
+  border: 1px solid var(--border);
+  pointer-events: none; z-index: 400;
+  animation: tooltipIn 0.3s var(--ease-out-expo) both;
+}
+
+/* ── Tag picker button ────────────────────────────────────────────────────
+   attachTagPicker() inserts this after every tag field. It has two layouts to
+   serve. After a full-width .form-control it wraps onto its own line, and it
+   was sitting flush against the input's bottom edge; that is what the top
+   margin is for. Inside a flex row it sits alongside the input instead, where
+   the container's gap already does the spacing and a top margin would drop it
+   out of line — hence the override below. */
+.tag-pick-btn {
+  flex: none;
+  margin: 8px 0 0 8px;
+  vertical-align: middle;
+}
+.host-tag-add-row .tag-pick-btn,
+.bl-hint .tag-pick-btn {
+  margin: 0 0 0 8px;
+}
+
+/* The "add a tag" row in the host detail drawer. */
+.host-tag-add-row { display: flex; gap: 8px; align-items: center; }
+
+/* Tag combobox (attachTagCombobox in vigil-tags.js). */
+.tag-combo { position: relative; flex: 1; min-width: 0; }
+.tag-combo > .form-control { width: 100%; }
+.tag-combo-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+  background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 8px 24px var(--shadow-pop); padding: 4px; max-height: 280px; overflow-y: auto; }
+.tag-combo-opt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-1); }
+.tag-combo-opt:hover, .tag-combo-opt.is-active { background: var(--s3); }
+.tag-combo-opt.is-disabled { cursor: default; color: var(--text-3); background: none; }
+.tag-combo-name b { font-weight: 600; }
+.tag-combo-meta { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.tag-combo-empty { padding: 8px 10px; font-size: 12px; color: var(--text-3); }
+
+/* ── Widget dashboard ───────────────────────────────────────────────────── */
+.dash-root { margin-bottom: 22px; }
+.dash-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dash-switch { width: auto; min-width: 190px; }
+
+/* Gridstack draws the item; this is the card inside it. */
+.dash-widget {
+  height: 100%;
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.dash-widget-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex-shrink: 0;
+}
+.dash-widget-title {
+  font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-3);
+}
+/* The per-widget controls are an editing affordance, not chrome to look at. */
+.dash-widget-actions { display: none; gap: 6px; }
+.dash-editing .dash-widget-actions { display: flex; }
+.dash-editing .dash-widget { border-color: var(--sky); cursor: move; }
+.dash-widget-body { flex: 1; min-height: 0; overflow: auto; }
+.dash-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
+
+.dash-stat { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.dash-stat-gap10 { gap: 10px; }
+.dash-stat-value { font-size: 34px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); }
+.dash-stat-value-22 { font-size: 22px; }
+/* The denominator beside a coverage figure. */
+.dash-stat-suffix { font-size: 18px; color: var(--text-3); }
+.dash-stat-label { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+
+.dash-hosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.dash-host { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+             background: var(--s2); border-radius: var(--r-sm); font-size: 12px; }
+.dash-host-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-host-meta { color: var(--text-3); margin-left: auto; font-size: 11px; }
+.dash-host-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+.dash-dot-online { background: var(--mint); }
+.dash-dot-offline { background: var(--rose); }
+.dash-dot-pending { background: var(--peach); }
+
+.dash-alerts, .dash-rollouts { display: flex; flex-direction: column; gap: 7px; }
+.dash-alert { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.dash-alert-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-alert-host { color: var(--text-3); margin-left: auto; font-size: 11px; }
+.dash-rollout-name { font-weight: 600; font-size: 13px; }
+.dash-rollout-meta { color: var(--text-3); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+
+/* Gridstack's own chrome, themed to SQSY. */
+.grid-stack-item-content { inset: 0; }
+.grid-stack > .grid-stack-item > .ui-resizable-handle { filter: invert(1) opacity(.35); }
+.dash-chart { position: relative; height: 100%; min-height: 90px; }
+.dash-chart canvas { position: absolute; inset: 0; }
+.dash-gauge { display: flex; flex-direction: column; align-items: center;
+              justify-content: center; height: 100%; position: relative; }
+.dash-gauge-ring { width: 78px; height: 78px; transform: rotate(-90deg); }
+.dash-gauge .gauge-bg { fill: none; stroke: var(--s3); stroke-width: 7; }
+.dash-gauge .gauge-fill { fill: none; stroke-width: 7; stroke-linecap: round;
+                          transition: stroke-dashoffset .5s var(--ease-out-expo); }
+.dash-gauge-text { font-family: var(--font-mono); font-size: 19px; font-weight: 700;
+                   margin-top: -50px; margin-bottom: 26px; }
+.dash-procs { display: flex; flex-direction: column; gap: 5px; }
+.dash-proc { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.dash-proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-proc-value { font-family: var(--font-mono); color: var(--text-3); flex-shrink: 0; }
+
+/* ── Dashboard list cards ───────────────────────────────────────────────
+   The list widgets used to emit flat rows of text, which read as a wall at any
+   size. Each row is now a skinny card tinted in the colour of whatever the row
+   is about, so severity and state are legible without a word spent on them.
+   Cards that lead somewhere say so on hover. */
+.dash-cards { display: flex; flex-direction: column; gap: 6px; }
+.dash-card {
+  --edge-rgb: var(--rgb-grey);
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px;
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  transition: background .18s, border-color .18s, transform .18s var(--ease-out-expo);
+}
+.dash-card[data-nav], .dash-card[data-nav-host] { cursor: pointer; }
+.dash-card[data-nav]:hover, .dash-card[data-nav-host]:hover {
+  background: rgba(var(--edge-rgb), var(--tint-a-hover));
+  border-color: rgba(var(--edge-rgb), 0.55);
+  transform: translateX(2px);
+}
+.dash-card[data-nav]:active, .dash-card[data-nav-host]:active { transform: translateX(1px) scale(0.995); }
+.dash-card-main { flex: 1; min-width: 0; }
+.dash-card-title {
+  font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-card-sub {
+  margin-top: 2px; font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* A webhook row carries five buttons — the widest right-hand side any card
+   takes. Inline children of .dash-card-right would sit flush against each
+   other, and a class beats repeating an inline margin five times. */
+.wh-act { margin-left: 6px; }
+/* On a phone a key or webhook row stacks: the details wrap instead of
+   running off the edge, and the buttons drop below them. */
+@media (max-width: 700px) {
+  #api-keys .dash-card, #webhooks .dash-card { flex-wrap: wrap; }
+  #api-keys .dash-card-sub, #webhooks .dash-card-sub { white-space: normal; }
+  #webhooks .dash-card-right { display: flex; flex-wrap: wrap; gap: 6px; text-align: left;
+                               flex: 1 1 100%; min-width: 0; }
+  #webhooks .dash-card-right .wh-act { margin-left: 0; }
+  /* The form inputs carry an inline min-width for the desktop row. */
+  #api-keys input.form-control, #webhooks input.form-control { min-width: 0 !important; flex: 1 1 100%; }
+}
+
+.dash-card-right {
+  flex-shrink: 0; text-align: right;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
+}
+.dash-card-right .dash-card-sub { text-align: right; }
+/* .btn inherits its font, and this column is monospace for counts. */
+.dash-card-right .btn { font-family: 'DM Sans', sans-serif; }
+.dash-card-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
+
+/* The edge colour is the row's meaning: severity for alerts and findings,
+   run state for history, up/down for containers and automations. */
+.dash-card.edge-rose  { --edge-rgb: var(--rgb-rose); }
+.dash-card.edge-peach { --edge-rgb: var(--rgb-peach); }
+.dash-card.edge-lemon { --edge-rgb: var(--rgb-lemon); }
+.dash-card.edge-mint  { --edge-rgb: var(--rgb-mint); }
+.dash-card.edge-sky   { --edge-rgb: var(--rgb-sky); }
+.dash-card.edge-lav   { --edge-rgb: var(--rgb-lavender); }
+.dash-card.edge-grey  { --edge-rgb: var(--rgb-grey); }
+.dash-card-dot.edge-rose  { background: var(--rose); }
+.dash-card-dot.edge-peach { background: var(--peach); }
+.dash-card-dot.edge-lemon { background: var(--lemon); }
+.dash-card-dot.edge-mint  { background: var(--mint); }
+.dash-card-dot.edge-sky   { background: var(--sky); }
+.dash-card-dot.edge-lav   { background: var(--lavender); }
+.dash-card-dot.edge-grey  { background: var(--text-3); }
+
+/* Briefly marks whatever a widget navigated to, so the click lands somewhere
+   visible rather than dropping the operator on a long page. */
+@keyframes dashFlash {
+  0%   { box-shadow: inset 0 0 0 2px var(--sky); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+.dash-flash { animation: dashFlash 1.6s var(--ease-out-expo) both; border-radius: var(--r-md); }
+
+/* Host cards inside a widget. The page's own grid is sized for a full-width
+   column; in a widget the cards have to reflow to whatever the operator sized
+   the tile to, and the list scrolls rather than clipping. */
+.dash-host-search {
+  margin-bottom: 10px; padding: 6px 10px; font-size: 12px;
+}
+.dash-host-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+/* The page's card is a three-column band that wants ~600px. A widget column is
+   often half that, so inside a widget the same card stacks: identity, then the
+   five metrics, then the actions. */
+.dash-host-cards .host-card {
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--s2);
+  min-width: 0;
+}
+/* auto-fit rather than a fixed five, so a narrow tile folds the row instead of
+   crushing five numbers into it. No container query needed. */
+.dash-host-cards .host-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 10px;
+}
+.dash-host-cards .host-card-actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.dash-host-cards .host-card-actions .btn { padding: 4px 10px; font-size: 11px; }
+.dash-host-cards .host-checkin { margin-right: auto; }
+/* A pending-enrollment row's two buttons, pushed to the end of the line. */
+.dash-alert-actions { margin-left: auto; display: flex; gap: 6px; }
+
+/* ── Process and GPU widgets ────────────────────────────────────────────── */
+/* A proportional bar under the name, scaled to the busiest row rather than to
+   100% — five processes at 2% each are indistinguishable on an absolute scale,
+   and the question the widget answers is which of them is the busiest. */
+.dash-proc-bar {
+  margin-top: 5px; height: 3px; border-radius: 2px;
+  background: var(--s4); overflow: hidden;
+}
+.dash-proc-fill { height: 100%; border-radius: 2px; transition: width .3s var(--ease-out-expo); }
+.dash-spark { width: 68px; height: 18px; flex-shrink: 0; opacity: .85; }
+.dash-proc-note { font-size: 11px; margin-top: 6px; }
+
+.dash-gpus { display: flex; flex-direction: column; gap: 10px; }
+.dash-gpu {
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 12px 14px;
+}
+.dash-gpu-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 10px;
+}
+.dash-gpu .host-metrics { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 10px; }
+
+/* A widget setting backed by the picker modal: the current choice reads as
+   text, with the buttons that change it beside it. */
+.setting-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.setting-picker-name {
+  flex: 1; min-width: 0; font-size: 13px; color: var(--text-1);
+  padding: 7px 10px; background: var(--s2);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Add-widget rail ────────────────────────────────────────────────────── */
+.dash-rail {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 330px; max-width: 92vw;
+  background: var(--s1);
+  border-left: 1px solid var(--border);
+  z-index: 260;                       /* above the grid, below a modal */
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .32s var(--ease-out-expo);
+}
+.dash-rail.open { transform: translateX(0); }
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 20px 14px; flex-shrink: 0;
+  font-family: var(--font-display); font-size: 17px;
+  border-bottom: 1px solid var(--border);
+}
+/* flex:1 + min-height:0 so the catalogue scrolls inside the rail rather
+   than overflowing it — a flex child will not shrink past its content
+   without the min-height override. */
+.rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 16px 24px; }
+.rail-group { margin-top: 18px; }
+.rail-group-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-3); margin-bottom: 8px;
+}
+
+.rail-card {
+  position: relative;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 46px 12px 14px;      /* room for the + at bottom-right */
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color .2s, transform .2s var(--ease-out-expo);
+}
+.rail-card:hover { transform: translateY(-2px); }
+.rail-card-name { font-size: 13px; font-weight: 600; }
+.rail-card-desc { font-size: 11px; color: var(--text-3); margin-top: 3px; line-height: 1.45; }
+
+/* The + is filled in its group's accent, and goes clear on hover — the card
+   keeps the colour, the button gives it back. */
+.rail-add {
+  position: absolute; right: 12px; bottom: 12px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1.5px solid transparent;
+  font-size: 17px; line-height: 1; font-weight: 500;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  color: var(--bg);
+  transition: background .2s, color .2s, border-color .2s, transform .2s var(--ease-out-expo);
+}
+/* background is set per-accent below at equal specificity, so the clear state
+   has to be declared there too — otherwise the glyph goes accent-on-accent and
+   disappears. */
+.rail-add:hover { transform: scale(1.12); }
+.rail-add:active { transform: scale(0.94); }
+.rail-add.btn-sky    { background: var(--sky); }
+.rail-add.btn-mint   { background: var(--mint); }
+.rail-add.btn-lav    { background: var(--lavender); }
+.rail-add.btn-peach  { background: var(--peach); }
+.rail-add.btn-lemon  { background: var(--lemon); }
+.rail-add.btn-rose   { background: var(--rose); }
+.rail-add.btn-sky:hover   { color: var(--sky-ink);      border-color: var(--sky); }
+.rail-add.btn-mint:hover  { color: var(--mint-ink);     border-color: var(--mint); }
+.rail-add.btn-lav:hover   { color: var(--lavender-ink); border-color: var(--lavender); }
+.rail-add.btn-peach:hover { background: transparent; color: var(--peach-ink);    border-color: var(--peach); }
+.rail-add.btn-lemon:hover { background: transparent; color: var(--lemon-ink);    border-color: var(--lemon); }
+.rail-add.btn-rose:hover  { color: var(--rose-ink);     border-color: var(--rose); }
+
+/* The card takes its group's accent on hover, so the section reads as a set. */
+.rail-fleet    .rail-card:hover { border-color: var(--sky); }
+.rail-health   .rail-card:hover { border-color: var(--mint); }
+.rail-work     .rail-card:hover { border-color: var(--lavender); }
+.rail-security .rail-card:hover { border-color: var(--peach); }
+.rail-utility  .rail-card:hover { border-color: var(--lemon); }
+.rail-business .rail-card:hover { border-color: var(--rose); }
+
+@media (max-width: 900px) { .dash-rail { width: 100vw; } }
+.dash-cover-bar { height: 6px; border-radius: 3px; background: var(--s3); margin-top: 10px; overflow: hidden; }
+.dash-cover-bar span { display: block; height: 100%; background: var(--mint); transition: width .4s var(--ease-out-expo); }
+/* The widget-settings dialog's own description line (08h). */
+.muted-note.widget-settings-desc { margin-bottom: 14px; }
+.dash-note-head { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.dash-note-body { font-size: 12px; color: var(--text-2); line-height: 1.6; white-space: pre-wrap; }
+.dash-uptime { display: flex; gap: 2px; align-items: flex-end; height: 42px; margin-bottom: 8px; }
+.dash-uptime-bar { flex: 1; min-width: 2px; height: 100%; border-radius: 2px; opacity: .85; }
+.dash-uptime-bar:hover { opacity: 1; }
+.dash-toolbar-spacer { flex: 1; }
+
+/* ── Instance settings panes (apps/instance) ─────────────────────────────
+   One renderer builds every field from the server's registry, so the layout
+   has to hold whatever the registry says: two columns where there is room,
+   one on a narrow screen, and a full-width row for a checkbox so its label
+   sits beside the box rather than above it. */
+.is-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 20px;
+}
+.is-field { min-width: 0; }
+.is-field-check { grid-column: 1 / -1; }
+.is-note { margin-top: 6px; font-size: 11px; color: var(--text-3); line-height: 1.5; }
+.is-note code {
+  font-family: var(--font-mono); font-size: 11px; color: var(--sky-ink);
+  background: var(--s2); padding: 1px 5px; border-radius: 5px;
+}
+.is-locked .form-control { opacity: .6; cursor: not-allowed; }
+.is-check { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; }
+.is-check input { width: 15px; height: 15px; accent-color: var(--sky); cursor: pointer; }
+.is-clear {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: var(--rose-ink); text-decoration: underline;
+}
+.is-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+.is-result { font-size: 12px; }
+.is-result.is-ok { color: var(--mint-ink); }
+.is-result.is-bad { color: var(--rose-ink); }
+
+/* Backup history rows (Settings → Retention & Limits). Each row is one run;
+   a failed one carries its error on its own line under it, which is why the
+   muted spans are blocks and the row needs the gap. */
+.backup-run { padding: 6px 0 4px; border-top: 1px solid var(--border); font-size: 13px; }
+.backup-run:first-child { border-top: 0; padding-top: 0; }
+.backup-run .muted { font-size: 12px; }
+.backup-run .muted:not(:last-child) { display: block; margin-top: 2px; }
+#backup-runs .totp-label { margin-bottom: 10px; }
+
+/* Jackil ticket list — the link is the point of each row, so it reads as a
+   control rather than as default browser blue. */
+#jackil-tickets a { color: var(--sky-ink); text-decoration: none; font-weight: 600; }
+#jackil-tickets a:hover { text-decoration: underline; }
+
+/* ── Automation conditions ───────────────────────────────────────────────
+   A row is field / operator / value / remove, wrapping to its own lines on a
+   narrow screen rather than squeezing the value box to nothing. */
+.auto-cond-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.auto-cond-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: rgba(var(--rgb-sky), var(--tint-a));
+  border: 1px solid rgba(var(--rgb-sky), var(--tint-a-line));
+  border-radius: var(--r-sm);
+}
+.auto-cond-row .form-control { display: inline-block; width: auto; }
+.auto-cond-row .auto-cond-value { flex: 1 1 160px; min-width: 0; }
+.auto-cond-empty { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }
+

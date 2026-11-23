@@ -52,8 +52,12 @@ class InstallShProfileTests(SimpleTestCase):
         if existing is not None:
             self.cfg.write_text(existing)
             self.cfg.chmod(0o600)
-        block = (self.block.replace("/etc/vigil/agent.yml", str(self.cfg))
-                 .replace("/etc/vigil", str(self.cfg.parent)))
+        # install.sh names its config directory $CONF_DIR, picked near the top
+        # from uname. The extracted block starts below that choice, so the test
+        # supplies the Linux value and points it at a scratch file.
+        block = (self.block.replace("$CONF_DIR/agent.yml", str(self.cfg))
+                 .replace('"$CONF_DIR"', str(self.cfg.parent))
+                 .replace("$CONF_DIR", str(self.cfg.parent)))
         harness = ('VIGIL_SERVER="https://vigil.test"\nchown() { :; }\n' + CURL + block)
         result = subprocess.run(
             ["bash", "-c", harness], capture_output=True, text=True, timeout=30,

@@ -98,9 +98,14 @@ class UpdateAgentOutputTests(unittest.TestCase):
                   patch.object(executor.os, "uname",
                                return_value=mock.Mock(machine="x86_64")),
                   patch("requests.get", return_value=resp),
-                  patch.object(executor.shutil, "which", return_value=None)):
+                  patch.object(executor.shutil, "which", return_value=None),
+                  # The self-check and the restart have their own tests
+                  # (test_update_guard); this one is about what is reported.
+                  patch("vigil_agent.update_guard.run_preflight", return_value=""),
+                  patch("vigil_agent.update_guard.restart_service")):
                 return executor._update_agent(
-                    {"binary_sha256": {"linux-amd64": sha}}, _config())
+                    {"binary_sha256": {"linux-amd64": sha}},
+                    _config(data_dir=Path(tmp.name)))
         finally:
             tmp.cleanup()
 

@@ -30,6 +30,7 @@ from django.test import TransactionTestCase, override_settings
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
 from apps.remote.recording import recording_allowed
+from vigil.css_text import design_css
 
 from .. import bus, rdp, ws
 from ..models import RemoteSession
@@ -662,7 +663,13 @@ class DesktopSessionTests(_DesktopCase):
             browser = await self.browser()
             await self.login(browser)
             self.assertTrue(await guacd.wait_for_handshake())
-            session = await _sync(self.refresh)
+            # The bridge saves the path just after the handshake it answers,
+            # so a slow runner can read the row first: wait for the save.
+            for _ in range(50):
+                session = await _sync(self.refresh)
+                if session.recording:
+                    break
+                await asyncio.sleep(0.05)
             await browser.close()
 
         values = dict(zip(FAKE_ARGS[2:], guacd.connect_values[1:]))
@@ -797,7 +804,7 @@ class DesktopRefusalTests(_DesktopCase):
 
 ROOT = Path(__file__).resolve().parents[3]
 JS = ROOT / "static" / "js"
-CSS = ROOT / "static" / "css" / "vigil.css"
+CSS = ROOT / "static" / "css" / "tokens.css"
 COMPOSE = ROOT.parent / "docker-compose.yml"
 
 
@@ -895,7 +902,7 @@ class RdpBrowserTests(TransactionTestCase):
         self.assertIn("client.sendSize(", self.js)
 
     def test_the_status_pill_tracks_the_tunnel_state(self):
-        for text in ("Connecting…", "'Connected'", "'Closed'"):
+        for text in ("t('Connecting…')", "t('Connected')", "t('Closed')"):
             self.assertIn(text, self.js)
         self.assertIn("Guacamole.Tunnel.State.OPEN", self.js)
         self.assertIn("client.onerror", self.js)
@@ -913,7 +920,7 @@ class RdpBrowserTests(TransactionTestCase):
         self.assertIn('data-rdp="{% static \'js/vigil-rdp.js\' %}"', html)
 
     def test_the_dialog_and_the_display_are_styled(self):
-        css = _read(CSS)
+        css = design_css() + "\n" + _read(CSS)
         self.assertIn(".rdp-modal", css)
         block = css[css.index(".modal.rdp-modal"):]
         self.assertIn("resize: both", block[:400])
@@ -921,7 +928,9 @@ class RdpBrowserTests(TransactionTestCase):
         display = block[block.index(".rdp-display"):]
         self.assertIn("flex: 1", display)
         self.assertIn("overflow: hidden", display)
-        self.assertIn("background: #000", display)
+        # The literal moved to tokens.css with the Stylelint colour rule.
+        self.assertIn("--rdp-display-bg: #000;", _read(CSS))
+        self.assertIn("background: var(--rdp-display-bg)", display)
 
 
 def _strip_comments(src: str) -> str:

@@ -1,10 +1,10 @@
-{# Stack editor page section — a full-screen compose editor: highlighted YAML with a line gutter, live validation, masked .env, revisions #}
-{# Logic: static/js/vigil-stacks.js (openStackEditor / saveStack / validateStack / deployStack / removeStack) | Styles: vigil.css .sted-* (+ .te-editor/.te-highlight/.te-yaml from the task editor) | Data: client-side fetch /api/v1/stacks/ (CRUD), /<id>/revisions/, /<id>/env/reveal/, /<id>/deploy/, /<id>/remove/ (TOTP), POST /api/v1/stacks/validate/ #}
+{% load i18n %}{# Stack editor page section — a full-screen compose editor: highlighted YAML with a line gutter, live validation, masked .env, revisions #}
+{# Logic: static/js/vigil-stacks.js (openStackEditor / saveStack / validateStack / deployStack / removeStack) | Styles: css/vigil/*.css .sted-* (+ .te-editor/.te-highlight/.te-yaml from the task editor) | Data: client-side fetch /api/v1/stacks/ (CRUD), /<id>/revisions/, /<id>/env/reveal/, /<id>/deploy/, /<id>/remove/ (TOTP), POST /api/v1/stacks/validate/ #}
     <section id="page-stack-editor" class="page sted">
 
       <div class="sted-bar">
         <div class="sted-crumbs">
-          <button class="sted-crumb" type="button" data-sted-back>Containers</button>
+          <button class="sted-crumb" type="button" data-sted-back>{% translate "Containers" %}</button>
           <span class="sted-sep">›</span>
           <span class="sted-crumb-now" id="sted-host"></span>
           <span class="sted-sep">›</span>
@@ -12,10 +12,10 @@
         </div>
         <span id="sted-status" class="sted-status"></span>
         <div class="sted-actions">
-          <button class="btn btn-ghost btn-sm" type="button" data-stack-remove hidden>Take down…</button>
-          <button class="btn btn-lav btn-sm" type="button" data-stack-deploy hidden>Deploy</button>
-          <button class="btn btn-mint btn-sm" type="button" data-stack-save>Save revision</button>
-          <button class="modal-close sted-close" type="button" data-sted-back aria-label="Close the editor" title="Close">
+          <button class="btn btn-ghost btn-sm" type="button" data-stack-remove hidden>{% translate "Take down…" %}</button>
+          <button class="btn btn-lav btn-sm" type="button" data-stack-deploy hidden>{% translate "Deploy" %}</button>
+          <button class="btn btn-mint btn-sm" type="button" data-stack-save>{% translate "Save revision" %}</button>
+          <button class="modal-close sted-close" type="button" data-sted-back aria-label="{% translate "Close the editor" %}" title="{% translate "Close" %}">
             <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -23,60 +23,60 @@
 
       <div class="sted-grid">
         <div class="sted-main" id="sted-main">
-          <div class="sted-source" id="sted-source" role="radiogroup" aria-label="Where the compose file comes from" hidden>
-            <button class="sted-source-btn" type="button" role="radio" aria-checked="true" data-sted-source="editor">Write it here</button>
-            <button class="sted-source-btn" type="button" role="radio" aria-checked="false" data-sted-source="git">From Git</button>
+          <div class="sted-source" id="sted-source" role="radiogroup" aria-label="{% translate "Where the compose file comes from" %}" hidden>
+            <button class="sted-source-btn" type="button" role="radio" aria-checked="true" data-sted-source="editor">{% translate "Write it here" %}</button>
+            <button class="sted-source-btn" type="button" role="radio" aria-checked="false" data-sted-source="git">{% translate "From Git" %}</button>
           </div>
 
           <div class="sted-field" id="stack-name-field">
-            <label class="sted-label" for="stack-name">Name</label>
-            <input class="form-control" id="stack-name" maxlength="63" placeholder="media"
+            <label class="sted-label" for="stack-name">{% translate "Name" %}</label>
+            <input class="form-control" id="stack-name" maxlength="63" placeholder="{% translate "media" %}"
               autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="stack-name-error">
             <div class="sted-name-error" id="stack-name-error" role="alert"></div>
-            <div class="bl-hint">Lowercase letters, digits, _ and -. It lives in /opt/vigil/stacks/&lt;name&gt; on the host.</div>
+            <div class="bl-hint">{% blocktranslate %}Lowercase letters, digits, _ and -. It lives in /opt/vigil/stacks/&lt;name&gt; on the host.{% endblocktranslate %}</div>
           </div>
 
           <div class="sted-git" id="sted-git" hidden>
             <div class="sted-git-grid">
               <div class="sted-field sted-git-wide">
-                <label class="sted-label" for="sted-git-url">Repository URL</label>
-                <input class="form-control" id="sted-git-url" placeholder="https://github.com/acme/app.git"
+                <label class="sted-label" for="sted-git-url">{% translate "Repository URL" %}</label>
+                <input class="form-control" id="sted-git-url" placeholder="{% translate "https://github.com/acme/app.git" %}"
                   autocomplete="off" autocapitalize="off" spellcheck="false">
               </div>
               <div class="sted-field">
-                <label class="sted-label" for="sted-git-branch">Branch</label>
+                <label class="sted-label" for="sted-git-branch">{% translate "Branch" %}</label>
                 <input class="form-control" id="sted-git-branch" value="main"
                   autocomplete="off" autocapitalize="off" spellcheck="false">
               </div>
               <div class="sted-field">
-                <label class="sted-label" for="sted-git-pin">Pin to a tag or commit (optional)</label>
-                <input class="form-control" id="sted-git-pin" placeholder="v1.2, or a commit"
+                <label class="sted-label" for="sted-git-pin">{% translate "Pin to a tag or commit (optional)" %}</label>
+                <input class="form-control" id="sted-git-pin" placeholder="{% translate "v1.2, or a commit" %}"
                   autocomplete="off" autocapitalize="off" spellcheck="false">
               </div>
               <div class="sted-field">
-                <label class="sted-label" for="sted-git-path">Compose file in the repo</label>
+                <label class="sted-label" for="sted-git-path">{% translate "Compose file in the repo" %}</label>
                 <input class="form-control" id="sted-git-path" value="compose.yaml"
                   autocomplete="off" autocapitalize="off" spellcheck="false">
               </div>
               <div class="sted-field">
-                <label class="sted-label" for="sted-git-cred">Credential</label>
+                <label class="sted-label" for="sted-git-cred">{% translate "Credential" %}</label>
                 <select class="form-control" id="sted-git-cred"></select>
               </div>
             </div>
             <div class="sted-git-state">
-              <span id="sted-git-state" hidden>Commit <code>000000000000</code><span data-sted-git-ref></span></span>
-              <button class="btn btn-ghost btn-sm" type="button" data-sted-git-pull hidden>Pull latest</button>
+              <span id="sted-git-state" hidden>{% blocktranslate with hash="000000000000" %}Commit <code>{{ hash }}</code>{% endblocktranslate %}<span data-sted-git-ref></span></span>
+              <button class="btn btn-ghost btn-sm" type="button" data-sted-git-pull hidden>{% translate "Pull latest" %}</button>
             </div>
-            <div class="bl-hint">Vigil fetches the folder that holds this compose file and ships it to the host, so
-              build: contexts have their source. The compose file is edited in the repository, not here.</div>
+            <div class="bl-hint">{% blocktranslate with build="build:" %}Vigil fetches the folder that holds this compose file and ships it to the host, so
+              {{ build }} contexts have their source. The compose file is edited in the repository, not here.{% endblocktranslate %}</div>
           </div>
 
-          <div class="sted-label">compose.yaml</div>
+          <div class="sted-label">{% translate "compose.yaml" %}</div>
           <div class="sted-editor te-editor">
             <div class="sted-gutter" id="sted-gutter" aria-hidden="true"></div>
             <pre class="te-highlight" id="sted-hl" aria-hidden="true"></pre>
             <textarea class="te-yaml" id="stack-compose" spellcheck="false" autocapitalize="off" autocorrect="off"
-              aria-label="compose.yaml"></textarea>
+              aria-label="{% translate "compose.yaml" %}"></textarea>
           </div>
 
           <div class="sted-check" id="sted-check"></div>
@@ -85,17 +85,17 @@
 
         <aside class="sted-side">
           <div class="sted-card">
-            <div class="sted-card-title">.env <span class="sted-card-sub">(values stay hidden; leave one blank to keep it)</span></div>
+            <div class="sted-card-title">{% translate ".env" %} <span class="sted-card-sub">{% translate "(values stay hidden; leave one blank to keep it)" %}</span></div>
             <div id="stack-env" class="stack-env"></div>
             <div class="stack-env-actions">
-              <button class="btn btn-outline btn-xs" type="button" data-stack-env-add>+ Add variable</button>
-              <button class="btn btn-ghost btn-xs" type="button" data-stack-env-reveal>Show values</button>
+              <button class="btn btn-outline btn-xs" type="button" data-stack-env-add>{% translate "+ Add variable" %}</button>
+              <button class="btn btn-ghost btn-xs" type="button" data-stack-env-reveal>{% translate "Show values" %}</button>
             </div>
           </div>
 
           <div class="sted-card" id="stack-revisions-field" hidden>
-            <div class="sted-card-title sted-card-title-row">Revisions
-              <button class="btn btn-ghost btn-xs" type="button" data-stack-rev-prune>Prune…</button></div>
+            <div class="sted-card-title sted-card-title-row">{% translate "Revisions" %}
+              <button class="btn btn-ghost btn-xs" type="button" data-stack-rev-prune>{% translate "Prune…" %}</button></div>
             <div id="stack-revisions" class="stack-revisions"></div>
           </div>
         </aside>

@@ -15,12 +15,13 @@ from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
+from vigil.css_text import design_css
+
 from .test_reports_ui import _code_only, _function, _node
 
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-reports.js"
 DASHBOARDS_JS = ROOT / "static/js/vigil-dashboards.js"
-CSS = ROOT / "static/css/vigil.css"
 
 SRC = JS.read_text()
 CODE = _code_only(SRC)
@@ -34,6 +35,8 @@ STUBS = "\n".join([
     "let cssVar = n => n;",
     "const escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');",
     "const escAttr = escHtml;",
+    "const t = (m) => String(m);",
+    "const tn = (s, p, n) => String(n === 1 ? s : p);",
     "const document = { addEventListener() {} };",
     "const window = {};",
 ])
@@ -438,13 +441,13 @@ class ReportTableTests(SimpleTestCase):
 class ReportStyleTests(SimpleTestCase):
 
     def test_css_appended_not_replaced(self):
-        css = CSS.read_text()
+        css = design_css()
         self.assertGreater(len(css.splitlines()), 4575)
         self.assertIn("QA-47: report grid", css)
         self.assertIn(".rpt-gs .rpt-chart", css)
         self.assertRegex(css, r"\.rpt-chart \{ height: 220px; position: relative; \}")
 
     def test_no_side_stripe(self):
-        rules = "\n".join(re.findall(r"\.rpt-[\w-]*\s*\{[^}]*\}", CSS.read_text()))
+        rules = "\n".join(re.findall(r"\.rpt-[\w-]*\s*\{[^}]*\}", design_css()))
         for banned in ("border-left", "border-right"):
             self.assertNotIn(banned, rules)

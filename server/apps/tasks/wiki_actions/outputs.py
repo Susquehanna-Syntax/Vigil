@@ -1,0 +1,200 @@
+"""What each action's declared outputs mean, shown in the output table.
+
+``apps/tasks/management/commands/render_wiki_actions.py`` reads this to write
+the Built-in Actions page, and refuses to render when an action declares an
+output that has no note here.
+"""
+
+from __future__ import annotations
+
+#: What each declared output means (action -> field -> sentence). Every output
+#: an action declares must have a note here, or the render fails — an output a
+#: reader cannot understand is one nobody will branch on correctly.
+OUTPUT_NOTES: dict[str, dict[str, str]] = {
+    "check_service": {
+        "active": "True when systemd reports the unit active.",
+        "state": "The raw systemctl is-active word (active, inactive, failed, …).",
+    },
+    "update_container": {
+        "updated": "True when the container now runs a different image than before.",
+        "old_image_id": "Image id the container ran before the update.",
+        "new_image_id": "Image id the container runs now.",
+    },
+    "check_docker_updates": {
+        "checked": "How many Docker Hub-tagged containers were checked.",
+        "outdated": "How many of them have a newer image available.",
+    },
+    "app_inventory": {
+        "count": "How many installed items the host reported.",
+        "outdated": "How many of them their own package manager offers a newer version for.",
+        "unmanaged": "How many are entries no package manager claims (a Windows registry install with no winget/choco/scoop match).",
+        "errors": "How many sources failed to report.",
+    },
+    "app_install": {
+        "installed_version": "The version the host now reports for the app, or empty when the source does not report one.",
+        "source": "Which source the agent acted on — the requested one, or the host's own package manager when no source was given.",
+    },
+    "app_upgrade": {
+        "upgraded": "How many apps the upgrade moved: one when an app was named, otherwise how many stopped being outdated.",
+        "failed": "How many apps the upgrade reported as failing (0 — a failed upgrade fails the step).",
+    },
+    "app_uninstall": {
+        "removed": "True when the app is no longer in the inventory the host reported after the removal.",
+    },
+    "app_pin": {
+        "pinned": "True when the app is now held (a pin was added), False when it was released (`unpin: true`).",
+        "pinned_version": "The version the host reports for the app after the action, the requested version when the inventory has no row for it, or empty when neither is known.",
+    },
+    "app_install_custom": {
+        "installed_version": "The version the host reports afterwards for the `app` you named, or empty when you named none or the inventory has no row for it.",
+        "sha256": "The SHA-256 of the installer that was run — always the one the task pinned, because a mismatch stops the step before anything runs.",
+    },
+    "stack_restart": {"project": "The stack that was restarted."},
+    "container_logs": {"lines": "How many lines were returned."},
+    "stack_deploy": {"project": "The stack deployed.", "revision": "The revision deployed (0 when not given)."},
+    "container_rollback": {"rolled_back": "True once the container runs the earlier image.", "image": "The image it was put back on."},
+    "stack_read": {"project": "The stack read.", "would_recreate": "How many of its services a deploy of this file would recreate (0 = adopting changes nothing)."},
+    "stack_remove": {"project": "The stack taken down.", "files_deleted": "True when its folder was deleted too."},
+    "docker_disk_usage": {"images_size": "Bytes all image layers take.", "volumes_size": "Bytes all volumes take.",
+                          "reclaimable": "Bytes unused images, volumes and build cache could free.",
+                          "summary": "A one-line summary."},
+    "image_remove": {"removed": "True once the image is gone."},
+    "image_prune": {"removed": "How many images were removed.", "space_reclaimed": "Bytes freed."},
+    "volume_remove": {"removed": "True once the volume and its data are gone."},
+    "volume_prune": {"removed": "How many volumes were removed.", "space_reclaimed": "Bytes freed."},
+    "network_remove": {"removed": "True once the network is gone."},
+    "network_prune": {"removed": "How many networks were removed.", "space_reclaimed": "Always 0: networks take no space."},
+    "stack_update": {"project": "The stack that was updated."},
+    "app_ensure": {
+        "changed": "True when the step did something; false when the host already matched, which is what a second run reports.",
+        "action": "What it did: none, install, upgrade, pin or uninstall.",
+        "version_before": "The version the host listed before, or empty when the app was not installed.",
+        "version_after": "The version the host lists afterwards, or empty when the app is gone.",
+    },
+    "run_command": {
+        "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
+    },
+    "restart_service": {"active": "True when systemd reports the unit active after the restart."},
+    "start_service": {"active": "True when systemd reports the unit active after the start."},
+    "stop_service": {"active": "True when the unit is still active after the stop (normally false)."},
+    "reload_service": {"active": "True when systemd reports the unit active after the reload."},
+    "enable_service": {"enabled": "True when systemd now reports the unit enabled."},
+    "disable_service": {"enabled": "True when the unit is still enabled (normally false)."},
+    "restart_container": {"running": "True when the container is running after the restart."},
+    "start_container": {"running": "True when the container is running after the start."},
+    "stop_container": {"running": "True when the container is still running (normally false)."},
+    "pull_image": {"image_id": "Id of the image the reference now points to, after the pull."},
+    "remove_container": {"removed": "True once the container has been removed."},
+    "recreate_container": {
+        "updated": "True when the recreated container runs a different image.",
+        "old_image_id": "Image id before the recreate.",
+        "new_image_id": "Image id after the recreate.",
+    },
+    "docker_compose_up": {"compose_file": "The compose file that was brought up."},
+    "docker_compose_down": {"compose_file": "The compose file that was taken down."},
+    "clear_docker_logs": {"truncated": "True when a log file was found and emptied."},
+    "write_file": {"path": "The file written.", "bytes": "How many characters were written."},
+    "create_directory": {"path": "The directory created."},
+    "delete_path": {"path": "The path deleted.", "recursive": "True when a directory tree was removed."},
+    "copy_file": {"src": "The source path.", "dest": "The destination path."},
+    "move_file": {"src": "The source path.", "dest": "The destination path."},
+    "set_permissions": {"path": "The path whose mode or owner was set."},
+    "install_package": {
+        "package": "The package name as given.",
+        "manager": "The package manager used (apt-get, dnf, winget, …).",
+        "installed_version": "Version now installed; empty when this manager is not queried (apk, winget) or the query failed.",
+    },
+    "windows_update_scan": {"count": "How many updates matched the filters."},
+    "windows_update_install": {
+        "installed_count": "How many updates the installer reported as installed.",
+        "failed_count": "How many selected updates failed to install.",
+        "reboot_required": "True when a reboot is needed to finish applying the updates (the agent never reboots on its own).",
+    },
+    "update_agent": {"version": "The agent version now installed."},
+    "add_tag": {"tags": "The tags requested (comma-separated)."},
+    "raise_alert": {"message": "The message the server was asked to raise, as the agent reported it."},
+    "resolve_alert": {"key": "The key whose alert the server was asked to resolve."},
+    "send_notification": {"message": "The message the server was asked to send, as the agent reported it."},
+    "jackil_ticket": {"title": "The ticket title the server was asked to open or note, as the agent reported it."},
+    "jackil_note": {"body": "The note the server was asked to add, as the agent reported it."},
+    "jackil_resolve": {"key": "The key whose open ticket the server was asked to resolve."},
+    "remove_tag": {"tags": "The tags requested for removal (comma-separated)."},
+    "request_nessus_scan": {"requested": "Always true once the request is recorded."},
+    "request_network_scan": {"engine": "The scan engine requested, or auto when the server picks."},
+    "run_trivy_scan": {"vulnerabilities": "Total findings across the report; -1 when the report could not be parsed."},
+    "trivy_db_update": {"updated": "Always true once the database update finished."},
+    "hunt_file": {
+        "matched": "True when at least one file matched.",
+        "count": "How many matches were returned (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout, and more matches exist.",
+    },
+    "hunt_package": {
+        "matched": "True when at least one installed package matched.",
+        "count": "How many packages matched (the cap when truncated).",
+        "truncated": "True when the listing stopped early at max_results or the timeout.",
+    },
+    "hunt_process": {
+        "matched": "True when at least one running process matched.",
+        "count": "How many processes matched (the cap when truncated).",
+        "truncated": "True when the process walk stopped early at max_results or the timeout.",
+    },
+    "hunt_port": {
+        "matched": "True when at least one local socket binding matched.",
+        "count": "How many bindings matched (the cap when truncated).",
+        "truncated": "True when the socket walk stopped early at max_results or the timeout.",
+    },
+    "hunt_service": {
+        "matched": "True when at least one service matched.",
+        "count": "How many services matched (the cap when truncated).",
+        "truncated": "True when the service walk stopped early at max_results or the timeout.",
+    },
+    "hunt_registry": {
+        "matched": "True when at least one key or value matched.",
+        "count": "How many keys and values matched (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout.",
+    },
+    "hunt_content": {
+        "matched": "True when at least one file matched.",
+        "count": "How many files matched (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout.",
+    },
+    "update_package": {
+        "package": "The package name as given.",
+        "manager": "The package manager used.",
+        "installed_version": "Version now installed; empty when unknown.",
+    },
+    "remove_package": {"package": "The package name as given.", "manager": "The package manager used."},
+    "run_package_updates": {"manager": "The package manager used.", "security_only": "True when only security updates were requested."},
+    "clear_temp_files": {"removed": "Files deleted.", "skipped": "Files left because they were in use or not permitted."},
+    "reboot": {"delay_seconds": "Seconds until the reboot.", "deferral_active": "True when a logged-in user may still defer it."},
+    "set_hostname": {"hostname": "The hostname now set."},
+    "set_sleep_timeout": {"ac_minutes": "Minutes on AC power; 0 means never.",
+                          "dc_minutes": "Minutes on battery."},
+    "set_display_timeout": {"ac_minutes": "Minutes on AC power; 0 means never.",
+                            "dc_minutes": "Minutes on battery."},
+    "set_hibernate": {"enabled": "True when hibernation is now on."},
+    "set_power_plan": {"plan": "The plan now active."},
+    "set_lid_action": {"ac": "The lid action on AC power.",
+                       "dc": "The lid action on battery."},
+    "sleep_now": {"delay_seconds": "Seconds the machine waits before suspending."},
+    "hibernate_now": {"delay_seconds": "Seconds the machine waits before hibernating."},
+    "add_firewall_rule": {"port": "The rule's port.", "protocol": "The rule's protocol.", "action": "allow or deny."},
+    "remove_firewall_rule": {"port": "The rule's port.", "protocol": "The rule's protocol.", "action": "allow or deny."},
+    "list_firewall_rules": {
+        "supported": "False when the host has no supported firewall tool.",
+        "enabled": "True when the firewall is on.",
+        "rule_count": "How many rules were read.",
+    },
+    "set_firewall_policy": {"direction": "incoming or outgoing.", "policy": "The default policy now set."},
+    "enable_firewall": {"enabled": "Always true after this step."},
+    "disable_firewall": {"enabled": "Always false after this step."},
+    "create_user": {"username": "The account created."},
+    "delete_user": {"username": "The account deleted."},
+    "add_user_to_group": {"username": "The account.", "group": "The group it joined."},
+    "create_cron_job": {"user": "Whose crontab gained the line."},
+    "delete_cron_job": {"user": "Whose crontab was edited.", "removed": "How many lines matched and were removed (0 when none)."},
+    "execute_script": {
+        "exit_code": "The script's exit code (0 — a non-zero exit fails the step).",
+    },
+}
+

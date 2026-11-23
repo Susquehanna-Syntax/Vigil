@@ -1,50 +1,52 @@
+{% load i18n %}
 {# Settings page section — TOTP, AD import, enrollment queue, agent table #}
-{# Logic: static/js/vigil-settings.js (TOTP) + vigil-inventory.js (AD config) + vigil-host-cards.js (approve/reject) | Styles: vigil.css .totp-*, .enroll-*, .agent-table | Data: pending_hosts, hosts, vigil_timezone from dashboard() view #}
+{# Logic: static/js/vigil-settings.js (TOTP) + vigil-inventory.js (AD config) + vigil-host-cards.js (approve/reject) | Styles: css/vigil/*.css .totp-*, .enroll-*, .agent-table | Data: pending_hosts, hosts, vigil_timezone from dashboard() view #}
     <section id="page-settings" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Settings<span>.</span></div>
-          <div class="page-sub">Configure Vigil, agents, identity, and AI.</div>
+          <div class="page-title">{% translate "Settings" %}<span>.</span></div>
+          <div class="page-sub">{% translate "Configure Vigil, agents, identity, and AI." %}</div>
         </div>
       </div>
       <div class="settings-layout">
         <nav class="settings-nav" id="settings-nav">
-          <button class="settings-nav-item active" data-pane="account"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Account &amp; Security</button>
-          <button class="settings-nav-item" data-pane="ai"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 00-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 00-7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>AI Providers</button>
-          <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>Shared Identity</button>
-          <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
-          <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
-          <button class="settings-nav-item" data-pane="relays"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/></svg>Relays</button>
-          <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
-          <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Sites</button>
-          <button class="settings-nav-item" data-pane="branding"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Branding</button>
-          <button class="settings-nav-item" data-pane="scanners"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Vulnerability Scanners</button>
-          <button class="settings-nav-item" data-pane="jackil"><svg viewBox="0 0 24 24"><path d="M21 8V6a2 2 0 00-2-2H5a2 2 0 00-2 2v2a2 2 0 010 4v2a2 2 0 002 2h14a2 2 0 002-2v-2a2 2 0 010-4z"/><path d="M13 4v3M13 11v2M13 17v3"/></svg>Jackil Tickets</button>
-          <button class="settings-nav-item" data-pane="api"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>API &amp; Webhooks</button>
-          <button class="settings-nav-item" data-pane="email"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/></svg>Email</button>
-          <button class="settings-nav-item" data-pane="retention"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg>Retention &amp; Limits</button>
-          <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Display</button>
-          <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Agent Binary</button>
-          <button class="settings-nav-item" data-pane="images"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>OS Images</button>
+          <button class="settings-nav-item active" data-pane="account"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{% translate "Account &amp; Security" %}</button>
+          <button class="settings-nav-item" data-pane="ai"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 00-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 00-7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>{% translate "AI Providers" %}</button>
+          <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>{% translate "Shared Identity" %}</button>
+          <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>{% translate "Directory Import" %}</button>
+          <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>{% translate "Agents" %}</button>
+          <button class="settings-nav-item" data-pane="relays"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/></svg>{% translate "Relays" %}</button>
+          <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>{% translate "Users &amp; Roles" %}</button>
+          <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>{% translate "Sites" %}</button>
+          <button class="settings-nav-item" data-pane="branding"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>{% translate "Branding" %}</button>
+          <button class="settings-nav-item" data-pane="scanners"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>{% translate "Vulnerability Scanners" %}</button>
+          <button class="settings-nav-item" data-pane="jackil"><svg viewBox="0 0 24 24"><path d="M21 8V6a2 2 0 00-2-2H5a2 2 0 00-2 2v2a2 2 0 010 4v2a2 2 0 002 2h14a2 2 0 002-2v-2a2 2 0 010-4z"/><path d="M13 4v3M13 11v2M13 17v3"/></svg>{% translate "Jackil Tickets" %}</button>
+          <button class="settings-nav-item" data-pane="api"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>{% translate "API &amp; Webhooks" %}</button>
+          <button class="settings-nav-item" data-pane="notifications"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>{% translate "Notifications" %}</button>
+          <button class="settings-nav-item" data-pane="email"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/></svg>{% translate "Email" %}</button>
+          <button class="settings-nav-item" data-pane="retention"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg>{% translate "Retention &amp; Limits" %}</button>
+          <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>{% translate "Display" %}</button>
+          <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>{% translate "Agent Binary" %}</button>
+          <button class="settings-nav-item" data-pane="images"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>{% translate "OS Images" %}</button>
         </nav>
         <div class="settings-content">
         <div class="settings-pane active" data-pane="account">
 
-      <div class="section-label">License</div>
+      <div class="section-label">{% translate "License" %}</div>
 
       {# ---- License (all tiers, always visible — SQSY-LICENSING.md §5) ---- #}
       <div class="totp-card" id="license-card" data-settings-page="license">
-        <h3>License</h3>
-        <p id="license-summary" class="muted">Loading…</p>
-        <p>Instance ID: <span class="license-instance" id="license-instance"></span></p>
+        <h3>{% translate "License" %}</h3>
+        <p id="license-summary" class="muted">{% translate "Loading…" %}</p>
+        <p>{% translate "Instance ID:" %} <span class="license-instance" id="license-instance"></span></p>
         <p id="license-seats"></p>
         <div id="license-features"></div>
-        <form id="license-paste-form" style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <input type="text" class="form-control" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="flex:1; min-width:280px;">
-          <button type="submit" class="btn btn-mint btn-sm">Apply</button>
-          <a class="btn btn-sky btn-sm" id="license-get" target="_blank" rel="noopener">Get a license</a>
-          <button type="button" class="btn btn-outline btn-sm" id="license-refresh" style="display:none;">Refresh now</button>
+        <form id="license-paste-form" class="license-paste-form">
+          <input type="text" class="form-control license-paste-field" id="license-paste" placeholder='{% translate "Paste a license key (SQSY-LICENSE-V1.…)" %}'>
+          <button type="submit" class="btn btn-mint btn-sm">{% translate "Apply" %}</button>
+          <a class="btn btn-sky btn-sm" id="license-get" target="_blank" rel="noopener">{% translate "Get a license" %}</a>
+          <button type="button" class="btn btn-outline btn-sm" id="license-refresh" style="display:none;">{% translate "Refresh now" %}</button>
         </form>
         <p id="license-paste-result" class="muted"></p>
         <p id="license-refresh-status" class="muted"></p>
@@ -102,472 +104,515 @@
       })();
       </script>
 
-      <div class="section-label" style="margin-top:32px;">Sign-in sessions</div>
+      <div class="section-label set-label-far">{% translate "Sign-in sessions" %}</div>
       <div class="is-group" data-group="sessions"></div>
 
         </div>
         <div class="settings-pane" data-pane="ai">
-      <div class="section-label">AI Providers</div>
+      <div class="section-label">{% translate "AI Providers" %}</div>
       <div class="totp-card">
-        <h3>AI suggestion providers</h3>
-        <p class="muted">Add one or more model endpoints — any OpenAI-compatible server (Ollama, vLLM, LM Studio, OpenAI) or Anthropic. Bring your own key; nothing is hosted by SQSY and Vigil never bills you for inference. When you ask for a suggested fix you can fan the request out to several and compare. Suggestions are always draft task YAML you review before running.</p>
-        <div id="ai-providers-list" style="margin:14px 0;"></div>
-        <div class="bl-editor" id="ap-form" data-editing="" style="margin-bottom:0;">
-          <h3 id="ap-form-title">Add a provider</h3>
-          <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="ap-name" placeholder="e.g. Homelab qwopus"></div>
-          <div class="setting-row"><label>Kind</label>
+        <h3>{% translate "AI suggestion providers" %}</h3>
+        <p class="muted">{% blocktranslate %}Add one or more model endpoints — any OpenAI-compatible server (Ollama, vLLM, LM Studio, OpenAI) or Anthropic. Bring your own key; nothing is hosted by SQSY and Vigil never bills you for inference. When you ask for a suggested fix you can fan the request out to several and compare. Suggestions are always draft task YAML you review before running.{% endblocktranslate %}</p>
+        <div id="ai-providers-list" class="ai-providers-list"></div>
+        <div class="bl-editor set-editor-flush" id="ap-form" data-editing="">
+          <h3 id="ap-form-title">{% translate "Add a provider" %}</h3>
+          <div class="setting-grid">
+          <div class="setting-row"><label>{% translate "Name" %}</label><input type="text" class="form-control" id="ap-name" placeholder='{% translate "e.g. Homelab qwopus" %}'></div>
+          <div class="setting-row"><label>{% translate "Kind" %}</label>
             <select class="form-control" id="ap-kind">
-              <option value="openai">OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI)</option>
-              <option value="anthropic">Anthropic</option>
+              <option value="openai">{% translate "OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI)" %}</option>
+              <option value="anthropic">{% translate "Anthropic" %}</option>
             </select></div>
-          <div class="setting-row"><label>Base URL</label><input type="text" class="form-control" id="ap-url" placeholder="http://10.0.0.108:11434/v1"></div>
-          <div class="setting-row"><label>Model</label><input type="text" class="form-control" id="ap-model" placeholder="qwopus / gpt-4o-mini / claude-sonnet-..."></div>
-          <div class="setting-row"><label>Reasoning effort</label>
+          <div class="setting-row"><label>{% translate "Base URL" %}</label><input type="text" class="form-control" id="ap-url" placeholder='{% translate "http://10.0.0.108:11434/v1" %}'></div>
+          <div class="setting-row"><label>{% translate "Model" %}</label><input type="text" class="form-control" id="ap-model" placeholder='{% translate "qwopus / gpt-4o-mini / claude-sonnet-..." %}'></div>
+          <div class="setting-row setting-row-wide"><label>{% translate "Reasoning effort" %}</label>
             <select class="form-control" id="ap-effort">
-              <option value="">Model default</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select><p class="bl-hint">For thinking models (Qwen, DeepSeek, o-series). Low answers in well under a minute where the default can take five. Leave on Model default for models that do not reason.</p></div>
-          <div class="setting-row"><label>API key</label><input type="password" class="form-control" id="ap-key" placeholder="blank = keyless local / keep current"><p class="bl-hint" id="ap-key-note"></p></div>
+              <option value="">{% translate "Model default" %}</option>
+              <option value="low">{% translate "Low" %}</option>
+              <option value="medium">{% translate "Medium" %}</option>
+              <option value="high">{% translate "High" %}</option>
+            </select><p class="bl-hint">{% blocktranslate %}For thinking models (Qwen, DeepSeek, o-series). Low answers in well under a minute where the default can take five. Leave on Model default for models that do not reason.{% endblocktranslate %}</p></div>
+          <div class="setting-row setting-row-wide"><label>{% translate "API key" %}</label><input type="password" class="form-control" id="ap-key" placeholder='{% translate "blank = keyless local / keep current" %}'><p class="bl-hint" id="ap-key-note"></p></div>
+          </div>
           <div class="bl-editor-actions">
-            <button class="btn btn-mint btn-sm" id="ap-save">Save provider</button>
-            <button class="btn btn-peach btn-sm" id="ap-new">Clear</button>
+            <button class="btn btn-mint btn-sm" id="ap-save">{% translate "Save provider" %}</button>
+            <button class="btn btn-peach btn-sm" id="ap-new">{% translate "Clear" %}</button>
           </div>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="identity">
-      <div class="section-label">Shared Identity (Civil)</div>
+      <div class="section-label">{% translate "Shared Identity (Civil)" %}</div>
       <div class="totp-card" id="civil-settings-card">
-        <h3>Civil SSO</h3>
-        <p class="muted">Opt in to one account across every SQSY app (Vigil, Jackil, Sigil, Turnstil) via a Civil identity server. Local login always keeps working; when Civil is down, existing sessions are unaffected. Leave disabled for a standalone install.</p>
-        <p class="muted" id="civil-env-note" hidden>CIVIL_URL is set by an environment variable, which overrides anything here.</p>
+        <h3>{% translate "Civil SSO" %}</h3>
+        <p class="muted">{% blocktranslate %}Opt in to one account across every SQSY app (Vigil, Jackil, Sigil, Turnstil) via a Civil identity server. Local login always keeps working; when Civil is down, existing sessions are unaffected. Leave disabled for a standalone install.{% endblocktranslate %}</p>
+        <p class="muted" id="civil-env-note" hidden>{% blocktranslate %}CIVIL_URL is set by an environment variable, which overrides anything here.{% endblocktranslate %}</p>
+        <div class="setting-grid">
         <div class="setting-row">
-          <label>Civil URL</label>
-          <input type="text" class="form-control" id="civil-url" placeholder="http://civil.lan:8100">
+          <label>{% translate "Civil URL" %}</label>
+          <input type="text" class="form-control" id="civil-url" placeholder='{% translate "http://civil.lan:8100" %}'>
         </div>
         <div class="setting-row">
-          <label>This app's slug (as registered in Civil)</label>
-          <input type="text" class="form-control" id="civil-slug" placeholder="vigil">
+          <label>{% translate "This app's slug (as registered in Civil)" %}</label>
+          <input type="text" class="form-control" id="civil-slug" placeholder='{% translate "vigil" %}'>
         </div>
-        <label class="setting-check"><input type="checkbox" id="civil-enabled"> Enable Civil sign-in</label>
+        </div>
+        <label class="setting-check"><input type="checkbox" id="civil-enabled"> {% translate "Enable Civil sign-in" %}</label>
         <p class="muted" id="civil-state"></p>
-        <div style="margin-top:12px;">
-          <button class="btn btn-mint btn-sm" id="civil-save-btn">Save</button>
-          <button class="btn btn-mint btn-sm" id="civil-test-btn">Test connection &amp; fetch key</button>
+        <div class="set-actions-row">
+          <button class="btn btn-mint btn-sm" id="civil-save-btn">{% translate "Save" %}</button>
+          <button class="btn btn-mint btn-sm" id="civil-test-btn">{% translate "Test connection &amp; fetch key" %}</button>
         </div>
       </div>
 
-      <div class="section-label" style="margin-top:32px;">Two-Factor Authentication</div>
+      <div class="section-label set-label-far">{% translate "Two-Factor Authentication" %}</div>
       <div id="totp-card" class="totp-card">
-        <div class="totp-status" id="totp-status-line">Loading…</div>
-        <div class="totp-sub" id="totp-sub-line">TOTP protects task execution. Password fallback is test-only and will be removed.</div>
-        <div id="totp-enroll-view" style="display:none; margin-top:16px;">
+        <div class="totp-status" id="totp-status-line">{% translate "Loading…" %}</div>
+        <div class="totp-sub" id="totp-sub-line">{% blocktranslate %}TOTP protects task execution. Password fallback is test-only and will be removed.{% endblocktranslate %}</div>
+        <div id="totp-enroll-view" class="totp-actions-below" style="display:none;">
           <div class="totp-secret-row">
             <div>
-              <div class="totp-label">Secret (enter into any authenticator app)</div>
+              <div class="totp-label">{% translate "Secret (enter into any authenticator app)" %}</div>
               <div class="totp-secret mono" id="totp-secret-text">—</div>
             </div>
             <div>
-              <div class="totp-label">otpauth URI</div>
+              <div class="totp-label">{% translate "otpauth URI" %}</div>
               <div class="totp-uri mono" id="totp-uri-text">—</div>
             </div>
           </div>
           <div class="totp-verify-row">
             <input type="text" inputmode="numeric" maxlength="6" class="totp-code-input mono" id="totp-verify-code" placeholder="123456" />
-            <button class="btn btn-mint btn-sm" data-act="totpConfirm">Verify & Enable</button>
+            <button class="btn btn-mint btn-sm" data-act="totpConfirm">{% translate "Verify &amp; Enable" %}</button>
           </div>
         </div>
-        <div class="totp-actions" id="totp-actions" style="margin-top:16px;">
-          <button class="btn btn-sky btn-sm" id="totp-start-btn" data-act="totpStart">Enroll TOTP</button>
-          <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" data-act="totpDisablePrompt">Disable…</button>
+        <div class="totp-actions totp-actions-below" id="totp-actions">
+          <button class="btn btn-sky btn-sm" id="totp-start-btn" data-act="totpStart">{% translate "Enroll TOTP" %}</button>
+          <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" data-act="totpDisablePrompt">{% translate "Disable…" %}</button>
         </div>
       </div>
 
       {# Logic: static/js/vigil-settings.js (loadSecurityKeys / addSecurityKey) #}
-      <div class="section-label" style="margin-top:32px;">Security keys</div>
+      <div class="section-label set-label-far">{% translate "Security keys" %}</div>
       <div class="totp-card" id="security-keys-card">
-        <div class="totp-sub">Tap a security key or use your device's passkey instead of typing a code.
-          Works with YubiKey, Touch ID, Windows Hello and phones.</div>
+        <div class="totp-sub">{% blocktranslate %}Tap a security key or use your device's passkey instead of typing a code.
+          Works with YubiKey, Touch ID, Windows Hello and phones.{% endblocktranslate %}</div>
         {# Shown when the browser will not run WebAuthn: vigil-settings.js puts "Security keys need HTTPS." here. #}
         <div class="totp-key-error" id="security-keys-note" style="display:none;"></div>
         <div id="security-keys-list"></div>
-        <div class="totp-actions" style="margin-top:16px;">
-          <button class="btn btn-sky btn-sm" id="security-keys-add-btn" data-act="addSecurityKey">Add a security key</button>
+        <div class="totp-actions totp-actions-below">
+          <button class="btn btn-sky btn-sm" id="security-keys-add-btn" data-act="addSecurityKey">{% translate "Add a security key" %}</button>
         </div>
       </div>
 
       {# Logic: static/js/vigil-settings.js (transportAckLoad / transportAckSet) #}
-      <div class="section-label" style="margin-top:32px;">Transport Security</div>
+      <div class="section-label set-label-far">{% translate "Transport Security" %}</div>
       <div class="totp-card">
-        <div class="totp-status" id="transport-status-line">Loading…</div>
+        <div class="totp-status" id="transport-status-line">{% translate "Loading…" %}</div>
         <div class="totp-sub" id="transport-sub-line">
-          Vigil hands out secrets that only TLS protects — a rebuild answer file
+          {% blocktranslate %}Vigil hands out secrets that only TLS protects — a rebuild answer file
           carries an admin password hash, SSH keys and an enrolment token. Over
-          plain HTTP those cross the network in the clear.
+          plain HTTP those cross the network in the clear.{% endblocktranslate %}
         </div>
-        <div class="totp-actions" style="margin-top:16px;">
+        <div class="totp-actions totp-actions-below">
           <button class="btn btn-peach btn-sm" id="transport-ack-btn"
                   style="display:none;" data-act="transportAckSet" data-a1="$true">
-            Acknowledge plain-text transport</button>
+            {% translate "Acknowledge plain-text transport" %}</button>
           <button class="btn btn-rose btn-sm" id="transport-revoke-btn"
                   style="display:none;" data-act="transportAckSet" data-a1="$false">
-            Withdraw acknowledgement</button>
+            {% translate "Withdraw acknowledgement" %}</button>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="directory">
-      <div class="section-label" style="margin-top:32px;">Active Directory Import</div>
+      <div class="section-label set-label-far">{% translate "Active Directory Import" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:12px;">Sync computer objects from your AD into the Host table. Imported hosts stay PENDING until their agent enrolls. OU segments become auto-tags.</div>
-        <div class="deploy-policy-grid" style="margin-bottom:12px;">
+        <div class="totp-sub ad-sub-flush">{% blocktranslate %}Sync computer objects from your AD into the Host table. Imported hosts stay PENDING until their agent enrolls. OU segments become auto-tags.{% endblocktranslate %}</div>
+        <div class="deploy-policy-grid ad-grid-flush">
           <div class="full">
-            <label class="deploy-input-label">LDAP URL</label>
-            <input type="text" class="form-control" id="ad-ldap-url" placeholder="ldaps://dc.example.com:636">
+            <label class="deploy-input-label">{% translate "LDAP URL" %}</label>
+            <input type="text" class="form-control" id="ad-ldap-url" placeholder='{% translate "ldaps://dc.example.com:636" %}'>
           </div>
           <div class="full">
-            <label class="deploy-input-label">Bind DN</label>
-            <input type="text" class="form-control" id="ad-bind-dn" placeholder="CN=svc-vigil,OU=Service Accounts,DC=example,DC=com">
+            <label class="deploy-input-label">{% translate "Bind DN" %}</label>
+            <input type="text" class="form-control" id="ad-bind-dn" placeholder='{% translate "CN=svc-vigil,OU=Service Accounts,DC=example,DC=com" %}'>
           </div>
           <div class="full">
-            <label class="deploy-input-label">Bind Password</label>
-            <input type="password" class="form-control" id="ad-bind-password" placeholder="(unchanged — leave blank to keep current)">
+            <label class="deploy-input-label">{% translate "Bind Password" %}</label>
+            <input type="password" class="form-control" id="ad-bind-password" placeholder='{% translate "(unchanged — leave blank to keep current)" %}'>
           </div>
           <div>
-            <label class="deploy-input-label">Base DN</label>
-            <input type="text" class="form-control" id="ad-base-dn" placeholder="DC=example,DC=com">
+            <label class="deploy-input-label">{% translate "Base DN" %}</label>
+            <input type="text" class="form-control" id="ad-base-dn" placeholder='{% translate "DC=example,DC=com" %}'>
           </div>
           <div>
-            <label class="deploy-input-label">Computer OU</label>
-            <input type="text" class="form-control" id="ad-computer-ou" placeholder="OU=Computers,DC=example,DC=com">
+            <label class="deploy-input-label">{% translate "Computer OU" %}</label>
+            <input type="text" class="form-control" id="ad-computer-ou" placeholder='{% translate "OU=Computers,DC=example,DC=com" %}'>
           </div>
-          <div class="full" style="display:flex;align-items:center;gap:10px;">
-            <input type="checkbox" id="ad-enabled" style="accent-color:var(--sky);width:16px;height:16px;">
-            <label for="ad-enabled" class="deploy-input-label" style="margin:0;">Enabled (uncheck to disable without losing settings)</label>
+          <div class="full set-check-row">
+            <input type="checkbox" id="ad-enabled" class="ad-enable-check">
+            <label for="ad-enabled" class="deploy-input-label set-label-flush">{% translate "Enabled (uncheck to disable without losing settings)" %}</label>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+        <div class="set-row-between">
           <div class="confirm-hint" id="ad-status">—</div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-mint btn-sm" data-act="adSaveConfig">Save</button>
-            <button class="btn btn-sky btn-sm" data-act="adSyncNow">Import Now</button>
+          <div class="btn-gap">
+            <button class="btn btn-mint btn-sm" data-act="adSaveConfig">{% translate "Save" %}</button>
+            <button class="btn btn-sky btn-sm" data-act="adSyncNow">{% translate "Import Now" %}</button>
           </div>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="agents">
-      <div class="section-label">Enrollment Queue{% if pending_count %} ({{ pending_count }}){% endif %}</div>
+      <div class="section-label">{% translate "Enrollment Queue" %}{% if pending_count %} ({{ pending_count }}){% endif %}</div>
       {% if pending_hosts %}
         {% for host in pending_hosts %}
         <div class="enroll-card" data-host-id="{{ host.id }}">
           <div class="status-dot pending"></div>
           <div class="enroll-info">
             <div class="enroll-hostname">{{ host.hostname }}</div>
-            <div class="enroll-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"Unknown IP" }} · First seen {{ host.created_at|timesince }} ago{% if host.replaces %} · replaces {{ host.replaces.hostname }}{% endif %}</div>
+            <div class="enroll-meta">{% blocktranslate with os=host.os|default:"Unknown OS" ip=host.ip_address|default:"Unknown IP" seen=host.created_at|timesince %}{{ os }} · {{ ip }} · First seen {{ seen }} ago{% endblocktranslate %}{% if host.replaces %} · {% blocktranslate with name=host.replaces.hostname %}replaces {{ name }}{% endblocktranslate %}{% endif %}</div>
           </div>
           <div class="enroll-actions">
-            <button class="btn btn-sm btn-mint" data-act="approveHost" data-a1="{{ host.id }}" data-a2="$el">Approve</button>
-            <button class="btn btn-sm btn-rose" data-act="rejectHost" data-a1="{{ host.id }}" data-a2="$el">Reject</button>
+            <button class="btn btn-sm btn-mint" data-act="approveHost" data-a1="{{ host.id }}" data-a2="$el">{% translate "Approve" %}</button>
+            <button class="btn btn-sm btn-rose" data-act="rejectHost" data-a1="{{ host.id }}" data-a2="$el">{% translate "Reject" %}</button>
           </div>
         </div>
         {% endfor %}
       {% else %}
-        <div style="background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;">
-          No agents waiting for approval.
+        <div class="set-empty">
+          {% blocktranslate %}No agents waiting for approval.{% endblocktranslate %}
         </div>
       {% endif %}
 
       <!-- All Agents -->
-      <div class="section-label">All Agents</div>
+      <div class="section-label">{% translate "All Agents" %}</div>
       {% if hosts %}
       <table class="agent-table">
         <thead>
           <tr>
-            <th>Status</th>
-            <th>Hostname</th>
-            <th>OS</th>
-            <th>IP</th>
-            <th>Mode</th>
-            <th>Last Check-in</th>
+            <th>{% translate "Status" %}</th>
+            <th>{% translate "Hostname" %}</th>
+            <th>{% translate "OS" %}</th>
+            <th>{% translate "IP" %}</th>
+            <th>{% translate "Mode" %}</th>
+            <th>{% translate "Last Check-in" %}</th>
           </tr>
         </thead>
         <tbody>
           {% for host in hosts %}
           <tr>
-            <td><div class="status-dot {{ host.status }}" style="width:8px;height:8px;margin:0 auto;"></div></td>
-            <td style="font-weight:600;">{{ host.hostname }}</td>
-            <td style="color: var(--text-2);">{{ host.os|default:"—" }}</td>
+            <td><div class="status-dot {{ host.status }} agent-dot"></div></td>
+            <td class="agent-hostname">{{ host.hostname }}</td>
+            <td class="agent-os">{{ host.os|default:"—" }}</td>
             <td class="mono">{{ host.ip_address|default:"—" }}</td>
             <td><span class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</span></td>
-            <td class="mono">{% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}</td>
+            <td class="mono">{% if host.last_checkin %}{% blocktranslate with seen=host.last_checkin|timesince %}{{ seen }} ago{% endblocktranslate %}{% else %}{% translate "Never" %}{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       {% else %}
-      <div style="background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;">
-        No agents registered yet.
+      <div class="set-empty">
+        {% blocktranslate %}No agents registered yet.{% endblocktranslate %}
       </div>
       {% endif %}
 
         </div>
         <div class="settings-pane" data-pane="relays">
-      <div class="section-label">Relays</div>
+      <div class="section-label">{% translate "Relays" %}</div>
       <div class="totp-card">
-        <p class="totp-sub">A relay is a small container agents connect to instead of this dashboard, so the dashboard can stay off the internet. The built-in relay is this dashboard itself. See the wiki for setup.</p>
-        <div id="relays-usage" class="muted" style="margin-top:10px;"></div>
+        <p class="totp-sub">{% blocktranslate %}A relay is a small container agents connect to instead of this dashboard, so the dashboard can stay off the internet. The built-in relay is this dashboard itself. See the wiki for setup.{% endblocktranslate %}</p>
+        <div id="relays-usage" class="muted relays-usage"></div>
         <div id="relays-list"></div>
       </div>
 
-      <div class="section-label settings-section-later">Add a relay</div>
+      <div class="section-label settings-section-later">{% translate "Add a relay" %}</div>
       <div class="totp-card">
-        <div class="setting-row"><label for="relay-name">Name</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder="Edge relay"></div>
-        <div class="setting-row"><label for="relay-location">Location (optional)</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder="Frankfurt DC"></div>
-        <div class="setting-row"><label for="relay-url">Address agents use</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder="https://relay.example.com"></div>
-        <div class="setting-row"><label for="relay-priority">Order</label>
-          <input type="number" class="form-control" id="relay-priority" value="100" min="0" max="1000" style="max-width:120px;">
-          <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
+        <div class="setting-grid">
+        <div class="setting-row"><label for="relay-name">{% translate "Name" %}</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder='{% translate "Edge relay" %}'></div>
+        <div class="setting-row"><label for="relay-location">{% translate "Location (optional)" %}</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder='{% translate "Frankfurt DC" %}'></div>
+        <div class="setting-row"><label for="relay-url">{% translate "Address agents use" %}</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder='{% translate "https://relay.example.com" %}'></div>
+        <div class="setting-row setting-row-wide"><label for="relay-priority">{% translate "Order" %}</label>
+          <input type="number" class="form-control relay-priority-field" id="relay-priority" value="100" min="0" max="1000">
+          <div class="totp-sub">{% translate "Agents try lower numbers first when their own address stops answering." %}</div>
         </div>
-        <button class="btn btn-mint btn-sm" data-act="addRelay">Add relay</button>
+        </div>
+        <button class="btn btn-mint btn-sm" data-act="addRelay">{% translate "Add relay" %}</button>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="users">
-      <div class="section-label">Users</div>
+      <div class="section-label">{% translate "Users" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:6px;">Manage who can sign in and what they can do. Admins configure Vigil and approve agents; Operators deploy tasks and acknowledge alerts; Viewers are read-only. The Operator role requires a Business license.</div>
-        <p id="users-seats" class="muted" style="margin-bottom:12px;"></p>
+        <div class="totp-sub users-intro-tight">{% blocktranslate %}Manage who can sign in and what they can do. Admins configure Vigil and approve agents; Operators deploy tasks and acknowledge alerts; Viewers are read-only. The Operator role requires a Business license.{% endblocktranslate %}</div>
+        <p id="users-seats" class="muted users-seats"></p>
         <div id="users-list"></div>
       </div>
 
-      <div class="section-label" style="margin-top:32px;">Add a user</div>
+      <div class="section-label set-label-far">{% translate "Add a user" %}</div>
       <div class="totp-card">
-        <div class="setting-row"><label>Username</label><input type="text" class="form-control" id="nu-username" placeholder="e.g. jsmith" autocomplete="off"></div>
-        <div class="setting-row"><label>Email</label><input type="email" class="form-control" id="nu-email" placeholder="optional" autocomplete="off"></div>
-        <div class="setting-row"><label>Password</label><input type="password" class="form-control" id="nu-password" placeholder="at least 8 characters" autocomplete="new-password"></div>
-        <div class="setting-row"><label>Role</label>
+        <div class="setting-grid">
+        <div class="setting-row"><label>{% translate "Username" %}</label><input type="text" class="form-control" id="nu-username" placeholder='{% translate "e.g. jsmith" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Email" %}</label><input type="email" class="form-control" id="nu-email" placeholder='{% translate "optional" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Password" %}</label><input type="password" class="form-control" id="nu-password" placeholder='{% translate "at least 8 characters" %}' autocomplete="new-password"></div>
+        <div class="setting-row"><label>{% translate "Role" %}</label>
           <select class="form-control" id="nu-role">
-            <option value="viewer">Viewer</option>
-            <option value="operator">Operator (Business)</option>
-            <option value="admin">Admin</option>
+            <option value="viewer">{% translate "Viewer" %}</option>
+            <option value="operator">{% translate "Operator (Business)" %}</option>
+            <option value="admin">{% translate "Admin" %}</option>
           </select></div>
-        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-          <button class="btn btn-mint btn-sm" id="nu-create" data-act="createUser">Create user</button>
+        </div>
+        <div class="set-actions-center">
+          <button class="btn btn-mint btn-sm" id="nu-create" data-act="createUser">{% translate "Create user" %}</button>
           <span id="nu-result" class="muted"></span>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="images">
-      <div class="section-label">OS Images</div>
+      <div class="section-label">{% translate "OS Images" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:12px;">
-          Images used by remote reprovisioning. Registering an image is
+        <div class="totp-sub ad-sub-flush">
+          {% blocktranslate %}Images used by remote reprovisioning. Registering an image is
           admin-only: whoever adds one chooses what runs as root on every
           machine rebuilt from it. Each image is verified against its SHA-256
           on import, then the ISO is discarded and only the extracted install
-          tree is kept.
+          tree is kept.{% endblocktranslate %}
         </div>
         <div id="images-list"></div>
       </div>
         </div>
         <div class="settings-pane" data-pane="sites">
-      <div class="section-label">Sites</div>
+      <div class="section-label">{% translate "Sites" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:12px;">Sites are administrative boundaries — a campus, a department, a client org — that group hosts. Free installs use the single default site; a Business license lets you add more and assign hosts.</div>
+        <div class="totp-sub ad-sub-flush">{% blocktranslate %}Sites are administrative boundaries — a campus, a department, a client org — that group hosts. Free installs use the single default site; a Business license lets you add more and assign hosts.{% endblocktranslate %}</div>
         <div id="sites-list"></div>
       </div>
 
-      <div class="section-label" style="margin-top:32px;">Add a site</div>
+      <div class="section-label set-label-far">{% translate "Add a site" %}</div>
       <div class="totp-card">
-        <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="ns-name" placeholder="e.g. West Campus" autocomplete="off"></div>
-        <div class="setting-row"><label>Slug</label><input type="text" class="form-control" id="ns-slug" placeholder="west-campus" autocomplete="off"></div>
-        <div class="setting-row"><label>Description</label><input type="text" class="form-control" id="ns-description" placeholder="optional" autocomplete="off"></div>
-        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-          <button class="btn btn-mint btn-sm" id="ns-create" data-act="createSite">Create site</button>
+        <div class="setting-grid">
+        <div class="setting-row"><label>{% translate "Name" %}</label><input type="text" class="form-control" id="ns-name" placeholder='{% translate "e.g. West Campus" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Slug" %}</label><input type="text" class="form-control" id="ns-slug" placeholder='{% translate "west-campus" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Description" %}</label><input type="text" class="form-control" id="ns-description" placeholder='{% translate "optional" %}' autocomplete="off"></div>
+        </div>
+        <div class="set-actions-center">
+          <button class="btn btn-mint btn-sm" id="ns-create" data-act="createSite">{% translate "Create site" %}</button>
           <span id="ns-note" class="muted"></span>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="branding">
-      <div class="section-label">Branding</div>
+      <div class="section-label">{% translate "Branding" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:12px;">Replace the Vigil identity with your own across the dashboard and the sign-in page. Leave a field blank to keep the Vigil default.</div>
-        <div class="setting-row"><label>Product name</label><input type="text" class="form-control" id="br-product" placeholder="Vigil" autocomplete="off" maxlength="60"></div>
-        <div class="setting-row"><label>Logo URL</label><input type="url" class="form-control" id="br-logo" placeholder="https://example.com/logo.png" autocomplete="off"></div>
-        <div class="setting-row"><label>Accent color</label>
-          <span style="display:flex;align-items:center;gap:8px;">
-            <input type="color" id="br-accent-picker" value="#82c4ee" style="width:38px;height:32px;padding:2px;border-radius:8px;border:1px solid var(--border);background:var(--s2);cursor:pointer;">
-            <input type="text" class="form-control" id="br-accent" placeholder="#82c4ee" autocomplete="off" maxlength="7" style="width:120px;">
+        <div class="totp-sub ad-sub-flush">{% blocktranslate %}Replace the Vigil identity with your own across the dashboard and the sign-in page. Leave a field blank to keep the Vigil default.{% endblocktranslate %}</div>
+        <div class="setting-grid">
+        <div class="setting-row"><label>{% translate "Product name" %}</label><input type="text" class="form-control" id="br-product" placeholder='{% translate "Vigil" %}' autocomplete="off" maxlength="60"></div>
+        <div class="setting-row"><label>{% translate "Logo URL" %}</label><input type="url" class="form-control" id="br-logo" placeholder='{% translate "https://example.com/logo.png" %}' autocomplete="off"></div>
+        <div class="setting-row"><label>{% translate "Accent color" %}</label>
+          <span class="br-accent-row">
+            <input type="color" id="br-accent-picker" value="#82c4ee" class="br-accent-picker">
+            <input type="text" class="form-control br-accent-field" id="br-accent" placeholder='{% translate "#82c4ee" %}' autocomplete="off" maxlength="7">
           </span>
         </div>
-        <div class="setting-row"><label>Footer text</label><input type="text" class="form-control" id="br-footer" placeholder="Vigil — A Susquehanna Syntax product" autocomplete="off" maxlength="200"></div>
-        <div class="setting-row"><label>Support URL</label><input type="url" class="form-control" id="br-support" placeholder="https://example.com/support" autocomplete="off"></div>
-        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-          <button class="btn btn-mint btn-sm" id="br-save">Save branding</button>
-          <p id="br-note" class="muted" style="margin:0;"></p>
+        <div class="setting-row"><label>{% translate "Footer text" %}</label><input type="text" class="form-control" id="br-footer" placeholder='{% translate "Vigil — A Susquehanna Syntax product" %}' autocomplete="off" maxlength="200"></div>
+        <div class="setting-row"><label>{% translate "Support URL" %}</label><input type="url" class="form-control" id="br-support" placeholder='{% translate "https://example.com/support" %}' autocomplete="off"></div>
+        </div>
+        <div class="set-actions-center">
+          <button class="btn btn-mint btn-sm" id="br-save">{% translate "Save branding" %}</button>
+          <p id="br-note" class="muted set-label-flush"></p>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="display">
-      <div class="section-label" style="margin-top:32px;">Display &amp; Timezone</div>
+      <div class="section-label set-label-far">{% translate "Display &amp; Timezone" %}</div>
       {# Was a read-only box saying to edit .env and restart. Now a real control backed by apps/instance; an env var still wins when set, and the field says so. #}
       <div class="is-group" data-group="locale"></div>
 
-      <div class="section-label" style="margin-top:32px;">Appearance</div>
+      <div class="section-label set-label-far">{% translate "Appearance" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:14px;">
-          Every colour that means something keeps it in every theme: mint is healthy,
+        <div class="totp-sub theme-sub-flush">
+          {% blocktranslate %}Every colour that means something keeps it in every theme: mint is healthy,
           rose is critical, lemon is a warning. System switches between Dark and Paper
-          with your operating system. Applies instantly and is remembered on this browser.
+          with your operating system. Applies instantly and is remembered on this browser.{% endblocktranslate %}
         </div>
         {% comment %}The previews are pictures of the other themes, so their colours
         are literal on purpose: a preview drawn with tokens would only ever show
         the theme you are already in.{% endcomment %}
         <div class="theme-cards">
           <button type="button" class="theme-card" id="theme-dark" data-act="setTheme" data-a1="dark" aria-pressed="false">
-            <span class="theme-prev" style="background:#1c1c21"><span class="tp-side" style="background:#2a2a31"></span><span class="tp-body"><span class="tp-line" style="background:#32323a;width:70%"></span><span class="tp-line" style="background:#2a2a31;width:45%"></span><span class="tp-chips"><i style="background:#7eddb5"></i><i style="background:#f2a0b8"></i><i style="background:#baa8e8"></i></span></span></span>
-            <span class="theme-name">Dark</span>
+            <span class="theme-prev theme-prev--dark"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
+            <span class="theme-name">{% translate "Dark" %}</span>
           </button>
           <button type="button" class="theme-card" id="theme-light" data-act="setTheme" data-a1="light" aria-pressed="false">
-            <span class="theme-prev" style="background:#ede8bb"><span class="tp-side" style="background:#e4dfae"></span><span class="tp-body"><span class="tp-line" style="background:#f7f3d6;width:70%"></span><span class="tp-line" style="background:#d9d3a0;width:45%"></span><span class="tp-chips"><i style="background:#7eddb5"></i><i style="background:#f2a0b8"></i><i style="background:#baa8e8"></i></span></span></span>
-            <span class="theme-name">Paper</span>
+            <span class="theme-prev theme-prev--light"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
+            <span class="theme-name">{% translate "Paper" %}</span>
           </button>
           <button type="button" class="theme-card" id="theme-river" data-act="setTheme" data-a1="river" aria-pressed="false">
-            <span class="theme-prev" style="background:#141c2b"><span class="tp-side" style="background:#222d41"></span><span class="tp-body"><span class="tp-line" style="background:#2b374d;width:70%"></span><span class="tp-line" style="background:#222d41;width:45%"></span><span class="tp-chips"><i style="background:#7eddb5"></i><i style="background:#f2a0b8"></i><i style="background:#baa8e8"></i></span></span></span>
-            <span class="theme-name">River</span>
+            <span class="theme-prev theme-prev--river"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
+            <span class="theme-name">{% translate "River" %}</span>
           </button>
           <button type="button" class="theme-card" id="theme-ink" data-act="setTheme" data-a1="ink" aria-pressed="false">
-            <span class="theme-prev" style="background:#100f0f"><span class="tp-side" style="background:#211f1e"></span><span class="tp-body"><span class="tp-line" style="background:#2a2827;width:70%"></span><span class="tp-line" style="background:#211f1e;width:45%"></span><span class="tp-chips"><i style="background:#7eddb5"></i><i style="background:#f2a0b8"></i><i style="background:#baa8e8"></i></span></span></span>
-            <span class="theme-name">Ink <span class="exp-tag">Experimental</span></span>
+            <span class="theme-prev theme-prev--ink"><span class="tp-side"></span><span class="tp-body"><span class="tp-line tp-line--long"></span><span class="tp-line tp-line--short"></span><span class="tp-chips"><i></i><i></i><i></i></span></span></span>
+            <span class="theme-name">{% translate "Ink" %} <span class="exp-tag">{% translate "Experimental" %}</span></span>
           </button>
         </div>
         <div class="set-row">
-          <div><b>Follow system</b><small>Dark or Paper, with your operating system</small></div>
-          <button type="button" class="btn btn-outline btn-sm" id="theme-system" data-act="setTheme" data-a1="system" aria-pressed="false">System</button>
+          <div><b>{% translate "Follow system" %}</b><small>{% translate "Dark or Paper, with your operating system" %}</small></div>
+          <button type="button" class="btn btn-outline btn-sm" id="theme-system" data-act="setTheme" data-a1="system" aria-pressed="false">{% translate "System" %}</button>
         </div>
         <div class="set-row">
-          <div><b>Reduce motion</b><small>Collapse movement; colour and opacity changes still land</small></div>
-          <button type="button" class="toggle" role="switch" aria-checked="false" id="motion-reduce" data-act="toggleReduceMotion" aria-label="Reduce motion"></button>
+          <div><b>{% translate "Reduce motion" %}</b><small>{% translate "Collapse movement; colour and opacity changes still land" %}</small></div>
+          <button type="button" class="toggle" role="switch" aria-checked="false" id="motion-reduce" data-act="toggleReduceMotion" aria-label='{% translate "Reduce motion" %}'></button>
         </div>
       </div>
 
-      <div class="section-label" style="margin-top:32px;">Layout Density</div>
+      <div class="section-label set-label-far">{% translate "Layout Density" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:14px;">
-          Cozy is the default, roomy layout. Compact tightens spacing to fit more on screen. Applies instantly and is remembered on this browser.
+        <div class="totp-sub theme-sub-flush">
+          {% blocktranslate %}Cozy is the default, roomy layout. Compact tightens spacing to fit more on screen. Applies instantly and is remembered on this browser.{% endblocktranslate %}
         </div>
         <div class="density-toggle">
-          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" data-act="setDensity" data-a1="cozy">Cozy</button>
-          <button type="button" class="btn btn-outline btn-sm" id="density-compact" data-act="setDensity" data-a1="compact">Compact</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" data-act="setDensity" data-a1="cozy">{% translate "Cozy" %}</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-compact" data-act="setDensity" data-a1="compact">{% translate "Compact" %}</button>
         </div>
       </div>
 
         </div>
         <div class="settings-pane" data-pane="scanners">
-      <div class="section-label" style="margin-top:32px;">Greenbone / OpenVAS</div>
+      <div class="section-label set-label-far">{% translate "Greenbone / OpenVAS" %}</div>
       <div class="is-group" data-group="greenbone"></div>
-      <div class="section-label" style="margin-top:32px;">Nessus / Tenable</div>
+      <div class="section-label set-label-far">{% translate "Nessus / Tenable" %}</div>
       <div class="is-group" data-group="nessus"></div>
         </div>
         <div class="settings-pane" data-pane="jackil">
-      <div class="section-label" style="margin-top:32px;">Jackil</div>
+      <div class="section-label set-label-far">{% translate "Jackil" %}</div>
       <div class="is-group" data-group="jackil"></div>
-      <div class="section-label" style="margin-top:32px;">Integration keys</div>
-      <div class="totp-card" id="jackil-keys"><p class="muted">Loading…</p></div>
-      <div class="section-label" style="margin-top:32px;">Tickets Vigil has opened</div>
-      <div class="totp-card" id="jackil-tickets"><p class="muted">Loading…</p></div>
+      <div class="section-label set-label-far">{% translate "Integration keys" %}</div>
+      <div class="totp-card" id="jackil-keys"><p class="muted">{% translate "Loading…" %}</p></div>
+      <div class="section-label set-label-far">{% translate "Tickets Vigil has opened" %}</div>
+      <div class="totp-card" id="jackil-tickets"><p class="muted">{% translate "Loading…" %}</p></div>
         </div>
         <div class="settings-pane" data-pane="api">
-      <div class="section-label">Scoped API keys</div>
-      <div class="totp-card" id="api-keys"><p class="muted">Loading…</p></div>
-      <div class="section-label" style="margin-top:32px;">Webhooks</div>
-      <div class="totp-card" id="webhooks"><p class="muted">Loading…</p></div>
+      <div class="section-label">{% translate "Scoped API keys" %}</div>
+      <div class="totp-card" id="api-keys"><p class="muted">{% translate "Loading…" %}</p></div>
+      <div class="section-label set-label-far">{% translate "Webhooks" %}</div>
+      <div class="totp-card" id="webhooks"><p class="muted">{% translate "Loading…" %}</p></div>
+        </div>
+        <div class="settings-pane" data-pane="notifications">
+      {# Logic: static/js/vigil-channels.js | API: /api/v1/alerts/channels/ #}
+      <div class="section-label">{% translate "Notification channels" %}</div>
+      <div class="totp-card">
+        <p class="totp-sub">{% blocktranslate %}Where alerts are sent when they fire and resolve. A channel in a site hears only that site's alerts; a global channel hears every site's. Tasks can also send a message to a channel by name.{% endblocktranslate %}</p>
+        <div id="channels-list"><p class="muted">{% translate "Loading…" %}</p></div>
+        <button class="btn btn-mint btn-sm" data-act="addChannel">{% translate "Add a channel" %}</button>
+      </div>
+      {# Logic: static/js/vigil-maintenance.js | API: /api/v1/alerts/maintenance/ #}
+      <div class="section-label set-label-far">{% translate "Maintenance windows" %}</div>
+      <div class="totp-card">
+        <p class="totp-sub">{% translate "Times when hosts are expected to be down: during a window its hosts raise no alerts and send no notifications." %}</p>
+        <div id="maintenance-list"><p class="muted">{% translate "Loading…" %}</p></div>
+        <button class="btn btn-mint btn-sm" data-act="addMaintenance">{% translate "Add a maintenance window" %}</button>
+      </div>
         </div>
         <div class="settings-pane" data-pane="email">
-      <div class="section-label" style="margin-top:32px;">Outgoing Mail</div>
+      <div class="section-label set-label-far">{% translate "Outgoing Mail" %}</div>
       <div class="is-group" data-group="email"></div>
         </div>
         <div class="settings-pane" data-pane="retention">
-      <div class="section-label" style="margin-top:32px;">Retention &amp; Limits</div>
+      <div class="section-label set-label-far">{% translate "Retention &amp; Limits" %}</div>
       <div class="is-group" data-group="retention"></div>
-      <div class="section-label" style="margin-top:32px;">Backups</div>
+      <div class="section-label set-label-far">{% translate "Backups" %}</div>
       <div class="is-group" data-group="backups"></div>
       <div class="totp-card" id="backup-runs" hidden>
-        <div class="totp-label">Recent backups</div>
-        <div id="backup-runs-list" class="muted">Loading…</div>
+        <div class="totp-label">{% translate "Recent backups" %}</div>
+        <div id="backup-runs-list" class="muted">{% translate "Loading…" %}</div>
       </div>
         </div>
         <div class="settings-pane" data-pane="distribution">
-      <div class="section-label" style="margin-top:32px;">Agent Distribution</div>
+      <div class="section-label set-label-far">{% translate "Agent Distribution" %}</div>
       <div class="totp-card">
-        <div class="totp-sub" style="margin-bottom:14px;">
-          Upload the compiled agent binary here, then use the one-liner to install on new hosts.
-          The binary is served directly from this server — no Docker Hub or external hosting required.
+        <div class="totp-sub theme-sub-flush">
+          {% blocktranslate %}Upload the compiled agent binary here, then use the one-liner to install on new hosts.
+          The binary is served directly from this server — no Docker Hub or external hosting required.{% endblocktranslate %}
         </div>
 
         <!-- Download links -->
-        <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">Linux</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <a href="/agent/download/linux-amd64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            x86-64
-          </a>
-          <a href="/agent/download/linux-arm64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            ARM64
-          </a>
-        </div>
-        <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">macOS</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Apple Silicon
-          </a>
-        </div>
-        <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">Windows</div>
-        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-          <a href="/agent/download/windows-amd64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            x86-64 (.exe)
-          </a>
+        <div class="agent-plat-grid">
+          <div>
+            <div class="agent-plat-label">{% translate "Linux" %}</div>
+            <div class="agent-dl-row">
+              <a href="/agent/download/linux-amd64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "x86-64" %}
+              </a>
+              <a href="/agent/download/linux-arm64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "ARM64" %}
+              </a>
+            </div>
+          </div>
+          <div>
+            <div class="agent-plat-label">{% translate "macOS" %}</div>
+            <div class="agent-dl-row">
+              <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "Apple Silicon" %}
+              </a>
+            </div>
+          </div>
+          <div>
+            <div class="agent-plat-label">{% translate "Windows" %}</div>
+            <div class="agent-dl-row">
+              <a href="/agent/download/windows-amd64/" class="btn btn-outline btn-sm">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {% translate "x86-64 (.exe)" %}
+              </a>
+            </div>
+          </div>
         </div>
 
         <!-- One-liner install commands -->
-        <label class="deploy-input-label">Linux / macOS one-liner</label>
-        <div class="code-block mono" id="install-cmd" style="cursor:pointer;user-select:all;" data-act="copyInstallCmd" title="Click to copy"></div>
-        <label class="deploy-input-label" style="margin-top:10px;">Windows (PowerShell, run as Administrator)</label>
-        <div class="code-block mono" id="install-cmd-ps1" style="cursor:pointer;user-select:all;" data-act="copyInstallCmdPs1" title="Click to copy"></div>
-        <div id="agent-versions" style="margin-top:10px;font-size:12px;color:var(--text-3);min-height:16px;"></div>
+        <div class="install-cmd-grid">
+          <div>
+            <label class="deploy-input-label">{% translate "Linux / macOS one-liner" %}</label>
+            <div class="code-block mono copyable-code" id="install-cmd" data-act="copyInstallCmd" title='{% translate "Click to copy" %}'></div>
+          </div>
+          <div>
+            <label class="deploy-input-label">{% translate "Windows (PowerShell, run as Administrator)" %}</label>
+            <div class="code-block mono copyable-code" id="install-cmd-ps1" data-act="copyInstallCmdPs1" title='{% translate "Click to copy" %}'></div>
+          </div>
+        </div>
+        <div id="agent-versions" class="agent-versions"></div>
+        <div id="fleet-versions" class="fleet-versions"></div>
 
         <!-- Upload new binary -->
-        <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:18px;">
-          <div class="deploy-input-label" style="margin-bottom:10px;">Upload new binary</div>
-          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="agent-upload">
+          <div class="deploy-input-label agent-upload-label">{% translate "Upload new binary" %}</div>
+          <div class="agent-upload-row">
             <div>
-              <label class="deploy-input-label">Platform</label>
-              <select class="form-control" id="upload-platform" style="width:180px;">
-                <option value="linux-amd64">Linux (x86-64)</option>
-                <option value="linux-arm64">Linux (ARM64)</option>
-                <option value="darwin-arm64">macOS (Apple Silicon)</option>
-                <option value="windows-amd64">Windows (x86-64)</option>
+              <label class="deploy-input-label">{% translate "Platform" %}</label>
+              <select class="form-control upload-platform-field" id="upload-platform">
+                <option value="linux-amd64">{% translate "Linux (x86-64)" %}</option>
+                <option value="linux-arm64">{% translate "Linux (ARM64)" %}</option>
+                <option value="darwin-arm64">{% translate "macOS (Apple Silicon)" %}</option>
+                <option value="windows-amd64">{% translate "Windows (x86-64)" %}</option>
               </select>
             </div>
             <div>
-              <label class="deploy-input-label">Version</label>
-              <input type="text" class="form-control" id="upload-version" placeholder="1.0.0" style="width:100px;">
+              <label class="deploy-input-label">{% translate "Version" %}</label>
+              <input type="text" class="form-control upload-version-field" id="upload-version" placeholder="1.0.0">
             </div>
-            <div style="flex:1;min-width:180px;">
-              <label class="deploy-input-label">Binary file</label>
-              <input type="file" id="upload-binary" style="color:var(--text-2);font-size:13px;width:100%;">
+            <div class="upload-file-cell">
+              <label class="deploy-input-label">{% translate "Binary file" %}</label>
+              <input type="file" id="upload-binary" class="upload-file-input">
             </div>
-            <button class="btn btn-sky btn-sm" data-act="uploadAgentBinary">Upload</button>
+            <button class="btn btn-sky btn-sm" data-act="uploadAgentBinary">{% translate "Upload" %}</button>
           </div>
         </div>
       </div>
@@ -586,7 +631,7 @@
         document.getElementById('install-cmd-ps1').textContent =
           `irm ${vigilEnrollOrigin}/agent/install.ps1 | iex`;
         // vigil-settings.js loads after this inline block — defer the call.
-        document.addEventListener('DOMContentLoaded', () => loadAgentInfo());
+        document.addEventListener('DOMContentLoaded', () => { loadAgentInfo(); loadFleetVersions(); });
       </script>
         </div>
         </div><!-- settings-content -->

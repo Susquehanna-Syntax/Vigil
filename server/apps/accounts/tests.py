@@ -488,6 +488,18 @@ class ContentSecurityPolicyTests(TestCase):
         self.assertNotIn("'unsafe-inline'", script)
         self.assertNotIn("'unsafe-eval'", script)
 
+    def test_style_src_allows_no_inline_but_display_none(self):
+        import base64
+        import hashlib
+
+        _resp, policy = self._policy()
+        style = next(d for d in policy.split(";") if d.strip().startswith("style-src"))
+        self.assertNotIn("'unsafe-inline'", style)
+        self.assertIn("'nonce-", style)
+        want = base64.b64encode(hashlib.sha256(b"display:none;").digest()).decode()
+        self.assertIn(f"'sha256-{want}'", style)
+        self.assertEqual(style.count("'sha256-"), 1, style)
+
     def test_the_policy_carries_a_nonce_that_matches_the_page(self):
         """The two genuinely inline blocks in base.html run on this nonce; if
         the header and the page disagree, the page silently loses its theme

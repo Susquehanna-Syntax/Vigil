@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-charts.js
 // Owns: the donut used to summarise a run — hosts by end state (status
 // colours, reserved) and by the outcomes an author named (a categorical order,
@@ -8,13 +9,14 @@
 // Status slots are fixed by meaning; outcome slots are fixed by order and fold
 // into "Other" past four, never cycled.
 const RUN_STATES = [
-  { key: 'ok', label: 'ok', color: 'var(--st-ok)' },
-  { key: 'failed', label: 'failed', color: 'var(--st-failed)' },
-  { key: 'pending', label: 'waiting', color: 'var(--st-pending)' },
-  { key: 'not_applicable', label: 'not applicable', color: 'var(--st-na)' },
-  { key: 'skipped', label: 'skipped', color: 'var(--st-skipped)' },
+  { key: 'ok', label: t('ok'), color: 'var(--st-ok)' },
+  { key: 'failed', label: t('failed'), color: 'var(--st-failed)' },
+  { key: 'pending', label: t('waiting'), color: 'var(--st-pending)' },
+  { key: 'not_applicable', label: t('not applicable'), color: 'var(--st-na)' },
+  { key: 'skipped', label: t('skipped'), color: 'var(--st-skipped)' },
 ];
 const OUTCOME_COLORS = ['var(--oc-1)', 'var(--oc-2)', 'var(--oc-3)', 'var(--oc-4)'];
+const NO_OUTCOME_LABEL = 'No outcome yet'; // i18n-ignore — a bucket key the code compares against; its label is t('no outcome yet') below
 
 function stateSegments(states) {
   return RUN_STATES.filter(s => (states || {})[s.key])
@@ -23,12 +25,12 @@ function stateSegments(states) {
 
 function outcomeSegments(outcomes) {
   const entries = Object.entries(outcomes || {});
-  const none = entries.filter(([k]) => k === 'No outcome yet');
-  const named = entries.filter(([k]) => k !== 'No outcome yet').sort((a, b) => b[1] - a[1]);
+  const none = entries.filter(([k]) => k === NO_OUTCOME_LABEL);
+  const named = entries.filter(([k]) => k !== NO_OUTCOME_LABEL).sort((a, b) => b[1] - a[1]);
   const shown = named.slice(0, 4).map(([k, v], i) => ({ key: k, label: k, value: v, color: OUTCOME_COLORS[i] }));
   const rest = named.slice(4).reduce((n, [, v]) => n + v, 0);
-  if (rest) shown.push({ key: '__other', label: 'Other', value: rest, color: 'var(--st-skipped)' });
-  none.forEach(([k, v]) => shown.push({ key: k, label: 'no outcome yet', value: v, color: 'var(--st-na)' }));
+  if (rest) shown.push({ key: '__other', label: t('Other'), value: rest, color: 'var(--st-skipped)' });
+  none.forEach(([k, v]) => shown.push({ key: k, label: t('no outcome yet'), value: v, color: 'var(--st-na)' }));
   return shown;
 }
 
@@ -50,14 +52,14 @@ function donutHtml(segments, { size = 104, center = '', filterKind = '', legend 
     return arc;
   }).join('');
   const svg = `<svg class="donut" viewBox="0 0 100 100" width="${size}" height="${size}" role="img"
-      aria-label="${escAttr(title || 'Summary')}: ${escAttr(segments.map(s => `${s.value} ${s.label}`).join(', '))}">
+      aria-label="${escAttr(title || t('Summary'))}: ${escAttr(segments.map(s => `${s.value} ${s.label}`).join(', '))}">
       <g transform="rotate(-90 50 50)">${arcs}</g>
       ${center ? `<text x="50" y="47" text-anchor="middle" class="donut-total">${escHtml(String(total))}</text>
       <text x="50" y="62" text-anchor="middle" class="donut-center">${escHtml(center)}</text>` : ''}
     </svg>`;
   if (!legend) return `<span class="donut-mini">${svg}</span>`;
   const rows = segments.map(s => `<button type="button" class="donut-key" data-filter-kind="${escAttr(filterKind)}" data-filter="${escAttr(s.key)}" aria-pressed="false">
-      <span class="donut-swatch" style="background:${s.color}"></span>
+      <span class="donut-swatch" data-css="background:${s.color}"></span>
       <span class="donut-label">${escHtml(s.label)}</span>
       <span class="donut-value">${s.value}</span>
       <span class="donut-pct">${Math.round((s.value / total) * 100)}%</span>
@@ -75,9 +77,10 @@ function donutHtml(segments, { size = 104, center = '', filterKind = '', legend 
 function runSummaryHtml(summary) {
   if (!summary || !summary.hosts) return '';
   const states = donutHtml(stateSegments(summary.states), {
-    center: summary.hosts === 1 ? 'host' : 'hosts', filterKind: 'state', title: 'Hosts by result' });
+    // The word under the host count; ngettext picks it, not a JS ternary.
+    center: tn('host', 'hosts', summary.hosts), filterKind: 'state', title: t('Hosts by result') });
   const outcomes = summary.outcomes
-    ? donutHtml(outcomeSegments(summary.outcomes), { center: 'outcomes', filterKind: 'outcome', title: 'Where hosts ended up' })
+    ? donutHtml(outcomeSegments(summary.outcomes), { center: t('outcomes'), filterKind: 'outcome', title: t('Where hosts ended up') })
     : '';
   return `<div class="run-summary">${states}${outcomes}</div>`;
 }
@@ -98,7 +101,7 @@ function wireRunSummary(scope, summary, run) {
   const hostMatches = (card, btn) => {
     const host = summary.per_host[card.dataset.host] || {};
     const value = btn.dataset.filterKind === 'state' ? host.state
-      : (host.outcome || 'No outcome yet');
+      : (host.outcome || NO_OUTCOME_LABEL);
     return value === btn.dataset.filter
       || (btn.dataset.filter === '__other' && host.outcome);
   };
@@ -176,45 +179,45 @@ function wireRunSummary(scope, summary, run) {
   }
 }
 
-function _hostRunWhen(iso) {
+function _hostRunWhen(/** @type {string|null|undefined} */ iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
-function _hostRunDuration(dispatched, completed) {
+function _hostRunDuration(/** @type {string|null|undefined} */ dispatched, /** @type {string|null|undefined} */ completed) {
   if (!dispatched || !completed) return '—';
-  const secs = Math.max(0, Math.round((new Date(completed) - new Date(dispatched)) / 1000));
+  const secs = Math.max(0, Math.round((new Date(completed).getTime() - new Date(dispatched).getTime()) / 1000));
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-function _hostRunTaskHtml(t) {
-  const color = _TASK_STATE_COLORS[t.state] || 'var(--text-3)';
-  const results = _stepResultsHtml(t.result_data, t.result_output);
-  const output = (t.result_output || '').trim();
-  const meta = [
-    ['Requested by', t.requested_by_username || '—'],
-    ['Risk', t.risk_level || '—'],
-    ['TTL', `${t.ttl_seconds}s`],
-    ['Created', _hostRunWhen(t.created_at)],
-    ['Dispatched', _hostRunWhen(t.dispatched_at)],
-    ['Completed', _hostRunWhen(t.completed_at)],
-    ['Duration', _hostRunDuration(t.dispatched_at, t.completed_at)],
+function _hostRunTaskHtml(task) {
+  const color = _TASK_STATE_COLORS[task.state] || 'var(--text-3)';
+  const results = _stepResultsHtml(task.result_data, task.result_output);
+  const output = (task.result_output || '').trim();
+  const meta = [ // field names beside API values, not sentences
+    ['Requested by', task.requested_by_username || '—'], // i18n-ignore
+    ['Risk', task.risk_level || '—'], // i18n-ignore
+    ['TTL', `${task.ttl_seconds}s`], // i18n-ignore
+    ['Created', _hostRunWhen(task.created_at)], // i18n-ignore
+    ['Dispatched', _hostRunWhen(task.dispatched_at)], // i18n-ignore
+    ['Completed', _hostRunWhen(task.completed_at)], // i18n-ignore
+    ['Duration', _hostRunDuration(task.dispatched_at, task.completed_at)], // i18n-ignore
   ];
-  if (t.step_ref) meta.push(['Playbook step', t.step_ref]);
-  if (t.branch) meta.push(['Branch', t.branch]);
+  if (task.step_ref) meta.push(['Playbook step', task.step_ref]);  // i18n-ignore
+  if (task.branch) meta.push(['Branch', task.branch]);  // i18n-ignore
   return `
     <div class="host-run-task">
       <div class="host-run-head">
-        <span class="host-run-step">${escHtml(t.step_label || t.action || '')}</span>
-        <span class="host-run-action">${escHtml(t.action || '')}</span>
-        <span class="host-run-state" style="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[t.state] || t.state || '')}</span>
+        <span class="host-run-step">${escHtml(task.step_label || task.action || '')}</span>
+        <span class="host-run-action">${escHtml(task.action || '')}</span>
+        <span class="host-run-state" data-css="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[task.state] || task.state || '')}</span>
       </div>
       <dl class="host-run-meta">${meta.map(([k, v]) =>
         `<dt>${escHtml(k)}</dt><dd>${escHtml(String(v))}</dd>`).join('')}</dl>
-      <div class="host-run-k">Params</div>
-      <pre class="host-run-json">${escHtml(JSON.stringify(t.params ?? {}, null, 2))}</pre>
+      <div class="host-run-k">${escHtml(t('Params'))}</div>
+      <pre class="host-run-json">${escHtml(JSON.stringify(task.params ?? {}, null, 2))}</pre>
       ${results ? `<div class="host-run-results">${results}</div>` : ''}
-      <div class="host-run-k">Output</div>
-      <pre class="host-run-out term term-wrap">${output ? termHtml(output) : 'No output captured.'}</pre>
+      <div class="host-run-k">${escHtml(t('Output'))}</div>
+      <pre class="host-run-out term term-wrap">${output ? termHtml(output) : t('No output captured.')}</pre>
     </div>`;
 }
 
@@ -222,23 +225,25 @@ function _hostRunTaskHtml(t) {
 // host, in step order.
 function openHostRunDetail(run, hostId) {
   const tasks = (run.tasks || [])
-    .filter(t => String(t.host) === String(hostId))
+    .filter(task => String(task.host) === String(hostId))
     .sort((a, b) => (a.step_order || 0) - (b.step_order || 0)
       || String(a.created_at || '').localeCompare(String(b.created_at || '')));
-  const hostname = (tasks.find(t => t.host_hostname) || {}).host_hostname || String(hostId);
+  const hostname = (tasks.find(task => task.host_hostname) || {}).host_hostname || String(hostId);
 
   const m = mountModal('host-run-detail', { wide: true });
   m.setBody(`
     <div class="modal-title"><span id="host-run-title"></span>
-      <button class="modal-close" id="hrd-x" aria-label="Close">
+      <button class="modal-close" id="hrd-x" aria-label="${escAttr(t('Close'))}">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     ${tasks.map(_hostRunTaskHtml).join('')}
-    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="hrd-close">Close</button></div>`);
-  m.modal.querySelector('#host-run-title').textContent =
-    `${hostname} · ${run.name_snapshot || 'Run'}`;
-  m.modal.querySelector('#hrd-x').onclick = () => m.close();
-  m.modal.querySelector('#hrd-close').onclick = () => m.close();
+    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="hrd-close">${escHtml(t('Close'))}</button></div>`);
+  // Named outside the filters above, whose `t` is a task row and shadows the
+  // translate helper.
+  const runTitle = t('{host} · {run}', { host: hostname, run: run.name_snapshot || t('Run') });
+  m.modal.querySelector('#host-run-title').textContent = runTitle;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#hrd-x')).onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('#hrd-close')).onclick = () => m.close();
   requestAnimationFrame(m.open);
 }

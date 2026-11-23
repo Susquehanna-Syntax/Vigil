@@ -13,6 +13,8 @@ class MetricSampleSerializer(serializers.Serializer):
     time = serializers.DateTimeField()
     value = serializers.FloatField()
     labels = serializers.DictField()
+    min = serializers.FloatField(allow_null=True, required=False)
+    max = serializers.FloatField(allow_null=True, required=False)
 
 
 class MetricCatalogEntrySerializer(serializers.Serializer):
