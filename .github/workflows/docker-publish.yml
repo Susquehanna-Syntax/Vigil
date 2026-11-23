@@ -880,9 +880,16 @@ jobs:
           # FreeBSD 14 catalog dropped py311-pip on 2026-11-23, and the build
           # needs some Python 3 with pip, not one version's packages. pip comes
           # from Python's own ensurepip when the package has none.
+          #
+          # cryptography (the agent's SNMPv3, imported lazily) has no FreeBSD
+          # wheel, and pip building it from source fails: its build backend,
+          # maturin, does not know FreeBSD. The FreeBSD package of it is used
+          # instead, for whichever Python the catalog's python3 is.
           prepare: |
             pkg install -y python3
             python3 -m pip --version || python3 -m ensurepip --upgrade
+            pyv=$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')
+            pkg install -y "py${pyv}-cryptography"
           run: |
             set -e
             cd agent
@@ -892,7 +899,10 @@ jobs:
             # release carries, while requirements-lock.txt pins the PyInstaller
             # this repo builds with — so build with the pip-installed one.
             python3 --version
-            python3 -m pip install --break-system-packages -r requirements.txt pyinstaller
+            # Everything but cryptography, which pkg installed above.
+            grep -iv '^cryptography' requirements.txt > /tmp/requirements-freebsd.txt
+            python3 -m pip install --break-system-packages -r /tmp/requirements-freebsd.txt pyinstaller
+            python3 -c 'import cryptography; print("cryptography", cryptography.__version__)'
             python3 -m PyInstaller --onefile --name vigil-agent-freebsd-amd64 \
               --collect-all cffi --collect-all nacl vigil_agent_main.py
             # The smoke test is the cheapest proof the frozen binary starts on
