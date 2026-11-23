@@ -104,6 +104,21 @@ def apply(apps, schema_editor):
                     f"if_not_exists => TRUE)"
                 )
 
+        # Steps 2-4 (rollups, compression, retention policies) are features of
+        # TimescaleDB's community licence. A distribution build under the
+        # Apache licence (Debian's and Ubuntu's postgresql-NN-timescaledb) has
+        # the hypertable above but refuses them, and this migration used to
+        # stop the whole install there. On such a build the table stays a
+        # plain hypertable: charts read raw rows (rollups.py checks for the
+        # views) and the prune task drops old chunks itself.
+        cur.execute("SELECT current_setting('timescaledb.license', true)")
+        licence = (cur.fetchone() or [""])[0] or ""
+        if licence == "apache":
+            print("\n  TimescaleDB is the Apache-licensed build: rollups, compression and "
+                  "retention policies need the community build (timescale.com). "
+                  "Metrics stay raw and are pruned by the prune task.")
+            return
+
         # 2. Continuous aggregates — built before raw retention so downsampled
         #    history is materialized while raw chunks still exist. Grouping
         #    includes ``labels`` so per-interface / per-mount series stay

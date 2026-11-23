@@ -1066,3 +1066,18 @@ function termPlain(text, opts) {
     return line.replace(_TERM_ESC, '').replace(_TERM_CTRL, '');
   }).join('\n');
 }
+
+// The min-max band of a bucketed metric series (phase 02a): two lines, the
+// bucket maxima and minima, oldest first, for a chart to fill between. Null
+// when no point carries both, which is every series of 24 hours or less.
+function bandSeries(points) {
+  const both = (points || []).filter(p => typeof p.min === 'number' && typeof p.max === 'number');
+  if (!both.length) return null;
+  const rows = both.map(p => ({ x: new Date(p.time).getTime(), min: p.min, max: p.max }))
+    .sort((a, b) => a.x - b.x);
+  return {
+    high: rows.map(r => ({ x: r.x, y: r.max })),
+    low: rows.map(r => ({ x: r.x, y: r.min })),
+  };
+}
+

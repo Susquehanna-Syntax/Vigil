@@ -1,0 +1,12 @@
+{
+  "checkins": 50033,
+  "errors": {},
+  "p50_ms": 18.2,
+  "p95_ms": 33.0,
+  "p99_ms": 62.3,
+  "checkins_per_s": 166.6,
+  "rows_per_s": 3164.9,
+  "max_celery_queue": null,
+  "hosts": 10000,
+  "interval_s": 60.0
+}
