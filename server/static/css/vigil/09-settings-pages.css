@@ -175,7 +175,9 @@ code.code-tight-sm {
   gap: 0 20px;
 }
 .setting-grid > .setting-row { min-width: 0; }
-.setting-grid > .setting-row-wide { grid-column: 1 / -1; }
+/* Two columns, not the whole row: a row spanning every track keeps auto-fit
+   from collapsing the empty ones, and the short fields shrink to fill six. */
+@media (min-width: 700px) { .setting-grid > .setting-row-wide { grid-column: span 2; } }
 .setting-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
 .setting-check input { accent-color: var(--mint); }
 .provider-row { display: flex; justify-content: space-between; align-items: center;
