@@ -174,6 +174,14 @@ class MalformedEntryTests(_Fixture):
         self.assertEqual(_clean_check(_check("snmp-1", kind="snmp", params=params)),
                          ("snmp-1", {"kind": "snmp", "params": params, "interval": 60}))
 
+    def test_an_ssh_entry_is_accepted(self):
+        # The private key travels inside params, in the signed list (S9 08b).
+        params = {"host": "10.0.0.7", "username": "vigil-backup",
+                  "command": "show running-config",
+                  "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n"}
+        self.assertEqual(_clean_check(_check("ssh-1", kind="ssh", params=params)),
+                         ("ssh-1", {"kind": "ssh", "params": params, "interval": 60}))
+
     def test_bad_entries_are_dropped_and_the_rest_kept(self):
         poller = self.poller()
         checks = [

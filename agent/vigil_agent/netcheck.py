@@ -5,20 +5,24 @@ plain result dict. It never raises: every failure, including a malformed
 check, becomes a result with ok False and a short detail sentence.
 
 Kinds: "icmp" (system ping), "tcp" (connect), "http" (status, plus TLS
-certificate expiry for https), "dns" (name resolution), "snmp" (SNMP v2c GET).
+certificate expiry for https), "dns" (name resolution), "snmp" (SNMP v2c GET),
+"ssh" (one read-only command on a device with a private key).
 """
 
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
 import ipaddress
 import math
 import os
 import re
+import shutil
 import socket
 import ssl
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -46,9 +50,31 @@ IF_HC_OUT_OID = "1.3.6.1.2.1.31.1.1.1.10"    # ifHCOutOctets (Counter64)
 IF_HIGH_SPEED_OID = "1.3.6.1.2.1.31.1.1.1.15"  # ifHighSpeed, Mbit/s
 IF_OPER_OID = "1.3.6.1.2.1.2.2.1.8"          # ifOperStatus: 1 up, 2 down, others unknown
 MAX_INTERFACES = 64
+SSH_TIMEOUT = 90.0  # an ssh check's whole run: key auth plus one command on a slow device
+# the output of `show running-config` on the largest firewalls, in bytes; over it, the result is a failure
+SSH_MAX_OUTPUT = 1_000_000
+MAX_SSH_COMMAND_CHARS = 500  # one read-only command; more than this is not a command
 
 _CERT_TIME_FORMAT = "%b %d %H:%M:%S %Y %Z"  # getpeercert() notAfter, e.g. "Jun  1 12:00:00 2027 GMT"
 _HOST_RE = re.compile(r"[A-Za-z0-9.:-]+")
+_SSH_USERNAME_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
+# the base64 of a wire-format host key: standard alphabet, optional padding
+_SSH_B64_RE = re.compile(r"[A-Za-z0-9+/]+={0,2}")
+_SSH_KEY_HEADER = "-----BEGIN OPENSSH PRIVATE KEY-----"
+_SSH_MAX_KEY_BYTES = 16_384
+_SSH_HOST_KEY_TYPES = frozenset({
+    "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+    "rsa-sha2-256", "rsa-sha2-512", "ssh-rsa",
+})
+# ssh's own wording, upper-cased so the match does not depend on its locale
+_SSH_KEY_CHANGED_MARKERS = (
+    "REMOTE HOST IDENTIFICATION HAS CHANGED",
+    "HOST KEY VERIFICATION FAILED",
+)
+# a command is one argv token for one CLI session; nothing that could end it.
+# \x00 cannot be passed in an argv element at all, so the check catches a client
+# or a device object that slipped something in before ssh ever sees E2BIG.
+_SSH_COMMAND_FORBIDDEN = ("\n", "\r", "\x00")
 
 _PING_SUMMARY_RE = re.compile(
     r"(\d+) packets? transmitted, (\d+) (?:packets? )?received.*?([\d.]+)% packet loss"
@@ -74,6 +100,8 @@ def _new_extras(kind: str) -> dict:
         return {"addresses": []}
     if kind == "snmp":
         return {"sys_name": None, "uptime_s": None}
+    if kind == "ssh":
+        return {"host_key": None, "sha256": None, "size": None, "output": None}
     return {}
 
 
@@ -639,6 +667,203 @@ def _snmp_interfaces(client) -> list[dict]:
             for index in sorted(named)[:MAX_INTERFACES]]
 
 
+def _ssh_fields(check: dict) -> tuple[str, int, str, str, str | None, str]:
+    """(host, port, username, command, host_key, private_key), raising _CheckError on anything odd.
+
+    The private key is validated here and passed along by value: it never goes
+    into a result, an extra or a log line.
+    """
+    host = _str_field(check, "host")
+    if not _valid_host(host):
+        raise _CheckError("invalid host")
+    port = _port_field(check) if "port" in check else 22
+
+    username = check.get("username")
+    if not isinstance(username, str) or not _SSH_USERNAME_RE.fullmatch(username):
+        raise _CheckError("invalid username")
+
+    command = check.get("command")
+    # over-long is "missing" too: the argv element limit is 128 KiB, and a
+    # backup command longer than 500 characters is not a command anyone wrote
+    if (not isinstance(command, str) or not 1 <= len(command) <= MAX_SSH_COMMAND_CHARS
+            or any(char in command for char in _SSH_COMMAND_FORBIDDEN)):
+        raise _CheckError("invalid command")
+
+    private_key = check.get("private_key")
+    if (not isinstance(private_key, str) or not private_key.startswith(_SSH_KEY_HEADER)
+            or len(private_key.encode("utf-8", "replace")) > _SSH_MAX_KEY_BYTES):
+        raise _CheckError("invalid key")
+
+    host_key = check.get("host_key")
+    if isinstance(host_key, str) and not host_key:
+        host_key = None  # an empty string is "not given", exactly like a missing key
+    if host_key is None:
+        return host, port, username, command, None, private_key
+    if isinstance(host_key, str):
+        parts = host_key.split(" ")
+        if (len(parts) == 2 and parts[0] in _SSH_HOST_KEY_TYPES
+                and _SSH_B64_RE.fullmatch(parts[1])):
+            return host, port, username, command, host_key, private_key
+    raise _CheckError("invalid host key")
+
+
+def _ssh_known_hosts_field(host: str, port: int) -> str:
+    return host if port == 22 else f"[{host}]:{port}"
+
+
+def _ssh_argv(key_path: str, known_hosts: str, host: str, port: int, username: str,
+              command: str, host_key: str | None, timeout: float) -> list[str]:
+    strict = "yes" if host_key else "accept-new"
+    return [
+        "ssh",
+        "-F", os.devnull,
+        "-T",
+        "-p", str(port),
+        "-i", key_path,
+        "-o", "BatchMode=yes",
+        "-o", "IdentitiesOnly=yes",
+        # Never a key from an ssh-agent the poller's environment points at: the
+        # check logs in with its own key or not at all.
+        "-o", "IdentityAgent=none",
+        "-o", "PasswordAuthentication=no",
+        "-o", "KbdInteractiveAuthentication=no",
+        "-o", f"ConnectTimeout={int(timeout)}",
+        "-o", f"UserKnownHostsFile={known_hosts}",
+        "-o", f"GlobalKnownHostsFile={os.devnull}",
+        "-o", f"StrictHostKeyChecking={strict}",
+        "-o", "LogLevel=ERROR",
+        "--",
+        f"{username}@{host}",
+        command,
+    ]
+
+
+def _ssh_key_bytes(private_key: str) -> bytes:
+    """The key file's exact content: the given text, ending with one newline."""
+    data = private_key.encode("utf-8", "replace")
+    if not data.endswith(b"\n"):
+        data += b"\n"
+    return data
+
+
+def _ssh_write_key(path: str, private_key: str) -> None:
+    """The key file: O_EXCL so it can never overwrite anything, 0600 from the start."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(_ssh_key_bytes(private_key))
+
+
+def _ssh_known_hosts_text(host_field: str, host_key: str | None) -> str:
+    return f"{host_field} {host_key}\n" if host_key else ""
+
+
+def _ssh_learned_host_key(path: str) -> str | None:
+    """The key ssh accepted and wrote to known_hosts: "<type> <base64>", or None.
+
+    Read on a failure too, so the server learns the key even when the login was
+    refused for another reason.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            line = handle.readline()
+    except OSError:
+        return None
+    fields = line.split()
+    if len(fields) < 3:
+        return None
+    return f"{fields[1]} {fields[2]}"
+
+
+def _ssh_failure_detail(stderr: str, code: int) -> str:
+    # the markers above are upper-cased; folding here keeps the match locale-proof
+    folded = stderr.upper()
+    if any(marker in folded for marker in _SSH_KEY_CHANGED_MARKERS):
+        return "host key changed"
+    for line in reversed(stderr.splitlines()):
+        if line.strip():
+            return line.strip()[:200]
+    return f"ssh exited {code}"
+
+
+_KNOWN_HOSTS_NAME = "known_hosts"
+
+
+def _ssh_streams(completed: object) -> tuple[bytes, bytes]:
+    """(stdout, stderr) as bytes, whatever the mock or the OS handed back."""
+    out = getattr(completed, "stdout", b"") or b""
+    err = getattr(completed, "stderr", b"") or b""
+    if isinstance(out, str):
+        out = out.encode("utf-8", "replace")
+    if isinstance(err, str):
+        err = err.encode("utf-8", "replace")
+    return out, err
+
+
+def _ssh_host_key(given: str | None, known_hosts_path: str) -> str | None:
+    """The key to report: the one the dashboard gave, else the one ssh accepted."""
+    return given or _ssh_learned_host_key(known_hosts_path)
+
+
+def _ssh_failure(code: int, stderr: bytes, host: str, host_key: str | None,
+                 known_hosts: str, latency: float) -> dict:
+    """A refused login is a result too, and it still carries the host key."""
+    return _result("ssh", host, False,
+                   _ssh_failure_detail(stderr.decode("utf-8", "replace"), code), latency,
+                   host_key=_ssh_host_key(host_key, known_hosts))
+
+
+def _ssh_run(directory: str, private_key: str, host: str, port: int, username: str,
+             command: str, host_key: str | None, timeout: float) -> dict:
+    """The temp-directory body of _ssh: the key file, the run, and its result."""
+    key_path = os.path.join(directory, "key")
+    known_hosts = os.path.join(directory, _KNOWN_HOSTS_NAME)
+    _ssh_write_key(key_path, private_key)
+    with open(known_hosts, "w", encoding="utf-8") as handle:
+        handle.write(_ssh_known_hosts_text(_ssh_known_hosts_field(host, port), host_key))
+    argv = _ssh_argv(key_path, known_hosts, host, port, username, command, host_key, timeout)
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(argv, capture_output=True, timeout=SSH_TIMEOUT,
+                                   env=clean_env(), stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return _result("ssh", host, False, "ssh timed out", time.monotonic() - started,
+                       host_key=_ssh_host_key(host_key, known_hosts))
+    except OSError as exc:
+        return _result("ssh", host, False, f"could not run ssh: {exc.strerror or exc}"[:200])
+    latency = time.monotonic() - started
+    stdout, stderr = _ssh_streams(completed)
+    raw_code = getattr(completed, "returncode", 1)
+    code = raw_code if isinstance(raw_code, int) else 1
+
+    if code != 0:
+        return _ssh_failure(code, stderr, host, host_key, known_hosts, latency)
+    if len(stdout) > SSH_MAX_OUTPUT:
+        return _result("ssh", host, False, "output over 1 MB", latency,
+                       host_key=_ssh_host_key(host_key, known_hosts))
+
+    text = stdout.decode("utf-8", "replace").replace("\r\n", "\n")
+    encoded = text.encode("utf-8")
+    return _result("ssh", host, True, f"{len(text.splitlines())} lines", latency,
+                   host_key=_ssh_host_key(host_key, known_hosts),
+                   sha256=hashlib.sha256(encoded).hexdigest(), size=len(encoded),
+                   output=text)
+
+
+def _ssh(check: dict, timeout: float) -> dict:
+    """One read-only command on a device. The ssh run itself may take SSH_TIMEOUT,
+    not the check's own timeout — key auth plus a slow CLI is slower than a ping."""
+    host, port, username, command, host_key, private_key = _ssh_fields(check)
+    if shutil.which("ssh") is None:
+        return _result("ssh", host, False, "no ssh client on this poller")
+
+    directory = tempfile.mkdtemp(prefix="vigil-ssh-")
+    try:
+        return _ssh_run(directory, private_key, host, port, username, command, host_key, timeout)
+    finally:
+        # the private key must not survive the check, whatever happened above
+        shutil.rmtree(directory, ignore_errors=True)
+
+
 def _snmp(check: dict, timeout: float) -> dict:
     host = _str_field(check, "host")
     if not _valid_host(host):
@@ -701,8 +926,9 @@ def _snmp(check: dict, timeout: float) -> dict:
 
 # ---------------------------------------------------------------- entry point
 
-_HANDLERS = {"icmp": _icmp, "tcp": _tcp, "http": _http, "dns": _dns, "snmp": _snmp}
-_TARGET_KEYS = {"icmp": "host", "tcp": "host", "http": "url", "dns": "name", "snmp": "host"}
+_HANDLERS = {"icmp": _icmp, "tcp": _tcp, "http": _http, "dns": _dns, "snmp": _snmp, "ssh": _ssh}
+_TARGET_KEYS = {"icmp": "host", "tcp": "host", "http": "url", "dns": "name", "snmp": "host",
+                "ssh": "host"}
 
 
 def run_check(check: dict, *, timeout: float = DEFAULT_TIMEOUT) -> dict:
