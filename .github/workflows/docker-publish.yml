@@ -899,9 +899,11 @@ jobs:
             # release carries, while requirements-lock.txt pins the PyInstaller
             # this repo builds with — so build with the pip-installed one.
             python3 --version
-            # Everything but cryptography, which pkg installed above.
-            grep -iv '^cryptography' requirements.txt > /tmp/requirements-freebsd.txt
-            python3 -m pip install --break-system-packages -r /tmp/requirements-freebsd.txt pyinstaller
+            # Everything but cryptography, which pkg installed above. Written
+            # beside requirements.txt: its `-c requirements-lock.txt` is a
+            # path relative to the file that names it.
+            grep -iv '^cryptography' requirements.txt > requirements-freebsd.txt
+            python3 -m pip install --break-system-packages -r requirements-freebsd.txt pyinstaller
             python3 -c 'import cryptography; print("cryptography", cryptography.__version__)'
             python3 -m PyInstaller --onefile --name vigil-agent-freebsd-amd64 \
               --collect-all cffi --collect-all nacl vigil_agent_main.py
