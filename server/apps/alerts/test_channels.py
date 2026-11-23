@@ -69,10 +69,13 @@ class CleanConfigTests(TestCase):
         self.assertEqual(config, {"recipients": ["a@x.test", "b@x.test", "c@x.test"]})
 
     def test_a_secret_is_stored_encrypted_and_a_blank_one_keeps_the_old(self):
-        config, _ = channels.clean_config(self.webhook, {"url": "https://h.test", "secret": "s3"})
+        # "!" is outside the base64 alphabet, so the ciphertext can never contain
+        # this secret by chance (a two-character "s3" turned up in one run).
+        secret = "hook!secret"
+        config, _ = channels.clean_config(self.webhook, {"url": "https://h.test", "secret": secret})
         self.assertTrue(config["secret"].startswith(channels.ENCRYPTED_PREFIX))
-        self.assertNotIn("s3", config["secret"])
-        self.assertEqual(channels.plain_config(self.webhook, config)["secret"], "s3")
+        self.assertNotIn(secret, config["secret"])
+        self.assertEqual(channels.plain_config(self.webhook, config)["secret"], secret)
         kept, _ = channels.clean_config(self.webhook, {"url": "https://h.test", "secret": ""},
                                         existing=config)
         self.assertEqual(kept["secret"], config["secret"])
