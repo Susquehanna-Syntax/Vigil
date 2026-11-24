@@ -229,13 +229,19 @@ class StylesheetTests(SimpleTestCase):
 
 
 class TerminalTeardownTests(SimpleTestCase):
-    """A keydown listener left on document after a session ends would close
-    the next session too: termSession is shared between them."""
+    """Several shells can be open at once (rc2): each owns its state and its
+    dialog, and none listens on document for Escape — that would end every
+    open shell at once, and Escape belongs to the shell (vim, less)."""
 
-    def test_the_escape_listener_is_removed_on_teardown(self):
+    def test_each_session_owns_its_dialog_and_state(self):
         js = (Path(__file__).resolve().parents[3] / "static" / "js" / "vigil-terminal.js").read_text()
-        self.assertIn("document.addEventListener('keydown', onKey)", js)
-        self.assertIn("document.removeEventListener('keydown', onKey)", js)
+        self.assertIn("mountModal(`term-${started.id}`", js)
+        self.assertIn("termSessions.set(started.id, termSession)", js)
+        self.assertNotIn("document.addEventListener('keydown'", js)
+
+    def test_the_dialog_layer_leaves_escape_to_a_terminal(self):
+        js = (Path(__file__).resolve().parents[3] / "static" / "js" / "vigil-modal.js").read_text()
+        self.assertIn("'[role=\"menu\"], [data-keeps-tab]'", js)
 
     def test_close_reasons_lose_every_control_character(self):
         js = (Path(__file__).resolve().parents[3] / "static" / "js" / "vigil-terminal.js").read_text()

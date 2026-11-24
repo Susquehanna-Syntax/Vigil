@@ -16,8 +16,9 @@
    edits a buffer on Backspace, and sends a whole line on Enter. Typing into
    such a session one character at a time would look like a dead terminal. */
 
-const termSession = { ws: null, term: null, fit: null, observer: null,
-                      lineMode: false, buffer: '', closed: false, debounce: null };
+//: Every open shell, by session id: each dialog keeps its own state, so
+//: several shells can be open (or minimised) at once.
+const termSessions = new Map();
 
 async function openSession(hostId, kind, container) {
   const isContainer = kind === 'container';
@@ -37,7 +38,10 @@ function _termTitle(kind, host, container) {
 }
 
 function _mountTermDialog(started, kind, container) {
-  const m = mountModal('term', { xwide: true });
+  const termSession = { ws: null, term: null, fit: null, observer: null,
+                        lineMode: false, buffer: '', closed: false, debounce: null };
+  termSessions.set(started.id, termSession);
+  const m = mountModal(`term-${started.id}`, { xwide: true });
   m.modal.classList.add('term-modal');
   m.setBody(`<div class="modal-title"><span id="term-title"></span>
       <button class="modal-close" type="button" id="term-x" aria-label="${escAttr(t('Close'))}">
@@ -145,13 +149,13 @@ function _mountTermDialog(started, kind, container) {
   observer.observe(m.modal);
   termSession.observer = observer;
 
-  // Named so teardown can remove it: a listener left on document would end
-  // the *next* session too, since termSession is shared.
-  const onKey = (ev) => {
-    if (ev.key === 'Escape' && m.modal.classList.contains('open')) end();
+  // Escape is the shell's (vim, less): the dialog closes from its buttons. A
+  // closed shell's dialog leaves the page, since every session mounts its own.
+  const unmount = () => {
+    termSessions.delete(started.id);
+    setTimeout(() => { m.overlay.remove(); m.modal.remove(); }, 400);
   };
   const teardown = () => {
-    document.removeEventListener('keydown', onKey);
     if (termSession.closed) return;
     termSession.closed = true;
     clearTimeout(termSession.debounce);
@@ -163,14 +167,13 @@ function _mountTermDialog(started, kind, container) {
     termSession.ws = null;
   };
 
-  const end = () => { teardown(); _endSession(started.id); m.close(); };
+  const end = () => { teardown(); _endSession(started.id); m.close(); unmount(); };
   m.modal.querySelector('#term-end').addEventListener('click', end);
   m.modal.querySelector('#term-x').addEventListener('click', end);
   // addEventListener rather than assigning overlay.onclick: the text that
   // bans inline handlers scans lines containing "onclick =", and an assignment
   // would have to be carved out of it for no benefit.
-  m.overlay.addEventListener('click', () => { teardown(); m.close(); });
-  document.addEventListener('keydown', onKey);
+  m.overlay.addEventListener('click', () => { teardown(); m.close(); unmount(); });
 
   m.open();
   requestAnimationFrame(() => { fit.fit(); term.focus(); });

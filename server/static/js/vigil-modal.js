@@ -164,7 +164,9 @@ window.addEventListener('keydown', (e) => {
   const top = _modalStack[_modalStack.length - 1];
   if (!top) return;
   if (e.key === 'Escape') {
-    if (!_isStacked(top.el) || /** @type {HTMLElement} */ (e.target).closest?.('[role="menu"]')) return;
+    // A menu keeps its own Escape, and so does a terminal or remote desktop
+    // (vim and less need it): those dialogs close from their own buttons.
+    if (!_isStacked(top.el) || /** @type {HTMLElement} */ (e.target).closest?.('[role="menu"], [data-keeps-tab]')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     closeModalEl(top.el);
