@@ -350,6 +350,9 @@
   background:
     linear-gradient(135deg, transparent 45%, var(--text-3) 45% 52%, transparent 52% 65%, var(--text-3) 65% 72%, transparent 72%);
   cursor: nwse-resize; opacity: .7; touch-action: none;
+  /* Most wide dialogs lay out as a flex column, where float does nothing and
+     the grip fell to the bottom-left corner: push it to the right edge. */
+  align-self: flex-end; margin-left: auto;
 }
 .modal-grip:hover, .modal-grip:focus-visible { opacity: 1; outline: 2px solid var(--sky); outline-offset: 2px; }
 .modal.is-resized { transition: none; }
@@ -359,3 +362,26 @@
 .modal-xwide > .modal-grip { position: absolute; right: 6px; bottom: 6px; flex: 0 0 auto; }
 @media (max-width: 640px) { .modal-grip { display: none; } }
 
+
+/* Windows (2026.17 rc2): a dragged dialog floats without a scrim, a minimised
+   one waits in the dock. vigil-modal.js sets the classes. */
+.modal-winbtns { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.modal-winbtn:hover { transform: none; }
+.modal-title-drag { cursor: grab; user-select: none; }
+.modal-title-drag:active { cursor: grabbing; }
+.modal-overlay.released, .modal-overlay.released.open { opacity: 0; pointer-events: none; }
+.modal.open.floating { box-shadow: 0 18px 48px var(--shadow-dialog); transition: none; }
+.modal.open.minimized { opacity: 0; visibility: hidden; pointer-events: none; }
+.modal-dock {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 199;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: calc(100vw - 32px);
+}
+.modal-dock:empty { display: none; }
+.modal-dock-chip {
+  font: inherit; font-size: 13px; color: var(--text-1); cursor: pointer;
+  padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--s2);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-shadow: 0 6px 18px var(--shadow-pop);
+}
+.modal-dock-chip:hover, .modal-dock-chip:focus-visible { background: var(--s3); outline: 2px solid var(--sky); outline-offset: 1px; }
+@media (max-width: 640px) { .modal-winbtns .modal-min, .modal-winbtns .modal-pop { display: none; } .modal-title-drag { cursor: auto; } }

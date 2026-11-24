@@ -411,6 +411,7 @@ function _openAutoEditor(a) {
   // dataset.editing is read back at save time to pick PATCH vs POST; a dataset
   // value is a string on the way in and on the way out.
   modal.dataset.editing = a ? a.id : '';
+  modal.dataset.popout = a && a.id ? `#open/automation/${a.id}` : '';
   /** @type {HTMLElement} */ (document.getElementById('auto-editor-title')).textContent = a ? t('Edit automation') : t('New automation');
   /** @param {string} id @param {any} v @returns {void} */
   const set = (id, v) => { const el = /** @type {HTMLInputElement} */ (document.getElementById(id)); if (el) el.value = v; };

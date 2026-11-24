@@ -445,10 +445,10 @@ async function startRemoteSession(payload) {
     const rows = held.map((s) => `<li>${escHtml(s.kind === 'container' && s.container
       ? t('{container} on {host}', { container: s.container, host: s.host })
       : t('{kind} on {host}', { kind: s.kind, host: s.host }))}</li>`).join('');
-    const ok = await confirmModal(
-      `<p>${escHtml(t('You already have {n} sessions open. These are holding the slots:', { n: held.length }))}</p><ul>${rows}</ul>`
-      + `<p>${escHtml(t('Close them and start this one?'))}</p>`,
-      { html: true, title: t('Too many sessions'), confirmText: t('Close them'), danger: true });
+    const intro = escHtml(t('You already have {n} sessions open. These are holding the slots:', { n: held.length }));
+    const ask = escHtml(t('Close them and start this one?'));
+    const message = `<p>${intro}</p><ul>${rows}</ul><p>${ask}</p>`;
+    const ok = await confirmModal(message, { html: true, title: t('Too many sessions'), confirmText: t('Close them'), danger: true });
     if (!ok) return null;
     for (const s of held) {
       try {
