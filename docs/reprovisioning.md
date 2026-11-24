@@ -24,9 +24,9 @@ you use this feature on a machine that may be compromised.
 - An operating system image in the image library, or a URL Vigil can download
   one from.
 - An install profile for the image.
-- The machine's root password, or the password of the account that confirms
-  the rebuild, and a time-based one-time password (TOTP) code from your
-  authenticator app.
+- To confirm the rebuild: your own Vigil password, a code from your
+  authenticator app (or your security key), and the machine's hostname typed
+  out in full. All three are required.
 
 ## Supported systems
 
