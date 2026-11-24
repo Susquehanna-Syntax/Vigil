@@ -162,7 +162,7 @@
         <p class="muted" id="civil-state"></p>
         <div class="set-actions-row">
           <button class="btn btn-mint btn-sm" id="civil-save-btn">{% translate "Save" %}</button>
-          <button class="btn btn-mint btn-sm" id="civil-test-btn">{% translate "Test connection &amp; fetch key" %}</button>
+          <button class="btn btn-accent btn-sm" id="civil-test-btn">{% translate "Test connection &amp; fetch key" %}</button>
         </div>
       </div>
 
@@ -187,7 +187,7 @@
           </div>
         </div>
         <div class="totp-actions totp-actions-below" id="totp-actions">
-          <button class="btn btn-sky btn-sm" id="totp-start-btn" data-act="totpStart">{% translate "Enroll TOTP" %}</button>
+          <button class="btn btn-mint btn-sm" id="totp-start-btn" data-act="totpStart">{% translate "Enroll TOTP" %}</button>
           <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" data-act="totpDisablePrompt">{% translate "Disable…" %}</button>
         </div>
       </div>
@@ -215,10 +215,10 @@
           plain HTTP those cross the network in the clear.{% endblocktranslate %}
         </div>
         <div class="totp-actions totp-actions-below">
-          <button class="btn btn-peach btn-sm" id="transport-ack-btn"
+          <button class="btn btn-mint btn-sm" id="transport-ack-btn"
                   style="display:none;" data-act="transportAckSet" data-a1="$true">
             {% translate "Acknowledge plain-text transport" %}</button>
-          <button class="btn btn-rose btn-sm" id="transport-revoke-btn"
+          <button class="btn btn-lemon btn-sm" id="transport-revoke-btn"
                   style="display:none;" data-act="transportAckSet" data-a1="$false">
             {% translate "Withdraw acknowledgement" %}</button>
         </div>
@@ -259,7 +259,7 @@
           <div class="confirm-hint" id="ad-status">—</div>
           <div class="btn-gap">
             <button class="btn btn-mint btn-sm" data-act="adSaveConfig">{% translate "Save" %}</button>
-            <button class="btn btn-sky btn-sm" data-act="adSyncNow">{% translate "Import Now" %}</button>
+            <button class="btn btn-mint btn-sm" data-act="adSyncNow">{% translate "Import Now" %}</button>
           </div>
         </div>
       </div>
@@ -340,7 +340,7 @@
           <div class="totp-sub">{% translate "Agents try lower numbers first when their own address stops answering." %}</div>
         </div>
         </div>
-        <button class="btn btn-mint btn-sm" data-act="addRelay">{% translate "Add relay" %}</button>
+        <button class="btn btn-accent btn-sm" data-act="addRelay">{% translate "Add relay" %}</button>
       </div>
 
         </div>
@@ -510,14 +510,14 @@
       <div class="totp-card">
         <p class="totp-sub">{% blocktranslate %}Where alerts are sent when they fire and resolve. A channel in a site hears only that site's alerts; a global channel hears every site's. Tasks can also send a message to a channel by name.{% endblocktranslate %}</p>
         <div id="channels-list"><p class="muted">{% translate "Loading…" %}</p></div>
-        <button class="btn btn-mint btn-sm" data-act="addChannel">{% translate "Add a channel" %}</button>
+        <button class="btn btn-accent btn-sm" data-act="addChannel">{% translate "Add a channel" %}</button>
       </div>
       {# Logic: static/js/vigil-maintenance.js | API: /api/v1/alerts/maintenance/ #}
       <div class="section-label set-label-far">{% translate "Maintenance windows" %}</div>
       <div class="totp-card">
         <p class="totp-sub">{% translate "Times when hosts are expected to be down: during a window its hosts raise no alerts and send no notifications." %}</p>
         <div id="maintenance-list"><p class="muted">{% translate "Loading…" %}</p></div>
-        <button class="btn btn-mint btn-sm" data-act="addMaintenance">{% translate "Add a maintenance window" %}</button>
+        <button class="btn btn-accent btn-sm" data-act="addMaintenance">{% translate "Add a maintenance window" %}</button>
       </div>
         </div>
         <div class="settings-pane" data-pane="email">
@@ -613,7 +613,7 @@
               <label class="deploy-input-label">{% translate "Binary file" %}</label>
               <input type="file" id="upload-binary" class="upload-file-input">
             </div>
-            <button class="btn btn-sky btn-sm" data-act="uploadAgentBinary">{% translate "Upload" %}</button>
+            <button class="btn btn-mint btn-sm" data-act="uploadAgentBinary">{% translate "Upload" %}</button>
           </div>
         </div>
       </div>

@@ -107,7 +107,7 @@ async function openUserSites(user) {
       ${companyWideSection()}
       <p class="muted" id="us-note"></p>
       <div class="confirm-actions">
-        <button class="btn btn-mint btn-sm" id="us-close">${escHtml(t('Done'))}</button>
+        <button class="btn btn-accent btn-sm" id="us-close">${escHtml(t('Done'))}</button>
       </div>`);
     wire();
   }

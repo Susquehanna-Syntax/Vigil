@@ -63,7 +63,7 @@ async function openPicker(opts) {
     </div>
     <div class="picker-toolbar">
       <input type="text" class="form-control" id="picker-search" placeholder="${escAttr(t('Search…'))}">
-      <button class="btn btn-mint btn-sm" id="picker-add" type="button">${escHtml(t('Add new'))}</button>
+      <button class="btn btn-accent btn-sm" id="picker-add" type="button">${escHtml(t('Add new'))}</button>
     </div>
     <div class="picker-list" id="picker-list"></div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#picker-close')).onclick = m.close;
@@ -177,7 +177,7 @@ function _renderPickerList(q) {
       </div>
       <div class="picker-row-actions">
         ${i.editable ? `<button class="btn btn-sky btn-xs" data-pick-edit="${idx}">${escHtml(t('Edit'))}</button>` : ''}
-        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escAttr(why)}"` : ''}>${escHtml(t('Select'))}</button>
+        <button class="btn btn-accent btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escAttr(why)}"` : ''}>${escHtml(t('Select'))}</button>
       </div>
     </div>`;
   }).join('');

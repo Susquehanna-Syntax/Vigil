@@ -518,7 +518,7 @@ function _relayRowHtml(r) {
   if (!builtin) {
     meta.push(`<div class="relay-meta">${escHtml(t('Fallback order {order}', { order: String(r.priority == null ? 100 : r.priority) }))}</div>`);
   }
-  const actions = [`<button class="btn btn-sm ${r.enabled ? 'btn-outline' : 'btn-mint'}"`
+  const actions = [`<button class="btn btn-sm ${r.enabled ? 'btn-outline' : 'btn-rose'}"`
     + ` data-act="toggleRelay" data-a1="${escAttr(r.id)}" data-a2="${r.enabled ? 'off' : 'on'}">`
     + `${r.enabled ? escHtml(t('Turn off')) : escHtml(t('Turn on'))}</button>`];
   if (!builtin) {
@@ -676,7 +676,7 @@ function _openRelayKeyDialog(name, key, keySha) {
     <div class="deploy-input-label relay-key-sub">${escHtml(t('Key'))}</div>
     <div class="relay-code mono" id="rk-key"></div>
     ${_relayCopyBtn('rk-copy-key')}
-    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="rk-done">${escHtml(t('Done'))}</button></div>`);
+    <div class="confirm-actions"><button class="btn btn-accent btn-sm" id="rk-done">${escHtml(t('Done'))}</button></div>`);
   m.modal.querySelector('.modal-title span').textContent = t('Relay added \u2014 copy this now');
   m.modal.querySelector('#rk-compose-label').textContent =
     t('Compose snippet for {name}', { name: name || t('the relay') });
@@ -871,7 +871,7 @@ async function relayInstall(id) {
     <div class="relay-code mono" id="ri-windows"></div>
     ${_relayCopyBtn('ri-copy-windows')}
     <p class="muted relay-key-sub">${escHtml(t('New hosts installed with these commands check in through this relay and appear under Pending for approval. The commands work once, for 24 hours.'))}</p>
-    <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="ri-close">${escHtml(t('Done'))}</button></div>`);
+    <div class="confirm-actions"><button class="btn btn-accent btn-sm" id="ri-close">${escHtml(t('Done'))}</button></div>`);
   m.modal.querySelector('.modal-title span').textContent = title;
   m.modal.querySelector('#ri-linux').textContent = linux;
   m.modal.querySelector('#ri-windows').textContent = windows;

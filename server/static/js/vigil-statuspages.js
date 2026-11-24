@@ -84,7 +84,7 @@ function _spCard(p) {
     ${branding}
     <div class="sp-card-actions">
       <button class="btn btn-mint btn-sm" data-sp-save="${p.id}">${escHtml(t('Save'))}</button>
-      <button class="btn btn-peach btn-sm" data-sp-rotate="${p.id}">${escHtml(t('Rotate URL'))}</button>
+      <button class="btn btn-lemon btn-sm" data-sp-rotate="${p.id}">${escHtml(t('Rotate URL'))}</button>
       <button class="btn btn-rose btn-sm" data-sp-del="${p.id}">${escHtml(t('Delete'))}</button>
     </div>
   </div>`;

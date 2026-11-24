@@ -68,13 +68,13 @@ function openHostDetail(card) {
     actions.innerHTML = `<div class="detail-actions-note">${escHtml(t('This host is in monitor mode — no task execution.'))}</div>`;
   } else {
     actions.innerHTML = `
-      <button class="btn btn-sm btn-sky" disabled>
+      <button class="btn btn-sm btn-lemon" disabled>
         <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         ${escHtml(t('Restart Service'))}
       </button>
       <button class="btn btn-sm btn-outline" disabled>${escHtml(t('Clear Temp Files'))}</button>
       <button class="btn btn-sm btn-outline" disabled>${escHtml(t('Run Updates'))}</button>
-      ${d.mode === 'full_control' ? `<button class="btn btn-sm btn-rose" disabled>${escHtml(t('Reboot'))}</button>` : ''}
+      ${d.mode === 'full_control' ? `<button class="btn btn-sm btn-lemon" disabled>${escHtml(t('Reboot'))}</button>` : ''}
       <button class="btn btn-sm btn-rose" id="detail-rebuild-btn">${escHtml(t('Rebuild OS…'))}</button>
     `;
     // Rebuild is offered wherever tasks run. Whether this particular agent

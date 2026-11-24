@@ -135,7 +135,7 @@ function _rolloutCard(r) {
   if (active) {
     actions = `<button class="btn btn-ghost btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop>${escHtml(t('Halt now'))}</button>`;
   } else if (r.state === 'halted') {
-    actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>${escHtml(t('Resume'))}</button>`;
+    actions = `<button class="btn btn-mint btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>${escHtml(t('Resume'))}</button>`;
   }
   const reason = r.halted_reason
     ? `<div class="rlt-halted">
@@ -613,7 +613,7 @@ async function openRolloutDetail(rolloutId) {
   // rather than showing greyed buttons that cannot do anything.
   const acts = [];
   if (r.state === 'validating') {
-    acts.push(`<button class="btn btn-mint btn-sm" data-rlt="${escAttr(r.id)}"
+    acts.push(`<button class="btn btn-accent btn-sm" data-rlt="${escAttr(r.id)}"
       data-rlt-act="skip-validation">${escHtml(t('Skip validation, continue now'))}</button>`);
   }
   if (r.state === 'running' || r.state === 'validating') {
@@ -621,7 +621,7 @@ async function openRolloutDetail(rolloutId) {
       data-rlt-act="halt">${escHtml(t('Halt now'))}</button>`);
   }
   if (r.state === 'halted') {
-    acts.push(`<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}"
+    acts.push(`<button class="btn btn-mint btn-sm" data-rlt="${escAttr(r.id)}"
       data-rlt-act="resume">${escHtml(t('Resume from this wave'))}</button>`);
   }
   const hint = r.state === 'validating'

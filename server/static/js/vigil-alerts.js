@@ -93,7 +93,7 @@ function _alertItemHtml(alert, tab) {
     time = t('Fired {when}', { when: _alertRelTime(alert.fired_at) });
     actions = `
       <div class="alert-actions">
-        <button class="btn btn-sm btn-peach" data-unack="${escAttr(alert.id)}">${escHtml(t('Un-ack'))}</button>
+        <button class="btn btn-sm btn-lemon" data-unack="${escAttr(alert.id)}">${escHtml(t('Un-ack'))}</button>
       </div>`;
   } else {
     sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(t('Resolved {when}', { when: _alertRelTime(alert.resolved_at) }))}`;

@@ -373,7 +373,7 @@ function _jkShowPlainKey(raw) {
     + `<input type="text" class="form-control totp-input ak-secret-field" id="jackil-key-plain" readonly`
       + ` value="${escAttr(raw)}">`
     + `<div class="is-actions">`
-      + `<button type="button" class="btn btn-mint btn-sm" data-jk-copy>${escHtml(t('Copy'))}</button>`
+      + `<button type="button" class="btn btn-accent btn-sm" data-jk-copy>${escHtml(t('Copy'))}</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-jk-done>${escHtml(t('Done'))}</button>`
     + `</div>`);
   // The key is read back out of the box when it is copied rather than kept in

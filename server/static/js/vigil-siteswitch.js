@@ -70,7 +70,7 @@ function openSiteSwitch() {
       </label>`).join('')}</div>
     <div class="confirm-actions">
       <button class="btn btn-outline btn-sm" id="ss-all">${escHtml(t('All my sites'))}</button>
-      <button class="btn btn-mint btn-sm" id="ss-apply">${escHtml(t('Show these'))}</button>
+      <button class="btn btn-accent btn-sm" id="ss-apply">${escHtml(t('Show these'))}</button>
     </div>`);
 
   const boxes = () => /** @type {HTMLInputElement[]} */ ([...m.modal.querySelectorAll('#ss-list input[type=checkbox]')]);

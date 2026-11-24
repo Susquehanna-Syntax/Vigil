@@ -291,7 +291,7 @@ async function openStoreApp(id) {
     <div class="modal-actions">
       <button class="btn btn-outline btn-sm" type="button" data-store-policy>${escHtml(t('Add to policy…'))}</button>
       <button class="btn btn-outline btn-sm" type="button" data-store-save>${escHtml(t('Save as task'))}</button>
-      <button class="btn btn-mint btn-sm" type="button" data-store-install>${escHtml(t('Install…'))}</button>
+      <button class="btn btn-accent btn-sm" type="button" data-store-install>${escHtml(t('Install…'))}</button>
     </div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('#store-x')).onclick = m.close;
   _wireIcons(m.modal);

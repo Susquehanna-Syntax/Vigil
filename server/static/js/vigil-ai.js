@@ -63,7 +63,7 @@ let _aiModal = null;
 const _AI_PICKER_HTML = `
       <div class="section-label ai-ask-label">${escHtml(t('Ask which models'))}</div>
       <div class="ai-provider-picker" id="ai-picker"></div>
-      <button class="btn btn-mint btn-sm ai-run-btn" id="ai-run">${escHtml(t('Get suggestions'))}</button>`;
+      <button class="btn btn-accent btn-sm ai-run-btn" id="ai-run">${escHtml(t('Get suggestions'))}</button>`;
 function _ensureAiModal() {
   if (_aiModal) return _aiModal;
   _aiModal = mountModal('ai', { wide: true });
@@ -142,7 +142,7 @@ function _renderProviderPicker(picker, runFn) {
   if (!_aiProviders.length && !_staticResolver) {
     document.getElementById('ai-picker-wrap').innerHTML =
       `<div class="ai-empty">${escHtml(t('No AI providers are configured.'))}
-       <button class="btn btn-mint btn-sm ai-settings-btn" data-ai-settings>${escHtml(t('Add one in Settings'))}</button></div>`;
+       <button class="btn btn-accent btn-sm ai-settings-btn" data-ai-settings>${escHtml(t('Add one in Settings'))}</button></div>`;
     return;
   }
   picker.innerHTML = staticChip + _aiProviders.map(p => `
@@ -252,7 +252,7 @@ function _renderColumn(id) {
       ${_rejectedHtml(data.rejected)}
       <div class="ai-sug-actions">
         <button class="btn btn-lav btn-sm" data-ai-copy>${escHtml(t('Copy YAML'))}</button>
-        <button class="btn btn-mint btn-sm" data-ai-open>${escHtml(t('Use this'))}</button>
+        <button class="btn btn-accent btn-sm" data-ai-open>${escHtml(t('Use this'))}</button>
       </div>
     </div>`;
   }
@@ -365,7 +365,7 @@ async function loadAiProviders() {
           <div class="provider-test" id="ap-test-${p.id}" hidden></div>
         </div>
         <div class="card-actions">
-          <button class="btn btn-mint btn-xs" data-ap-test="${p.id}">${escHtml(t('Test'))}</button>
+          <button class="btn btn-accent btn-xs" data-ap-test="${p.id}">${escHtml(t('Test'))}</button>
           <button class="btn btn-sky btn-xs" data-ap-edit="${p.id}">${escHtml(t('Edit'))}</button>
           <button class="btn btn-${p.enabled ? 'lemon' : 'mint'} btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${escHtml(p.enabled ? t('Disable') : t('Enable'))}</button>
           <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">${escHtml(t('Delete'))}</button>

@@ -198,7 +198,7 @@ function _akShowPlainKey(raw) {
     + `<input type="text" class="form-control totp-input ak-secret-field" id="api-key-plain" readonly`
       + ` value="${escAttr(raw)}">`
     + `<div class="is-actions">`
-      + `<button type="button" class="btn btn-mint btn-sm" data-ak-copy>${escHtml(t('Copy'))}</button>`
+      + `<button type="button" class="btn btn-accent btn-sm" data-ak-copy>${escHtml(t('Copy'))}</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-ak-done>${escHtml(t('Done'))}</button>`
     + `</div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('[data-ak-copy]')).onclick = async () => {
@@ -265,7 +265,7 @@ function _akHookForm() {
       + ` placeholder="${escAttr(t('Name, e.g. Helpdesk'))}">`
     + `<input type="url" class="form-control wh-url-field" id="wh-url"`
       + ` placeholder="${escAttr('https://example.com/hooks/vigil')}">` // i18n-ignore
-    + `<button type="button" class="btn btn-mint btn-sm" data-wh-create>${escHtml(t('Add webhook'))}</button>`
+    + `<button type="button" class="btn btn-accent btn-sm" data-wh-create>${escHtml(t('Add webhook'))}</button>`
     + `</div>`
     + `<div class="ak-sites-row">`
     + AK_EVENTS.map(([name, label], i) => `<label class="totp-sub ak-site-check">`
@@ -433,7 +433,7 @@ function _akShowSecret(secret, title) {
     + `<input type="text" class="form-control totp-input ak-secret-field" id="webhook-secret-plain" readonly`
       + ` value="${escAttr(secret)}">`
     + `<div class="is-actions">`
-      + `<button type="button" class="btn btn-mint btn-sm" data-wh-copy>${escHtml(t('Copy'))}</button>`
+      + `<button type="button" class="btn btn-accent btn-sm" data-wh-copy>${escHtml(t('Copy'))}</button>`
       + `<button type="button" class="btn btn-outline btn-sm" data-wh-done>${escHtml(t('Done'))}</button>`
     + `</div>`);
   /** @type {HTMLElement} */ (m.modal.querySelector('[data-wh-copy]')).onclick = async () => {

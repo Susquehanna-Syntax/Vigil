@@ -151,7 +151,7 @@ function _renderPlaybookList(playbooks) {
         </div>
         <div class="card-actions">
           <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? escHtml(t('Turn auto-enroll off')) : escHtml(t('Turn auto-enroll on'))}</button>
-          ${b.failing_hosts ? `<button class="btn btn-rose btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">${escHtml(t('Review failures'))}</button>` : ''}
+          ${b.failing_hosts ? `<button class="btn btn-accent btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">${escHtml(t('Review failures'))}</button>` : ''}
           <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">${escHtml(t('Duplicate'))}</button>
           <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">${escHtml(t('Edit'))}</button>
           <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">${escHtml(t('Archive'))}</button>
@@ -242,7 +242,7 @@ async function _openFailures(playbookId, name) {
           <span class="blf-host">${escHtml(r.hostname)}</span>
           <span class="chip chip-muted">${escHtml(r.state || 'failed')}</span>
           ${r.at ? `<span class="muted-note">${escHtml(new Date(r.at).toLocaleString())}</span>` : ''}
-          <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">${escHtml(t('Retry here'))}</button>
+          <button class="btn btn-lemon btn-xs" data-blf-retry="${escAttr(r.host_id)}">${escHtml(t('Retry here'))}</button>
         </div>
         ${r.output ? `<pre class="blf-output term term-wrap">${termHtml(r.output)}</pre>`
                    : `<p class="muted-note">${escHtml(t('The agent reported no output.'))}</p>`}
@@ -253,7 +253,7 @@ async function _openFailures(playbookId, name) {
     + `<p class="muted-note">${escHtml(t('Auto-enrolment stops on a host when its last run of this playbook failed there, so one broken playbook cannot redispatch to the same machine every five minutes. Retrying dispatches it again — that new run is what clears this.'))}</p>`
     + `<div class="blf-list">${body}</div>`
     + `<div class="modal-actions">
-         ${rows.length ? `<button class="btn btn-mint" data-blf-retry-all>${escHtml(t('Retry all {count}', { count: rows.length }))}</button>` : ''}
+         ${rows.length ? `<button class="btn btn-lemon" data-blf-retry-all>${escHtml(t('Retry all {count}', { count: rows.length }))}</button>` : ''}
          <button class="btn btn-outline" data-blf-close>${escHtml(t('Close'))}</button>
        </div>`);
 
@@ -380,7 +380,7 @@ function _blInsertMenu(btn) {
   // and once a lane ends in one, that "+" is gone (its edge carries no
   // insert), which is how "nothing after a go to" holds on the canvas too.
   const atLaneEnd = +i === flowLane(_editingTree, lane).length;
-  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">${escHtml(t('Task'))}</button>
+  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-accent btn-xs" data-m="task">${escHtml(t('Task'))}</button>
     <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">${escHtml(t('If / else'))}</button>`
     + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">${escHtml(t('Go to'))}</button>` : '');
   const vr = vp.getBoundingClientRect();

@@ -152,7 +152,7 @@ function _renderAutomations(autos) {
           <span class="bl-badge ${a.enabled ? 'on' : 'off'}">${a.enabled ? escHtml(t('enabled')) : escHtml(t('off'))}</span>
         </div>
         <div class="card-actions">
-          <button class="btn btn-sky btn-xs" data-au-run="${a.id}">${escHtml(t('Run now'))}</button>
+          <button class="btn btn-mint btn-xs" data-au-run="${a.id}">${escHtml(t('Run now'))}</button>
           <button class="btn btn-${a.enabled ? 'lemon' : 'mint'} btn-xs" data-au-toggle="${a.id}" data-en="${a.enabled}">${a.enabled ? escHtml(t('Disable')) : escHtml(t('Enable'))}</button>
           <button class="btn btn-sky btn-xs" data-au-edit="${a.id}">${escHtml(t('Edit'))}</button>
           <button class="btn btn-rose btn-xs" data-au-del="${a.id}">${escHtml(t('Delete'))}</button>

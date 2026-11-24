@@ -56,7 +56,7 @@ function _renderManagedBar() {
   wrap.innerHTML = `<div class="managed-stacks-bar">
       ${rest.length ? `<span class="managed-stacks-label">${escHtml(t('Managed by Vigil, not deployed'))}</span>` : ''}
       ${rest.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
-      ${stackEd.empty ? '' : `<button class="btn btn-xs btn-mint" type="button" data-stack-new>${escHtml(t('New stack'))}</button>`}
+      ${stackEd.empty ? '' : `<button class="btn btn-xs btn-accent" type="button" data-stack-new>${escHtml(t('New stack'))}</button>`}
     </div>`;
 }
 

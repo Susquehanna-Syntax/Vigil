@@ -691,10 +691,10 @@ function renderFixGroups(q) {
       g.cvss != null ? `<span class="chip chip-muted">CVSS ${g.cvss}</span>` : '', // i18n-ignore: a CVSS score, not a sentence
     ].join('');
     const deploy = g.fix.kind === 'detection'
-      ? `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">${escHtml(t('Deploy detection task'))}</button>`
+      ? `<button class="btn btn-accent btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">${escHtml(t('Deploy detection task'))}</button>`
       : g.fix.kind === 'none'
       ? `<button class="btn btn-lav btn-xs" type="button" data-vfix-mitigate="${escAttr(g.fix_key)}">${escHtml(t('Suggest mitigations'))}</button>`
-      : `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">${escHtml(t('Deploy fix'))}</button>`;
+      : `<button class="btn btn-accent btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">${escHtml(t('Deploy fix'))}</button>`;
     let detail = '';
     if (fixState.open[g.fix_key]) {
       const hosts = g.hosts.map(h => `<div class="apps-detail-item">

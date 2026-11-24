@@ -34,6 +34,7 @@
   --sky: #82c4ee;
   --lemon: #e2d478;
   --coral: #f09080;
+  --teal: #74d3c8;
 
   /* Accent channels, so a surface can be tinted in an accent rather than
      wearing a stripe of it. Connor asked for whole pastel cards, not cards
@@ -45,6 +46,7 @@
   --rgb-sky: 130,196,238;
   --rgb-lemon: 226,212,120;
   --rgb-coral: 240,144,128;
+  --rgb-teal: 116,211,200;
   --rgb-grey: 110,107,118;
 
   /* Pastel over a dark ground needs less alpha than over a light one. */
@@ -61,6 +63,7 @@
   --sky-ink: var(--sky);
   --lemon-ink: var(--lemon);
   --coral-ink: var(--coral);
+  --teal-ink: var(--teal);
 
   /* Theme-dependent chrome that used to be hard-coded for the dark ground. */
   --on-accent: #1c1c21;
@@ -156,6 +159,7 @@
   --sky-ink: #285c82;
   --lemon-ink: #66590e;
   --coral-ink: #924038;
+  --teal-ink: #17605a;
 
   --rgb-grey: 124,119,90;
   --tint-a: 0.30;

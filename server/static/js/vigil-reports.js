@@ -119,7 +119,7 @@ function _rptCardHtml(r) {
     </div>
     <div class="def-card-footer">
       <button class="btn btn-sky btn-sm" type="button" data-rpt-open="${escAttr(r.id)}">${escHtml(t('Open'))}</button>
-      <button class="btn btn-lemon btn-sm" type="button" data-rpt-edit="${escAttr(r.id)}">${escHtml(t('Edit'))}</button>
+      <button class="btn btn-accent btn-sm" type="button" data-rpt-edit="${escAttr(r.id)}">${escHtml(t('Edit'))}</button>
       <button class="btn btn-rose btn-sm" type="button" data-rpt-del="${escAttr(r.id)}">${escHtml(t('Delete'))}</button>
     </div>
   </div>`;
@@ -142,7 +142,7 @@ function _renderReportList() {
   list.innerHTML = `<div class="empty-block">
     <h4>${escHtml(t('No reports yet'))}</h4>
     <p>${escHtml(t('A report charts how your playbooks and automations are doing over time.'))}</p>
-    <button class="btn btn-mint btn-sm" type="button" data-rpt-new>${escHtml(t('New report'))}</button>
+    <button class="btn btn-accent btn-sm" type="button" data-rpt-new>${escHtml(t('New report'))}</button>
   </div>`;
 }
 
@@ -533,7 +533,7 @@ async function openReport(id) {
       <span class="rpt-head-title">${escHtml(report.name || t('Report'))}</span>
       <span class="rpt-head-range muted">${escHtml(String(range.from || ''))} – ${escHtml(String(range.to || ''))}
         · ${escHtml(t('last {days} days', { days: String((range.days || []).length || report.range_days || '') }))}</span>
-      <button class="btn btn-lemon btn-sm" type="button" data-rpt-view-edit>${escHtml(t('Edit'))}</button>
+      <button class="btn btn-accent btn-sm" type="button" data-rpt-view-edit>${escHtml(t('Edit'))}</button>
       <button class="btn btn-outline btn-sm" type="button" data-rpt-layout>${escHtml(t('Edit layout'))}</button>
     </div>
     ${data.truncated

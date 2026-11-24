@@ -20,7 +20,7 @@
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="bl-search" placeholder="{% translate "Search playbooks by name, step, or tag…" %}">
       <button class="btn btn-outline btn-sm" id="bl-library-btn">{% translate "Templates" %}</button>
-      <button class="btn btn-mint" id="bl-new-btn">{% translate "New playbook" %}</button>
+      <button class="btn btn-accent" id="bl-new-btn">{% translate "New playbook" %}</button>
     </div>
     <div id="playbooks-list" class="bl-list"></div>
   </div>
@@ -32,7 +32,7 @@
              placeholder="{% translate "Search waves by name or tag…" %}">
       <span class="field-hint" tabindex="0" aria-label="{% translate "How waves work" %}"
             data-hint="{% translate "A wave is a group of machines, matched by tag, that get patched together. Rollouts walk the waves in order.&#10;&#10;Put a couple of spare machines in wave 1, the bulk in the last one. If an update breaks something you find out on the spare machines.&#10;&#10;A machine in two waves is patched once, in the earlier one. A machine in no wave is never patched." %}">?</span>
-      <button class="btn btn-mint" id="wave-new-btn">{% translate "New wave" %}</button>
+      <button class="btn btn-accent" id="wave-new-btn">{% translate "New wave" %}</button>
     </div>
     <div id="waves-list" class="bl-list"></div>
   </div>
@@ -44,7 +44,7 @@
                placeholder="{% translate "Search rollouts by definition, wave, or state…" %}">
         <span class="field-hint" tabindex="0" aria-label="{% translate "How rollouts work" %}"
               data-hint="{% translate "Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched." %}">?</span>
-        <button class="btn btn-mint" data-act="openRolloutStart">{% translate "New rollout" %}</button>
+        <button class="btn btn-accent" data-act="openRolloutStart">{% translate "New rollout" %}</button>
       </div>
       <div id="rollout-list" class="rollout-list">
         <div class="empty-state"><div class="empty-state-title">{% translate "Loading…" %}</div></div>
@@ -56,7 +56,7 @@
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="auto-search"
              placeholder="{% translate "Search automations by name, trigger, task, or tag…" %}">
-      <button class="btn btn-mint" id="auto-new-btn">{% translate "New automation" %}</button>
+      <button class="btn btn-accent" id="auto-new-btn">{% translate "New automation" %}</button>
     </div>
     <div id="automations-list" class="bl-list"></div>
   </div>

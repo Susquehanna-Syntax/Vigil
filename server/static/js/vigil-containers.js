@@ -269,7 +269,7 @@ async function renderDockerContainers(hostId, fromCache) {
     wrap.innerHTML = `<div class="docker-empty">${filtering && allContainers.length
       ? escHtml(t('No containers match this filter.')) : escHtml(t('No containers reported for this host.'))}</div>`
       + (hostIsEmpty && typeof setContainersEmpty === 'function'
-        ? `<div class="docker-empty-act"><button class="btn btn-sm btn-mint" type="button" data-stack-new>${escHtml(t('New stack'))}</button></div>` : '');
+        ? `<div class="docker-empty-act"><button class="btn btn-sm btn-accent" type="button" data-stack-new>${escHtml(t('New stack'))}</button></div>` : '');
     return;
   }
   countEl.textContent = filtering
@@ -340,7 +340,7 @@ async function renderDockerContainers(hostId, fromCache) {
         <td>${_ctrStateBadge(c)}</td>
         <td class="ctr-stat">${cpu}</td>
         <td class="ctr-stat">${mem}</td>
-        <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-mint" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="${escAttr(t('A newer image is available'))}">${t('Update')}</button>` : ''}
+        <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-accent" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="${escAttr(t('A newer image is available'))}">${t('Update')}</button>` : ''}
           ${state === 'running'
             ? `<button class="btn btn-xs btn-outline" data-ctr-act="Restart container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">${t('Restart')}</button>
                <button class="btn btn-xs btn-outline" data-ctr-act="Stop container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">${t('Stop')}</button>`

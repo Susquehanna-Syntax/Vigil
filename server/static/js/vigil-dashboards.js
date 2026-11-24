@@ -54,7 +54,7 @@ function _dashToolbar() {
           ${DASH.editing ? escHtml(t('Done')) : escHtml(t('Edit layout'))}</button>
         ${DASH.editing ? `<button class="btn btn-lav btn-sm" id="dash-add">${escHtml(t('+ Add widget'))}</button>` : ''}
         <span class="dash-toolbar-spacer"></span>
-        <button class="btn btn-mint btn-sm" id="dash-new" title="${escAttr(t('New dashboard'))}">${escHtml(t('+ New'))}</button>
+        <button class="btn btn-accent btn-sm" id="dash-new" title="${escAttr(t('New dashboard'))}">${escHtml(t('+ New'))}</button>
         <button class="btn btn-sky btn-sm" id="dash-rename">${escHtml(t('Rename'))}</button>
         <button class="btn btn-${board.is_default ? 'lemon' : 'peach'} btn-sm" id="dash-default"
                 ${board.is_default ? `disabled title="${escAttr(t('This is already your landing dashboard'))}"` : ''}>

@@ -55,7 +55,8 @@
       if (localStorage.getItem('vigil-reduce-motion') === '1') {
         document.documentElement.classList.add('rm-sim');
       }
-      if (localStorage.getItem('vigil-sidebar') === 'expanded') {
+      // Expanded unless the user folded it: the groups need their names.
+      if (localStorage.getItem('vigil-sidebar') !== 'collapsed') {
         document.documentElement.setAttribute('data-sidebar', 'expanded');
       }
     } catch (e) {}
@@ -77,67 +78,170 @@
       <span class="sidebar-label" id="site-switch-label">{% translate "Sites" %}</span>
     </div>
 
-    <div class="sidebar-icon active" data-page="dashboard" data-tip="{% translate "Dashboard" %}">
+    {# Sidebar groups (design branch): three pages on their own, five coloured groups that fold, Community, then the quick bar. Logic: vigil-nav.js #}
+    <div class="sb-top">
+      <div class="sb-item" data-sb-item="dashboard">
+        <div class="sidebar-icon active" data-page="dashboard" data-tip="{% translate "Dashboard" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="search" data-tip="{% translate "Search (Ctrl+K)" %}">
+        </div>
+      </div>
+      <div class="sb-item" data-sb-item="search">
+        <div class="sidebar-icon" data-page="search" data-tip="{% translate "Search (Ctrl+K)" %}">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="inventory" data-tip="{% translate "Inventory" %}">
-      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="apps" data-tip="{% translate "Apps" %}">
-      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6"/><circle cx="8.5" cy="6.5" r=".6"/><rect x="7" y="12" width="4" height="4" rx="1"/><line x1="13" y1="13" x2="17" y2="13"/><line x1="13" y1="15.5" x2="16" y2="15.5"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="store" data-tip="{% translate "Store" %}">
-      <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="policies" data-tip="{% translate "Policies" %}">
-      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="tasks" data-tip="{% translate "Tasks" %}">
-      <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="playbooks" data-tip="{% translate "Deployments" %}">
-      <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="reports" data-tip="{% translate "Reports" %}">
-      <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="12" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="11" rx="0.5"/><rect x="16" y="10" width="3" height="8" rx="0.5"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="vulns" data-tip="{% translate "Vulnerabilities" %}">
-      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="firewall" data-tip="{% translate "Firewall" %}">
-      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="3" y1="14.5" x2="21" y2="14.5"/><line x1="9" y1="4" x2="9" y2="9.5"/><line x1="15" y1="9.5" x2="15" y2="14.5"/><line x1="9" y1="14.5" x2="9" y2="20"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="reprovision" data-tip="{% translate "Reprovision" %}">
-      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="6" r="0.6"/><rect x="2" y="15" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="18" r="0.6"/><path d="M12 9v10"/><polyline points="9 16 12 19 15 16"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="monitor" data-tip="{% translate "Monitor" %}">
-      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="containers" data-tip="{% translate "Containers" %}">
-      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="topology" data-tip="{% translate "Topology" %}">
-      <svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7" y1="7.5" x2="10.5" y2="16"/><line x1="17" y1="7.5" x2="13.5" y2="16"/><line x1="7.5" y1="6" x2="16.5" y2="6"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="alerts" data-tip="{% translate "Alerts" %}">
+        </div>
+      </div>
+      <div class="sb-item" data-sb-item="alerts">
+        <div class="sidebar-icon" data-page="alerts" data-tip="{% translate "Alerts" %}">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       {% if alert_count %}<div class="badge-dot badge-dot--alert"></div>{% endif %}
+        </div>
+      </div>
     </div>
-    <div class="sidebar-icon" data-page="statuspages" data-tip="{% translate "Status Pages" %}">
+    <div class="sb-group" data-group="endpoint">
+      <button type="button" class="sb-group-head" data-sb-group-toggle="endpoint" aria-expanded="true" aria-controls="sb-body-endpoint"><span class="sb-group-name">{% translate "Endpoint Management" %}</span><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+      <div class="sb-group-body" id="sb-body-endpoint">
+        <div class="sb-item" data-sb-item="tasks">
+          <div class="sidebar-icon" data-page="tasks" data-tip="{% translate "Tasks" %}">
+      <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          </div>
+          <button type="button" class="sb-sub-toggle" data-sb-sub-toggle="tasks" aria-expanded="false" aria-controls="sb-subs-tasks" aria-label="{% translate "Show sections" %}"><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div class="sb-subs" id="sb-subs-tasks" data-sb-subs="tasks" hidden>
+            <button type="button" class="sb-sub" data-sb-goto="tasks" data-sb-kind="tab" data-sb-key="tasks-library">{% translate "My Library" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="tasks" data-sb-kind="tab" data-sb-key="tasks-history">{% translate "History" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="tasks" data-sb-kind="tab" data-sb-key="tasks-tags">{% translate "Tags" %}</button>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="playbooks">
+          <div class="sidebar-icon" data-page="playbooks" data-tip="{% translate "Deployments" %}">
+      <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
+          </div>
+          <button type="button" class="sb-sub-toggle" data-sb-sub-toggle="playbooks" aria-expanded="false" aria-controls="sb-subs-playbooks" aria-label="{% translate "Show sections" %}"><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div class="sb-subs" id="sb-subs-playbooks" data-sb-subs="playbooks" hidden>
+            <button type="button" class="sb-sub" data-sb-goto="playbooks" data-sb-kind="subtab" data-sb-key="bl-panel">{% translate "Playbooks" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="playbooks" data-sb-kind="subtab" data-sb-key="auto-panel">{% translate "Automation" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="playbooks" data-sb-kind="subtab" data-sb-key="wave-panel">{% translate "Waves" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="playbooks" data-sb-kind="subtab" data-sb-key="rollout-panel">{% translate "Rollouts" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="playbooks" data-sb-kind="subtab" data-sb-key="hist-panel">{% translate "History" %}</button>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="reprovision">
+          <div class="sidebar-icon" data-page="reprovision" data-tip="{% translate "Reprovision" %}">
+      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="6" r="0.6"/><rect x="2" y="15" width="20" height="6" rx="1.5"/><circle cx="6.5" cy="18" r="0.6"/><path d="M12 9v10"/><polyline points="9 16 12 19 15 16"/></svg>
+          </div>
+          <button type="button" class="sb-sub-toggle" data-sb-sub-toggle="reprovision" aria-expanded="false" aria-controls="sb-subs-reprovision" aria-label="{% translate "Show sections" %}"><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div class="sb-subs" id="sb-subs-reprovision" data-sb-subs="reprovision" hidden>
+            <button type="button" class="sb-sub" data-sb-goto="reprovision" data-sb-kind="tab" data-sb-key="repro-tab-library">{% translate "Image library" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="reprovision" data-sb-kind="tab" data-sb-key="repro-tab-add">{% translate "Add an image" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="reprovision" data-sb-kind="tab" data-sb-key="repro-tab-profiles">{% translate "Install profiles" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="reprovision" data-sb-kind="tab" data-sb-key="repro-tab-agentprofiles">{% translate "Agent profiles" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="reprovision" data-sb-kind="tab" data-sb-key="repro-tab-jobs">{% translate "Rebuild jobs" %}</button>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="inventory">
+          <div class="sidebar-icon" data-page="inventory" data-tip="{% translate "Inventory" %}">
+      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sb-group" data-group="apps">
+      <button type="button" class="sb-group-head" data-sb-group-toggle="apps" aria-expanded="true" aria-controls="sb-body-apps"><span class="sb-group-name">{% translate "Apps" %}</span><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+      <div class="sb-group-body" id="sb-body-apps">
+        <div class="sb-item" data-sb-item="apps">
+          <div class="sidebar-icon" data-page="apps" data-tip="{% translate "Apps" %}">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6"/><circle cx="8.5" cy="6.5" r=".6"/><rect x="7" y="12" width="4" height="4" rx="1"/><line x1="13" y1="13" x2="17" y2="13"/><line x1="13" y1="15.5" x2="16" y2="15.5"/></svg>
+          </div>
+          <button type="button" class="sb-sub-toggle" data-sb-sub-toggle="apps" aria-expanded="false" aria-controls="sb-subs-apps" aria-label="{% translate "Show sections" %}"><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div class="sb-subs" id="sb-subs-apps" data-sb-subs="apps" hidden>
+            <button type="button" class="sb-sub" data-sb-goto="apps" data-sb-kind="tab" data-sb-key="apps-by-app">{% translate "By app" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="apps" data-sb-kind="tab" data-sb-key="apps-by-host">{% translate "By host" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="apps" data-sb-kind="tab" data-sb-key="apps-by-update">{% translate "By update" %}</button>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="store">
+          <div class="sidebar-icon" data-page="store" data-tip="{% translate "Store" %}">
+      <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="policies">
+          <div class="sidebar-icon" data-page="policies" data-tip="{% translate "Policies" %}">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sb-group" data-group="insights">
+      <button type="button" class="sb-group-head" data-sb-group-toggle="insights" aria-expanded="true" aria-controls="sb-body-insights"><span class="sb-group-name">{% translate "Insights" %}</span><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+      <div class="sb-group-body" id="sb-body-insights">
+        <div class="sb-item" data-sb-item="monitor">
+          <div class="sidebar-icon" data-page="monitor" data-tip="{% translate "Monitor" %}">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="reports">
+          <div class="sidebar-icon" data-page="reports" data-tip="{% translate "Reports" %}">
+      <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="12" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="11" rx="0.5"/><rect x="16" y="10" width="3" height="8" rx="0.5"/></svg>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="topology">
+          <div class="sidebar-icon" data-page="topology" data-tip="{% translate "Topology" %}">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7" y1="7.5" x2="10.5" y2="16"/><line x1="17" y1="7.5" x2="13.5" y2="16"/><line x1="7.5" y1="6" x2="16.5" y2="6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sb-group" data-group="security">
+      <button type="button" class="sb-group-head" data-sb-group-toggle="security" aria-expanded="true" aria-controls="sb-body-security"><span class="sb-group-name">{% translate "Security" %}</span><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+      <div class="sb-group-body" id="sb-body-security">
+        <div class="sb-item" data-sb-item="vulns">
+          <div class="sidebar-icon" data-page="vulns" data-tip="{% translate "Vulnerabilities" %}">
+      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <button type="button" class="sb-sub-toggle" data-sb-sub-toggle="vulns" aria-expanded="false" aria-controls="sb-subs-vulns" aria-label="{% translate "Show sections" %}"><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div class="sb-subs" id="sb-subs-vulns" data-sb-subs="vulns" hidden>
+            <button type="button" class="sb-sub" data-sb-goto="vulns" data-sb-kind="tab" data-sb-key="vulns-by-fix">{% translate "By fix" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="vulns" data-sb-kind="tab" data-sb-key="vulns-by-host">{% translate "By host" %}</button>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="firewall">
+          <div class="sidebar-icon" data-page="firewall" data-tip="{% translate "Firewall" %}">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="3" y1="14.5" x2="21" y2="14.5"/><line x1="9" y1="4" x2="9" y2="9.5"/><line x1="15" y1="9.5" x2="15" y2="14.5"/><line x1="9" y1="14.5" x2="9" y2="20"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sb-group" data-group="devops">
+      <button type="button" class="sb-group-head" data-sb-group-toggle="devops" aria-expanded="true" aria-controls="sb-body-devops"><span class="sb-group-name">{% translate "DevOps" %}</span><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+      <div class="sb-group-body" id="sb-body-devops">
+        <div class="sb-item" data-sb-item="containers">
+          <div class="sidebar-icon" data-page="containers" data-tip="{% translate "Containers" %}">
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
+          </div>
+          <button type="button" class="sb-sub-toggle" data-sb-sub-toggle="containers" aria-expanded="false" aria-controls="sb-subs-containers" aria-label="{% translate "Show sections" %}"><svg class="sb-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div class="sb-subs" id="sb-subs-containers" data-sb-subs="containers" hidden>
+            <button type="button" class="sb-sub" data-sb-goto="containers" data-sb-kind="ctr-tab" data-sb-key="containers">{% translate "Containers and stacks" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="containers" data-sb-kind="ctr-tab" data-sb-key="images">{% translate "Images" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="containers" data-sb-kind="ctr-tab" data-sb-key="volumes">{% translate "Volumes" %}</button>
+            <button type="button" class="sb-sub" data-sb-goto="containers" data-sb-kind="ctr-tab" data-sb-key="networks">{% translate "Networks" %}</button>
+          </div>
+        </div>
+        <div class="sb-item" data-sb-item="statuspages">
+          <div class="sidebar-icon" data-page="statuspages" data-tip="{% translate "Status Pages" %}">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="sidebar-icon" data-page="community" data-tip="{% translate "Community" %}">
+    <div class="sb-solo">
+      <div class="sb-item" data-sb-item="community">
+        <div class="sidebar-icon" data-page="community" data-tip="{% translate "Community" %}">
       <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
-    </div>
-    <div class="sidebar-icon" data-page="settings" data-tip="{% translate "Settings" %}">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      {% if pending_count %}<div class="badge-dot badge-dot--pending"></div>{% endif %}
+        </div>
+      </div>
     </div>
 
     <div class="sidebar-spacer"></div>
+    <div class="sb-quick" role="toolbar" aria-label="{% translate "Quick actions" %}">
     <div class="sidebar-icon sidebar-toggle" id="sidebar-toggle" data-act="toggleSidebar" data-tip="{% translate "Show page names" %}"
       role="button" tabindex="0" aria-label="{% translate "Show page names" %}" aria-expanded="false">
       <svg viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
@@ -152,7 +256,12 @@
     <a class="sidebar-icon" data-tip="{% translate "Sign out" %}" href="/logout/" title="{% translate "Sign out" %}">
       <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
     </a>
-    <div class="sidebar-avatar">V</div>
+    <div class="sidebar-icon" data-page="settings" data-tip="{% translate "Settings" %}">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      {% if pending_count %}<div class="badge-dot badge-dot--pending"></div>{% endif %}
+    </div>
+    <div class="sidebar-avatar" title="{% translate "Your account" %}">V</div>
+    </div>
   </nav>
 
   <main class="main">
@@ -566,7 +675,7 @@ settings before deciding anything.
   </div>
   <div class="rollout-start-actions">
     <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">{% translate "Cancel" %}</button>
-    <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">{% translate "Start rollout" %}</button>
+    <button class="btn btn-mint btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">{% translate "Start rollout" %}</button>
   </div>
 </div>
 
@@ -750,14 +859,14 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
         <option value="900">{% translate "Every 15 minutes" %}</option><option value="3600">{% translate "Every hour" %}</option>
         <option value="21600">{% translate "Every 6 hours" %}</option><option value="86400">{% translate "Every day" %}</option>
       </select>
-      <button class="btn btn-sm btn-mint" type="button" data-act="addDeviceCheck">{% translate "Add check" %}</button>
+      <button class="btn btn-sm btn-accent" type="button" data-act="addDeviceCheck">{% translate "Add check" %}</button>
     </div>
   </div>
   <div class="device-editor-foot">
     <button class="btn btn-ghost device-delete-btn" id="device-delete-btn" style="display:none;" data-act="deleteDeviceFromModal">{% translate "Delete" %}</button>
     <div class="device-editor-foot-actions">
       <button class="btn btn-ghost" data-act="closeDeviceModal">{% translate "Cancel" %}</button>
-      <button class="btn btn-sky" data-act="saveDevice">{% translate "Save Device" %}</button>
+      <button class="btn btn-mint" data-act="saveDevice">{% translate "Save Device" %}</button>
     </div>
   </div>
 </div>
@@ -780,7 +889,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <input class="form-control" id="discovery-ports" placeholder="{% translate "Ports (optional)" %}" autocomplete="off">
     <label class="form-label discovery-sr" for="discovery-community">{% translate "SNMP community" %}</label>
     <input class="form-control" id="discovery-community" type="password" autocomplete="off" placeholder="{% translate "Community (optional)" %}">
-    <button class="btn btn-sm btn-mint" type="submit">{% translate "Scan" %}</button>
+    <button class="btn btn-sm btn-accent" type="submit">{% translate "Scan" %}</button>
   </form>
   <div class="discovery-help" id="discovery-help" hidden>{% blocktranslate %}Private IPv4 networks only, up to 1024 addresses.
     Without ports it tries 22, 23, 80, 443, 445, 3389, 8080 and 8443; with an SNMP community it also reads each
@@ -842,7 +951,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     </div>
     <div id="enroll-config"></div>
     <div class="enroll-command-actions">
-      <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">{% translate "Create install command" %}</button>
+      <button class="btn btn-mint btn-sm" data-act="enrollCreateCommand">{% translate "Create install command" %}</button>
       <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">{% translate "Save as profile" %}</button>
     </div>
     <div class="confirm-hint apf-error" id="enroll-stale" hidden></div>
