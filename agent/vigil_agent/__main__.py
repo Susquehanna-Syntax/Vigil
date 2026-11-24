@@ -22,6 +22,7 @@ from . import (
     discovery,
     failover,
     netmap,
+    outbox,
     sessions,
     software,
     update_guard,
@@ -562,39 +563,36 @@ def _build_when_context(config, params: dict) -> dict:
     }
 
 
-def _report_completed(config, task: dict, output: str, steps=None) -> None:
+def _report(config, task: dict, state: str, output: str, steps=None) -> None:
+    """Post a task's result; one the server could not take for a reason that
+    may pass is held in the outbox and sent again after the next check-in."""
     try:
-        client.report_result(config, task["id"], "completed", output, steps=steps)
-    except Exception:
-        logger.exception("Failed to report task %s result", task.get("id"))
+        client.report_result(config, task["id"], state, output, steps=steps)
+    except Exception as exc:
+        if outbox.worth_retrying(exc) and outbox.keep(task["id"], state, output, steps):
+            logger.warning("Could not report task %s (%s) yet: %s", task.get("id"), state, exc)
+        else:
+            logger.exception("Failed to report task %s result (%s)", task.get("id"), state)
+
+
+def _report_completed(config, task: dict, output: str, steps=None) -> None:
+    _report(config, task, "completed", output, steps)
 
 
 def _report_rejected(config, task: dict, reason: str) -> None:
-    try:
-        client.report_result(config, task["id"], "rejected", reason)
-    except Exception:
-        logger.exception("Failed to report task %s rejection", task.get("id"))
+    _report(config, task, "rejected", reason)
 
 
 def _report_failed(config, task: dict, error: str, steps=None) -> None:
-    try:
-        client.report_result(config, task["id"], "failed", error, steps=steps)
-    except Exception:
-        logger.exception("Failed to report task %s failure", task.get("id"))
+    _report(config, task, "failed", error, steps)
 
 
 def _report_not_applicable(config, task: dict, output: str, steps=None) -> None:
-    try:
-        client.report_result(config, task["id"], "not_applicable", output, steps=steps)
-    except Exception:
-        logger.exception("Failed to report task %s as not applicable", task.get("id"))
+    _report(config, task, "not_applicable", output, steps)
 
 
 def _report_skipped(config, task: dict, output: str, steps=None) -> None:
-    try:
-        client.report_result(config, task["id"], "skipped", output, steps=steps)
-    except Exception:
-        logger.exception("Failed to report task %s skip", task.get("id"))
+    _report(config, task, "skipped", output, steps)
 
 
 #: What a task gets back when this agent cannot run it.
@@ -766,6 +764,7 @@ def run_agent() -> None:
     config.data_dir.mkdir(parents=True, exist_ok=True)
 
     nonce_store = NonceStore(config.data_dir)
+    outbox.configure(config.data_dir)
     endpoints = failover.Endpoints(config)
 
     # Register with the server
@@ -972,6 +971,11 @@ def run_agent() -> None:
             endpoints.learn(response, verify_key)
             poller.learn(response, verify_key)
             scanner.learn(response, verify_key)
+
+            # Results that could not be delivered earlier go first: the server
+            # answered this check-in, so it is likely to take them now.
+            outbox.flush(lambda tid, st, out, steps: client.report_result(
+                config, tid, st, out, steps=steps))
 
             # Process tasks
             tasks = response.get("tasks", [])
