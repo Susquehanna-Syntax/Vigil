@@ -378,6 +378,61 @@ class RefusedFrameTests(PicklableAsyncioTestCase):
         self.assertEqual(sent[0]["status"], 404)
 
 
+class OversizedReplyTests(PicklableAsyncioTestCase):
+    """2026.17's agent binary, base64 inside a frame, no longer fit the relay's
+    old 20 MB limit: the relay closed the whole link and every request in flight
+    failed with 503. The limit is now one a binary fits in, and a reply bigger
+    than it is answered alone instead of reaching the relay."""
+
+    def _uplink(self, body):
+        from apps.relays.link import Target, Uplink
+        up = Uplink(Target(id="r1", url="https://relay", key="k", key_sha256="x"),
+                    upstream="http://web:8000", status=lambda *a, **k: None)
+
+        class Resp:
+            status = 200
+            headers = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def read(self):
+                return body
+
+        class Session:
+            async def request(self, *a, **k):
+                return Resp()
+        up.session = Session()
+        sent = []
+
+        async def capture(frame):
+            sent.append(frame)
+        up._send = capture
+        return up, sent
+
+    async def test_an_agent_binary_sized_reply_goes_through(self):
+        from apps.relays import link
+        self.assertGreaterEqual(link.MAX_MSG_SIZE, 64 * 1024 * 1024)
+        up, sent = self._uplink(b"x" * (24 * 1024 * 1024))
+        await up._forward({"id": "1", "method": "GET", "path": "/agent/download/linux-amd64/",
+                           "query": "", "headers": {}, "body": "", "ip": "1.2.3.4"})
+        self.assertEqual(sent[0]["status"], 200)
+
+    async def test_a_reply_over_the_limit_is_refused_alone(self):
+        from unittest import mock
+
+        from apps.relays import link
+        up, sent = self._uplink(b"x" * 4096)
+        with mock.patch.object(link, "MAX_MSG_SIZE", 2048):
+            await up._forward({"id": "1", "method": "GET", "path": "/agent/download/linux-amd64/",
+                               "query": "", "headers": {}, "body": "", "ip": "1.2.3.4"})
+        self.assertEqual(sent[0]["status"], 502)
+        self.assertIn(b"too large", __import__("base64").b64decode(sent[0]["body"]))
+
+
 class LinkOnlyCarriesAgentPathsTests(TestCase):
     def test_a_link_stamped_request_for_a_non_agent_path_is_refused(self):
         resp = self.client.post("/login/", {"username": "x", "password": "y"},

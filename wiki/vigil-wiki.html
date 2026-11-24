@@ -846,6 +846,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
           <tr><td><code>RELAY_PORT</code></td><td><code>8443</code></td><td>The port it listens on.</td></tr>
           <tr><td><code>RELAY_TLS_CERT</code>, <code>RELAY_TLS_KEY</code></td><td><em>empty</em></td><td>Certificate and key files. Without them it serves plain HTTP for a proxy in front.</td></tr>
           <tr><td><code>RELAY_TRUST_PROXY</code></td><td><code>false</code></td><td>Read the agent's address from <code>X-Forwarded-For</code>. Only behind your own proxy.</td></tr>
+          <tr><td><code>RELAY_LINK_MAX_MSG</code></td><td><code>134217728</code></td><td>The largest frame the dashboard link may send, in bytes. Agent updates come through it, base64-encoded, so it must hold the biggest agent build.</td></tr>
         </tbody>
       </table></div>
     </section>

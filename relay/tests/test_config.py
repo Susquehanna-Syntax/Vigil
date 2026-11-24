@@ -25,6 +25,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.port, 8443)
         self.assertEqual(cfg.queue_dir, "/var/lib/vigil-relay/queue")
         self.assertFalse(cfg.trust_proxy)
+        # An agent binary, base64 inside a frame, has to fit through the link.
+        self.assertGreaterEqual(cfg.link_max_msg, 64 * 1024 * 1024)
 
     def test_tenants_json_and_overrides(self):
         cfg = from_env(_env(
