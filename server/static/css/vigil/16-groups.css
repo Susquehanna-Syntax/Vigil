@@ -78,7 +78,9 @@
 .sb-sub { font: inherit; font-size: 12.5px; text-align: left; color: var(--text-2); background: none; border: 0;
   border-radius: var(--r-sm); padding: 5px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-sub:hover { color: var(--text-1); background: rgba(var(--rgb-grp), 0.16); }
-.sb-sub.is-current { color: var(--grp-ink); background: rgba(var(--rgb-grp), 0.22); font-weight: 600; }
+/* Body text on a stronger tint: the group ink on its own tint failed WCAG
+   contrast for coral (axe, 2026-11-24). */
+.sb-sub.is-current { color: var(--text-1); background: rgba(var(--rgb-grp), 0.3); font-weight: 600; }
 
 /* The quick bar: one row of small buttons, the avatar at its end. */
 :root[data-sidebar="expanded"] .sb-quick {
