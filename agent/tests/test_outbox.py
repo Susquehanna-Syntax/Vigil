@@ -82,6 +82,14 @@ class OutboxTests(unittest.TestCase):
             outbox.keep(f"t{i}", "completed", "")
         self.assertEqual(outbox.pending(), outbox.MAX_PENDING)
 
+    def test_the_file_is_private(self):
+        import os
+        import stat
+        outbox.keep("t1", "failed", "secret output")
+        mode = stat.S_IMODE(os.stat(Path(self.dir.name) / outbox.STATE_FILE).st_mode)
+        self.assertEqual(mode, 0o600)
+        self.assertEqual([p for p in os.listdir(self.dir.name) if p.startswith(".pending")], [])
+
     def test_the_same_task_is_held_once(self):
         outbox.keep("t1", "failed", "a")
         outbox.keep("t1", "failed", "b")

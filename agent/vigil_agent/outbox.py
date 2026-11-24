@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -72,13 +73,26 @@ def _write(items: list[dict]) -> None:
     path = _path()
     if path is None:
         return
-    tmp = path.with_suffix(".tmp")
+    # mkstemp creates the file 0600 with a fresh name (O_EXCL, no symlink
+    # followed): task output is never readable by others, not even briefly,
+    # in a data_dir that is itself 0755.
+    tmp = None
     try:
-        tmp.write_text(json.dumps(items), encoding="utf-8")
-        os.chmod(tmp, 0o600)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".pending-results-")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(items))
+            fh.flush()
+            os.fsync(fh.fileno())
         os.replace(tmp, path)
+        tmp = None
     except OSError as exc:
         logger.warning("could not save pending results: %s", exc)
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 def keep(task_id: str, state: str, output: str, steps=None, now=time.time) -> bool:
