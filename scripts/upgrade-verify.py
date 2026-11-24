@@ -39,7 +39,10 @@ definition = TaskDefinition.objects.filter(name="upg restart").first()
 expect(definition is not None, "the task definition survives")
 playbook = Playbook.objects.unscoped(reason="upgrade test").filter(name="upg baseline").first()
 expect(playbook is not None and playbook.steps.count() == 1, "the playbook and its step survive")
-if playbook is not None and hasattr(playbook, "tasks_auto_sync"):
+# Only a playbook from before the field existed gets the backfill; one the
+# previous release made with the field keeps the default it was given.
+if (playbook is not None and hasattr(playbook, "tasks_auto_sync")
+        and playbook.description != "seeded with tasks_auto_sync"):
     expect(playbook.tasks_auto_sync is True,
            "an existing playbook follows its tasks' edits (decision 16: existing references auto-sync)")
 expect(UpdatePolicy.objects.unscoped(reason="upgrade test").filter(name="upg nightly").exists(),
