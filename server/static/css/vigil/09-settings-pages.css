@@ -703,3 +703,9 @@ td.agent-hostname { font-weight: 600; }
 .confirm-hint.hint-flush { margin: 0; }
 .tag-card-actions { display: flex; gap: 6px; align-items: center; }
 .bl-card-body.card-body-quiet { color: var(--text-2); font-size: 12px; }
+
+/* Business-only forms on Free (rc2): shown, greyed out, under a label. */
+.ak-locked { display: flex; flex-direction: column; gap: 10px; }
+.ak-locked-note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); }
+.ak-locked-form { border: 0; padding: 0; margin: 0; min-width: 0; opacity: 0.55; }
+.ak-locked-form :disabled { cursor: not-allowed; }
