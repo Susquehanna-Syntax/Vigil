@@ -518,7 +518,7 @@ function _relayRowHtml(r) {
   if (!builtin) {
     meta.push(`<div class="relay-meta">${escHtml(t('Fallback order {order}', { order: String(r.priority == null ? 100 : r.priority) }))}</div>`);
   }
-  const actions = [`<button class="btn btn-sm ${r.enabled ? 'btn-outline' : 'btn-rose'}"`
+  const actions = [`<button class="btn btn-sm ${r.enabled ? 'btn-outline' : 'btn-mint'}"`
     + ` data-act="toggleRelay" data-a1="${escAttr(r.id)}" data-a2="${r.enabled ? 'off' : 'on'}">`
     + `${r.enabled ? escHtml(t('Turn off')) : escHtml(t('Turn on'))}</button>`];
   if (!builtin) {
