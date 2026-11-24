@@ -291,10 +291,6 @@
       <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><line x1="7.5" y1="12" x2="12" y2="12"/><path d="M12 12L16.5 7M12 12l4.5 5"/></svg>
       Relays
     </a>
-    <a href="#changelog" class="nav-link">
-      <svg viewBox="0 0 24 24"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
-      Changelog
-    </a>
     <a href="#editions" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>
       Tiers &amp; Licensing
@@ -437,7 +433,7 @@
     <div class="nav-spacer"></div>
     <div class="nav-footer">
       <div class="sqsy-footer">
-        <div class="sqsy-badge">A <a href="#">Susquehanna Syntax</a> product<br>Sleep well. Vigil's watching.</div>
+        <div class="sqsy-badge">A <a href="#">Susquehanna Syntax</a> product</div>
       </div>
     </div>
   </nav>
@@ -454,7 +450,7 @@
       </div>
       <p class="section-label">Documentation</p>
       <h1 class="hero-title">Vigil: <span>Infrastructure Monitoring</span></h1>
-      <p class="hero-sub">Self-hosted monitoring and endpoint management for homelabs and small businesses. One Docker Compose away from full visibility into your fleet.</p>
+      <p class="hero-sub">Self-hosted monitoring and endpoint management for homelabs and small businesses. Start it with Docker Compose and see every host in one place.</p>
       <div class="hero-badges">
         <span class="badge badge-mint">Django 5 LTS</span>
         <span class="badge badge-sky">TimescaleDB</span>
@@ -468,42 +464,42 @@
     <section class="section" id="overview">
       <p class="section-label">Introduction</p>
       <h2 class="section-title" style="color:var(--mint-ink)">What is Vigil?</h2>
-      <p class="section-desc">Vigil combines infrastructure monitoring with secure remote task execution in a single, easy-to-deploy package. No cloud required.</p>
+      <p class="section-desc">Vigil monitors your hosts and runs tasks on them. It runs on your own servers and does not need a cloud service.</p>
 
       <div class="feature-grid">
         <div class="feature-card">
           <div class="feature-card-icon" style="background:rgba(126,221,181,0.15);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           </div>
-          <div class="feature-card-title">Real-Time Monitoring</div>
+          <div class="feature-card-title">Monitoring</div>
           <div class="feature-card-desc">CPU, memory, disk, and network metrics collected every minute. Stored in TimescaleDB for efficient time-series queries and trend analysis.</div>
         </div>
         <div class="feature-card">
           <div class="feature-card-icon" style="background:rgba(186,168,232,0.15);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lavender)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           </div>
-          <div class="feature-card-title">Secure Task Execution</div>
-          <div class="feature-card-desc">Deploy structured tasks to managed hosts. All tasks are Ed25519-signed; agents verify before executing. TOTP required for deployment.</div>
+          <div class="feature-card-title">Signed Tasks</div>
+          <div class="feature-card-desc">Deploy tasks to managed hosts. Every task is signed with Ed25519, and agents check the signature before they run it. Deploying needs a TOTP code.</div>
         </div>
         <div class="feature-card">
           <div class="feature-card-icon" style="background:rgba(130,196,238,0.15);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           </div>
           <div class="feature-card-title">Smart Alerting</div>
-          <div class="feature-card-desc">Configurable thresholds with severity levels (warning / critical). Acknowledge alerts for a chosen duration or permanently, un-acknowledge, and bulk-select, all inline without a page reload. Celery-driven background evaluation.</div>
+          <div class="feature-card-desc">Set thresholds with a severity of warning or critical. Acknowledge an alert for a set time or for good, undo an acknowledgement, and select several alerts at once. Vigil checks the rules in the background.</div>
         </div>
         <div class="feature-card">
           <div class="feature-card-icon" style="background:rgba(240,184,136,0.15);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--peach)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
-          <div class="feature-card-title">Outbound-Only Agents</div>
-          <div class="feature-card-desc">Agents open no listening ports. All connections are agent-initiated HTTPS to the Vigil server, so agents work behind any firewall.</div>
+          <div class="feature-card-title">Outbound Connections Only</div>
+          <div class="feature-card-desc">Agents open no listening ports. Each agent connects out to the Vigil server over HTTPS, so you do not open inbound ports on monitored hosts.</div>
         </div>
         <div class="feature-card">
           <div class="feature-card-icon" style="background:rgba(226,212,120,0.15);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lemon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
-          <div class="feature-card-title">One-Compose Deploy</div>
+          <div class="feature-card-title">Docker Compose Setup</div>
           <div class="feature-card-desc">Paste the <code>docker-compose.yml</code> into Portainer (or run <code>docker compose up -d</code>). Postgres, Redis, Celery, and the web UI all start together.</div>
         </div>
         <div class="feature-card">
@@ -511,7 +507,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rose)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
           </div>
           <div class="feature-card-title">Enrollment Wizard</div>
-          <div class="feature-card-desc">Four-step modal: generate token, copy install command, watch agent appear, approve. From zero to monitored host in under two minutes.</div>
+          <div class="feature-card-desc">The Add Host window has four steps: create a token, copy the install command, wait for the agent to appear, and approve it.</div>
         </div>
       </div>
     </section>
@@ -589,7 +585,7 @@
           <tbody>
             <tr><td><code>DJANGO_SECRET_KEY</code></td><td>generated</td><td>Made on first boot and kept in the <code>secrets</code> volume. Set it only to use your own.</td></tr>
             <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td>generated</td><td>The key every task is signed with. Made on first boot; to change it later, see <a href="#key-rotation" style="color:var(--sky-ink)">Rotating the signing key</a>.</td></tr>
-            <tr><td><code>POSTGRES_PASSWORD</code></td><td>generated</td><td>The database password, made on first boot. An install from before 2026.17 keeps the password its database was made with.</td></tr>
+            <tr><td><code>POSTGRES_PASSWORD</code></td><td>generated</td><td>The database password, made on first boot. On an existing install, the database keeps the password it was created with.</td></tr>
             <tr><td><code>VIGIL_TIMEZONE</code></td><td>optional</td><td>IANA name for display, e.g. <code>America/New_York</code>. Default <code>UTC</code>.</td></tr>
             <tr><td><code>VIGIL_PUBLIC_URL</code></td><td>optional</td><td>The address agents and browsers use from outside. See <a href="#remote-access" style="color:var(--sky-ink)">Remote access</a>.</td></tr>
           </tbody>
@@ -636,14 +632,14 @@
   -v "$PWD/backup.tar.gz:/tmp/backup.tar.gz:ro" \
   web python manage.py restore_backup /tmp/backup.tar.gz</span>
 <span class="hl-cmd">docker compose up -d</span></pre></div>
-      <p class="prose">The secret key and the signing seed come back, so agents keep trusting the server; the database password does not, because the database server keeps the one this install was made with. Migrations run on start, so a backup from an older Vigil is brought up to date. CI restores a backup into a brand-new install on every change.</p>
+      <p class="prose">The secret key and the signing seed come back, so agents keep trusting the server; the database password does not, because the database server keeps the one this install was made with. Migrations run on start, so a backup from an older Vigil is brought up to date.</p>
       <h4>An off-site copy</h4>
       <p class="prose">A backup on the same machine does not survive losing the machine. Fill in the off-site fields on the same Settings page (endpoint, bucket, region, access key and secret) and set an <strong>encryption passphrase</strong>, and after each good backup the worker encrypts the archive and uploads it to any S3-compatible store: AWS S3, Cloudflare R2, Backblaze B2, MinIO or Wasabi. The endpoint is the bare address, such as <code>https://s3.eu-west-1.amazonaws.com</code>; the bucket goes in its own field. Old copies are pruned to the same keep count, and only files named like Vigil's own copies are ever deleted, so a shared bucket is safe.</p>
       <p class="prose">Nothing is uploaded without a passphrase. The copy is encrypted with AES-256-GCM under a key made from the passphrase, so the storage provider cannot read it and any change to the file is caught on restore. Keep the passphrase somewhere other than this server: without it the copy cannot be opened. Give the access key permission for this one bucket only (put, list and delete objects). A failed upload leaves the local backup good and shows beside the run in Settings.</p>
       <p class="prose">To restore from an off-site copy, download the <code>.tar.gz.enc</code> file and run the same restore with the passphrase in a file, adding <code>-v "$PWD/pass.txt:/tmp/pass.txt:ro"</code> to the command above and <code>--passphrase-file /tmp/pass.txt</code> after the archive path.</p>
 
       <h3>Verify the image</h3>
-      <p class="prose">Release images of Vigil and the relay are signed in CI with <a href="https://docs.sigstore.dev/cosign/" target="_blank" rel="noopener">cosign</a>. To check that what you pulled is what we built:</p>
+      <p class="prose">Release images of Vigil and the relay are signed in CI with <a href="https://docs.sigstore.dev/cosign/" target="_blank" rel="noopener">cosign</a>. To check that what you pulled is what the release pipeline built:</p>
       <div class="code-block"><pre>cosign verify susquehannasyntax/vigil:2026.17.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'</pre></div>
@@ -876,269 +872,11 @@ cosign verify-blob vigil-agent-linux-amd64 \
     </section>
     <div class="divider"></div>
 
-    <section class="section" id="changelog">
-      <p class="section-label">Getting Started</p>
-      <h2 class="section-title" style="color:var(--lavender-ink)">Changelog</h2>
-      <p class="section-desc">What changed in each Vigil release, newest first. Versions are <code>year.minor.patch</code>: a minor release can be any size, a patch release fixes things. Business-only items say so; everything else is in every edition.</p>
-
-      <h3 id="changelog-2026-17-0">2026.17.0</h3>
-      <p class="prose">The depth and polish release: no new product areas, but nine milestones that make what Vigil already does work for more networks, at more scale, and more safely.</p>
-      <p class="prose"><strong>Agentless monitoring</strong></p>
-      <ul class="prose">
-        <li>An agent whose own <code>agent.yml</code> says <code>poller: true</code> becomes a <strong>poller</strong> for its site. Unmanaged devices get <strong>checks</strong> (ping, TCP port, HTTP(S) with certificate expiry, DNS) that the poller runs, signed, from inside the network: an up/down dot, a latency chart, and an alert after two failures in a row that clears itself.</li>
-        <li><strong>SNMP</strong> v2c and v3 (SHA or SHA-256 authentication, AES-128 privacy) as a check kind: uptime, system name and any OIDs you label, plus the <strong>interface table</strong> with traffic graphs per interface. Communities and passwords are stored encrypted and handed only to the poller.</li>
-        <li><strong>Discovery</strong> on the Inventory page: a poller sweeps one private subnet and offers what answered, to add as devices.</li>
-        <li>Polled devices appear on the <strong>Topology</strong> page with their state and a line to their poller, and on <strong>status pages</strong> beside hosts.</li>
-        <li><strong>SSH config backup</strong> (Business): a device check that logs in with a key Vigil makes, runs one command (<code>show running-config</code>, <code>cat /conf/config.xml</code>, <code>/export</code>) and keeps every changed configuration, encrypted, to view, download or compare. The device's host key is pinned on first sight.</li>
-      </ul>
-      <p class="prose"><strong>Alerting</strong></p>
-      <ul class="prose">
-        <li>New <strong>notification channels</strong>: Slack (with an Acknowledge button), Microsoft Teams, Discord, ntfy, Gotify, Pushover, email, and a ticket webhook with your own JSON body. Each channel shows whether its last message got through.</li>
-        <li><strong>Maintenance windows</strong>, one-off or weekly: their hosts raise no alerts and send no notifications, and status pages show the window to visitors.</li>
-        <li>A host can <strong>depend on</strong> another (a switch, firewall or hypervisor): while the parent is offline, the hosts behind it stay quiet and the parent's alert is the one that goes out.</li>
-        <li>Many hosts going offline at once arrive as <strong>one grouped notice</strong> instead of one message each.</li>
-      </ul>
-      <p class="prose"><strong>Sites</strong> (Business)</p>
-      <ul class="prose">
-        <li>Sites are full tenants: every list, search, report and background job is scoped to the sites a user may see, site admins manage their own site, and company-wide module grants say who may use what.</li>
-      </ul>
-      <p class="prose"><strong>Agents</strong></p>
-      <ul class="prose">
-        <li>A self-update that fails to start <strong>rolls back</strong> to the previous build on Linux and macOS, and the outcome shows on the host and under Settings → Agent Binary as <strong>fleet versions</strong>.</li>
-        <li>The Linux agent starts on glibc 2.34 again (RHEL and Rocky 9, Debian 12, Ubuntu 22.04 and newer). 2026.16 builds needed glibc 2.38.</li>
-        <li>FreeBSD installs as an rc.d service. <code>vigil-agent measure</code> reports what the agent costs the host it runs on.</li>
-      </ul>
-      <p class="prose"><strong>Install and operations</strong></p>
-      <ul class="prose">
-        <li><code>docker compose up</code> with no <code>.env</code> gives a working, secure instance: it generates every secret on first boot and keeps them.</li>
-        <li><strong>Nightly backups</strong>, optionally copied encrypted to any S3-compatible store, and a documented restore.</li>
-        <li>Request ids on every log line, JSON logs, a Prometheus <code>/metrics</code> endpoint behind a token, and instance health on the About page.</li>
-        <li>Long chart ranges read hourly and daily rollups with min-max bands, and a 30-day range: a 90-day chart loads in about 115 ms. Measured at 5,000 and 10,000 hosts. Apache-licensed TimescaleDB is supported.</li>
-      </ul>
-      <p class="prose"><strong>The dashboard</strong></p>
-      <ul class="prose">
-        <li>Every list shows the same loading, empty and failed states; a failed load is never shown as an empty list, and offers Try again.</li>
-        <li>Pages use the width of a wide screen: settings forms put short fields side by side, search results sit in columns.</li>
-        <li>Every string is ready for translation, and the page runs under a strict content security policy with no inline styles.</li>
-        <li><code>vigil</code>, a command line for hosts, alerts, tasks and deploys, and an OpenAPI schema that documents every endpoint.</li>
-      </ul>
-
-      <h3 id="changelog-2026-16-0">2026.16.0</h3>
-      <p class="prose"><strong>Jackil integration</strong> (every edition)</p>
-      <ul class="prose">
-        <li>Settings → Jackil Tickets mints <strong>integration keys</strong> (<code>vjk_</code>). Jackil uses one to read hosts, devices, tasks, playbooks, runs and automations, server to server, including a host's CPU, memory and open alerts for its link previews. A key sees what the admin who made it can see and is stored only as a hash.</li>
-        <li>A key changes nothing in Vigil unless an admin ticks <strong>Can change devices</strong> on it. Then, if the admin who made the key is still an admin, Jackil can create, edit and delete unmanaged devices: Vigil keeps the only copy of every device, and Jackil moves its own device items into Vigil with their links.</li>
-        <li>A host's drawer, the Monitor page and a run's details show <strong>Related in Jackil</strong>: the tickets, issues, pages and items that link to it.</li>
-        <li>Dashboards can hold Jackil's widgets (open tickets, SLA, ticket volume, my issues and more), drawn the same way Jackil draws them.</li>
-        <li>A new <strong>report chart</strong> widget puts a card from a saved report on a dashboard.</li>
-        <li>An alert that clears and fires again notes its Jackil ticket and reopens it, at most once an hour.</li>
-        <li>Jackil reads Vigil's signed licence and verifies it itself, so one SQSY Business licence covers both.</li>
-      </ul>
-      <p class="prose"><strong>Scoped API keys and webhooks</strong> (Business)</p>
-      <ul class="prose">
-        <li>Settings → API &amp; Webhooks mints <strong>scoped API keys</strong> (<code>vsk_</code>) for Vigil's API. A key acts as the admin who made it, limited to the sites you pick, and is read-only unless you choose read and write. Keys work on hosts, metrics, alerts, tasks, playbooks, software, policies, automations, reports and dashboards; never on accounts, settings, licences, keys, stacks or remote sessions. Jackil accepts one in place of an integration key, which is how you limit Jackil to some sites.</li>
-        <li><strong>Webhooks</strong> post signed JSON when an alert fires or clears, a task finishes, or a host is approved. Each request carries an <code>X-Vigil-Signature</code> header (an HMAC-SHA256 of the body with the webhook's secret), and the last 50 deliveries are kept with their status.</li>
-      </ul>
-      <p class="prose"><strong>Devices</strong></p>
-      <ul class="prose">
-        <li>Unmanaged devices have a <strong>serial</strong>, a <strong>warranty end</strong>, an <strong>owner</strong> (a name or an email) and free-form <strong>extra facts</strong> (up to 50, such as Rack: B4), on the Inventory page and in the API.</li>
-        <li>Editing or deleting a device is admin-only, as adding one already was. Before, any signed-in user could change or delete a device.</li>
-      </ul>
-      <p class="prose"><strong>Relays</strong></p>
-      <ul class="prose">
-        <li>A relay no longer forwards headers that ask a server to treat a request as another method, URL or host (<code>X-HTTP-Method-Override</code>, <code>X-Original-URL</code>, <code>X-Forwarded-Host</code> and similar), and never passes a cookie set by Vigil back to whoever called the relay.</li>
-        <li>An agent's live-session socket path is checked with the same rules as every other agent path.</li>
-        <li>The Add Host wizard lists a relay as soon as it is added in Settings, without reloading the page.</li>
-      </ul>
-      <p class="prose"><strong>Also</strong></p>
-      <ul class="prose">
-        <li>The paid edition is called <strong>SQSY Business</strong> everywhere Vigil shows it.</li>
-        <li>An automation can allow high-risk steps: a box in its editor, a warning that they will run unattended, and a 2FA code to turn it on.</li>
-        <li>Edit as YAML opens above the playbook and automation editors.</li>
-      </ul>
-
-      <h3 id="changelog-2026-15-1">2026.15.1</h3>
-      <p class="prose"><strong>Stacks from Git</strong></p>
-      <ul class="prose">
-        <li>A deploy rebuilds the stack's images from the new commit (<code>compose up --build</code>). Before, compose built an image only when none existed, so a new commit kept running the image from the first deploy.</li>
-        <li><strong>Update</strong> on a stack from Git fetches the branch's latest commit, rebuilds and redeploys it. Update on any other stack still pulls its images and brings up what changed.</li>
-        <li>The host's agent must be 2026.15.1 or newer to rebuild; an older one still deploys, and Vigil says it kept the old image.</li>
-      </ul>
-      <p class="prose"><strong>Tasks</strong></p>
-      <ul class="prose">
-        <li><code>docker_compose_up</code> and <code>stack_deploy</code> take <code>build: true</code>.</li>
-      </ul>
-      <p class="prose"><strong>Fixes since 2026.15.0</strong></p>
-      <ul class="prose">
-        <li>An automation that dispatches to no hosts says why: a high-risk step the automation doesn't allow, a target with no hosts, every host in monitor mode, or a playbook that can't be built.</li>
-      </ul>
-
-      <h3 id="changelog-2026-15-0">2026.15.0</h3>
-      <p class="prose"><strong>Relays</strong></p>
-      <ul class="prose">
-        <li>A relay is a small container agents connect to instead of the dashboard. Run one in an office or on a VPS. The dashboard dials out to it, so the dashboard never needs a public address.</li>
-        <li>If the dashboard is down, a relay keeps agents' check-ins and hands them over when it's back.</li>
-        <li>Agents keep a list of fallback relays and move to the next one when their primary stops answering.</li>
-        <li>Turn off the built-in relay and the dashboard refuses any agent that didn't come through a relay.</li>
-        <li>Community: one relay (the built-in one or one remote). Business: seats + 2. Hosted relays are coming.</li>
-      </ul>
-      <p class="prose"><strong>Web shell, container shell and Web RDP</strong></p>
-      <ul class="prose">
-        <li>A <strong>Connect</strong> menu on every host: web shell, Web RDP (Windows, Linux with xrdp, and Mac Screen Sharing), the SSH command and the <code>.rdp</code> download.</li>
-        <li>Container rows get a <strong>Shell</strong> button.</li>
-        <li>Off until the host opts in, in its own <code>agent.yml</code>. Each session needs a fresh two-factor code or key tap and is logged.</li>
-        <li>Business records the whole session.</li>
-      </ul>
-      <p class="prose"><strong>Two-factor sign-in for every account</strong></p>
-      <ul class="prose">
-        <li>A password alone no longer signs anyone in. The next step asks for a passkey or security key tap, or a six-digit code.</li>
-        <li>An account with no second factor sets up TOTP on that step before the dashboard opens. Civil SSO sign-ins take the same step.</li>
-        <li>Lost a phone or key? On the server, <code>python manage.py reset_2fa &lt;username&gt;</code> clears that user's factors; they set up a new code at their next sign-in. See <a href="#totp">TOTP / 2FA</a>.</li>
-      </ul>
-      <p class="prose"><strong>Agent profiles and Add Host</strong></p>
-      <ul class="prose">
-        <li>Add Host shows every agent setting before the install command exists: mode, allowed actions, relays and fallbacks, sessions, tags and intervals. The command carries a one-time token, so the agent installs already configured.</li>
-        <li>Save those settings as an agent profile (Reimage → Agent profiles). An install profile can name one, so a rebuilt machine comes back the same way. Profiles apply at install and rebuild only.</li>
-        <li>Settings → Relays: add, order and turn relays on and off, and get install commands that go through a relay.</li>
-      </ul>
-      <p class="prose"><strong>Also</strong></p>
-      <ul class="prose">
-        <li>Power and sleep task actions: sleep and display timeouts, hibernation, power plans, lid actions, sleep and hibernate now.</li>
-        <li>Report charts name branches in words ("or if upgrade failed") instead of lane ids.</li>
-        <li>Security keys and passkeys (YubiKey, Touch ID, Windows Hello, a phone) answer every confirmation prompt with one tap instead of a six-digit code. Add them under Settings → Shared Identity. They need the dashboard on HTTPS.</li>
-        <li>macOS agents are Apple Silicon only. Intel Macs are no longer built or offered.</li>
-      </ul>
-      <p class="prose"><strong>Licensing</strong></p>
-      <ul class="prose">
-        <li>Business licenses renew by themselves. A license for a connected install runs about five weeks; there is nothing to paste at renewal. Air-gapped installs set <code>VIGIL_LICENSE_REFRESH=false</code> and paste a full-term license.</li>
-        <li>A license belongs to the install that first refreshes it. Another install using a copy, even of the whole database, is refused.</li>
-        <li>Release images verify licenses against their built-in key and ignore <code>VIGIL_LICENSE_PUBLIC_KEY</code>.</li>
-        <li>The About page names who the license belongs to.</li>
-        <li>Release images are signed with cosign. See <a href="#deployment">Deployment → Verify the image</a>.</li>
-      </ul>
-      <h3 id="changelog-2026-14-6">2026.14.6</h3>
-      <ul class="prose">
-        <li><strong>Reports</strong>, a page of their own: pick playbooks and automations, then lay out charts on a grid you drag and resize. There are seven chart types, an editor with a live preview, and CSV export.</li>
-        <li><strong>Playbooks</strong>: conditions with several rows (all of / any of), or-if branches, and go-to steps that converge branches or retry a step.</li>
-        <li>New task actions: raise and resolve alerts, send a notification, and open, note and resolve Jackil tickets.</li>
-        <li>Editor dialogs resize from a corner grip. Container logs read like a terminal.</li>
-        <li>Inventory cells can be selected and copied. The topology map pans, zooms and fits.</li>
-      </ul>
-      <h3 id="changelog-2026-14-5">2026.14.5</h3>
-      <ul class="prose">
-        <li><strong>Topology</strong>: a map of sites, tags, hosts, ports, firewalls, stacks and connections, from what agents report.</li>
-        <li><strong>Playbook inputs</strong>: declare them once, and fill them in from tasks, automations and rollouts.</li>
-        <li>Task templates that teach, and template playbooks.</li>
-        <li>The Store searches faster, shows sync errors, and can save an app as a task or a policy.</li>
-      </ul>
-      <h3 id="changelog-2026-14-3">2026.14.3</h3>
-      <ul class="prose">
-        <li><strong>The Store</strong>: browse what your machines can install, and install it.</li>
-        <li>Containers: images, volumes and networks per host, with remove and prune, plus a host picker and quick filters.</li>
-        <li>Stack revisions can be named and pruned. An app can become an update policy.</li>
-        <li>The sidebar can show page names.</li>
-      </ul>
-      <h3 id="changelog-2026-14-2">2026.14.2</h3>
-      <ul class="prose">
-        <li><strong>Search everything</strong> from the sidebar or with Ctrl+K.</li>
-        <li>Host tags are picked from a list, or created as you type.</li>
-      </ul>
-      <h3 id="changelog-2026-14-1">2026.14.1</h3>
-      <ul class="prose">
-        <li><strong>Git stacks</strong>: create a compose stack from a Git repository; each revision records its commit.</li>
-        <li>Rollouts can run several wave groups in parallel.</li>
-        <li>The stack editor is a full-screen page.</li>
-        <li>Sign-in sessions expire when idle and on a hard cap, with a warning two minutes before.</li>
-        <li>One styled two-factor dialog everywhere.</li>
-        <li>A security pass: per-host authorization helpers, approved-only agent auth, hashed agent tokens, and signed tasks bound to the agent and the time they were sent.</li>
-      </ul>
-      <h3 id="changelog-2026-14-0">2026.14.0</h3>
-      <ul class="prose">
-        <li><strong>Containers</strong>: their own page. Start, stop, restart, read and follow logs, roll back to the previous image, pull from private registries. Works with Docker and Podman.</li>
-        <li><strong>Compose stacks</strong> managed by Vigil: an encrypted <code>.env</code>, every revision kept, adopt a running stack without recreating it.</li>
-        <li><strong>Vulnerabilities, fix first</strong>: a local copy of OSV, CISA KEV and EPSS; findings grouped by the fix that resolves them, with one button to deploy that fix; detection tasks; Anvil import.</li>
-        <li><strong>Apps and policies</strong>: an app inventory across every host; present, latest, pinned or absent policies applied in a maintenance window, with approvals; patch compliance against an SLA (the report is Business).</li>
-        <li>Windows app install, upgrade and uninstall through winget, Chocolatey and the registry.</li>
-        <li>New themes: Paper, River and Ink.</li>
-      </ul>
-      <h3 id="changelog-2026-12">2026.12</h3>
-      <ul class="prose">
-        <li>An audit-driven hardening release: a strict Content Security Policy with no inline scripts; verified agent binaries; monitor-mode agents that run unprivileged; installers that never ship a working credential; a Windows agent that runs as a real service and updates itself safely.</li>
-        <li>An uninstaller for every platform.</li>
-        <li>Automation triggers with conditions (and, or, real operators). An alert can open a Jackil ticket.</li>
-        <li>Change settings in the UI instead of editing <code>.env</code> and restarting.</li>
-        <li>A dashboard keeps the size you gave it (2026.12.1).</li>
-      </ul>
-      <h3 id="changelog-2026-11">2026.11</h3>
-      <ul class="prose">
-        <li><strong>Widget dashboards</strong>: arrange, resize and name cards from a catalog of widgets. Sharing is Business.</li>
-        <li>Playbooks, wave groups as tags, and archiving tasks and playbooks.</li>
-        <li>Watched processes, GPU readings and Windows update counts.</li>
-        <li>Every per-host endpoint is scoped by site.</li>
-        <li>A failed playbook stops auto-enrolling to that host (2026.11.3).</li>
-      </ul>
-      <h3 id="changelog-2026-10">2026.10</h3>
-      <ul class="prose">
-        <li>Fork a baseline or automation from the community catalog with everything it needs.</li>
-        <li>The agent no longer leaks PyInstaller's library path into child processes (2026.10.1).</li>
-      </ul>
-      <h3 id="changelog-2026-9">2026.9</h3>
-      <ul class="prose">
-        <li><strong>Staged patch rollouts</strong>: waves with a validation window and a halt-on-failure gate. Automations can dispatch wave by wave.</li>
-        <li>Remediate-by dates from an editable policy and the CISA KEV catalog; host scores rise as findings go overdue.</li>
-        <li>Windows Update actions, and reboots a logged-in user can defer.</li>
-        <li>Tags become real records, with a tag picker on every tag field.</li>
-        <li>Share baselines and automations through the community repo (2026.9.1).</li>
-      </ul>
-      <h3 id="changelog-2026-8">2026.8</h3>
-      <ul class="prose">
-        <li><code>add_tag</code> and <code>remove_tag</code> task actions.</li>
-        <li>The latest Django 5.2 LTS, logo images, and automation text and host filters.</li>
-      </ul>
-      <h3 id="changelog-2026-7">2026.7</h3>
-      <ul class="prose">
-        <li><strong>Firewall management</strong>: read and edit ufw, firewalld and Windows Firewall. Vigil refuses any change that would lock you out.</li>
-        <li><strong>Reprovisioning UI</strong>: an image library you can pull into or upload an ISO to, and a rebuild ceremony.</li>
-        <li>Trivy findings are deduplicated and wired to Suggest Fix.</li>
-      </ul>
-      <h3 id="changelog-2026-6">2026.6</h3>
-      <ul class="prose">
-        <li><strong>Reprovisioning</strong>: rebuild a host unattended from Ubuntu, Debian or RHEL images, behind an explicit opt-in on the agent and a three-factor ceremony.</li>
-        <li>Alerts are suppressed for hosts in a maintenance window.</li>
-      </ul>
-      <h3 id="changelog-2026-5">2026.5</h3>
-      <ul class="prose">
-        <li><strong>Per-site roles</strong> and a customisable Operator (Business), with every list and object scoped to the sites you can see.</li>
-        <li>Branding (Business), run history for baselines and automations, and a layout density toggle.</li>
-        <li>Remote access over Cloudflare Tunnel, Tailscale or a reverse proxy, set with one variable.</li>
-      </ul>
-      <h3 id="changelog-2026-4">2026.4</h3>
-      <ul class="prose">
-        <li><strong>Licensing</strong>: two tiers, Community and Business, verified offline. Sites, the audit log and Operator roles are Business.</li>
-        <li>Civil sign-in (opt-in), shared across SQSY apps.</li>
-        <li>Automations, per-use task inputs, and public status pages with uptime history.</li>
-      </ul>
-      <h3 id="changelog-2026-3">2026.3</h3>
-      <ul class="prose">
-        <li>Docker container inventory and image-update checks that don't use pull quota, with a one-click fix that recreates the container on the new image.</li>
-        <li>Timed and permanent alert acknowledgements, with bulk actions.</li>
-        <li>An inventory for network gear that doesn't run an agent, and an SSH command button.</li>
-        <li>TimescaleDB storage policies, and a new eye mark.</li>
-      </ul>
-      <h3 id="changelog-2026-2">2026.2</h3>
-      <ul class="prose">
-        <li>Pluggable vulnerability scanners: Trivy and Greenbone.</li>
-        <li>Conditional task steps (<code>when:</code>) and <code>target_tags</code>.</li>
-        <li>Built-in task templates and an About page.</li>
-      </ul>
-    </section>
-    <div class="divider"></div>
-
     <!-- TIERS & LICENSING -->
     <section class="section" id="editions">
       <p class="section-label">Tiers &amp; Licensing</p>
-      <h2 class="section-title" style="color:var(--peach-ink)">Two tiers. That's it.</h2>
-      <p class="section-desc">There is no Pro tier and no Enterprise tier. <strong>Free Vigil answers "is my stuff up." Vigil Business answers "can I prove to a third party that their stuff is up."</strong> Everything ships in one repo and one image. A Business license lights features up at runtime, and nothing ever blocks monitoring.</p>
+      <h2 class="section-title" style="color:var(--peach-ink)">Editions</h2>
+      <p class="section-desc">Vigil has two editions, Free and Business. <strong>Free covers monitoring and alerting for your own systems. Business adds the records you need to show a third party that their systems are running.</strong> Both editions come from one repository and one image. A Business license turns on Business features at runtime. Monitoring always keeps working.</p>
 
       <div class="table-wrap">
         <table>
@@ -1167,7 +905,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
         </table>
       </div>
 
-      <p class="prose"><strong>Seats are the only meter.</strong> Sites are unlimited on Business, and nothing is ever priced per host or per agent. A <em>site</em> is an administrative boundary: a campus, a department, or a client org. It is not a physical location; put whatever you want inside one.</p>
+      <p class="prose"><strong>Business is priced per seat.</strong> Sites are unlimited, and hosts and agents are never priced. A <em>site</em> is an administrative boundary, such as a campus, a department, or a client organization. It is not a physical location. You can put any hosts you want in one site.</p>
 
       <h3>How licensing works</h3>
       <p class="prose">A Business license is an Ed25519-signed blob verified <strong>locally</strong> against a public key built into the release image. Air-gapped installs are first-class: there is no revocation list and no kill switch. The license is bound to your instance UUID (shown on Settings → License): a key pasted into someone else's Vigil does nothing.</p>
@@ -1176,7 +914,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
 
       <div class="callout callout-tip">
         <div class="callout-icon">✓</div>
-        <div><strong>Nothing ever blocks.</strong> Expiry gives you a 14-day grace period with Business features on, then they switch off, with monitoring, alerting, and agent ingest untouched, forever. Going over your seat count works and shows a banner. A license bound to a different instance reads as no license. Every degraded state is a banner, never an error page, never a lockout.</div>
+        <div><strong>Monitoring never stops.</strong> When a Business license expires, Business features stay on for a 14-day grace period, then switch off. Monitoring, alerting, and agent check-ins keep working. If you go over your seat count, Vigil keeps working and shows a banner. A license issued for a different instance counts as no license. Each of these states shows a banner. None of them shows an error page or locks you out.</div>
       </div>
 
       <div class="callout callout-tip">
@@ -1285,7 +1023,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
   - <span class="hl-string">run_script</span>
   - <span class="hl-string">update_agent</span>
 
-<span class="hl-comment"># Live sessions (2026.15): off unless this file turns them on</span>
+<span class="hl-comment"># Live sessions: off unless this file turns them on</span>
 <span class="hl-var">allow_remote_shell</span>: <span class="hl-num">false</span>     <span class="hl-comment"># web shell and container shells</span>
 <span class="hl-var">allow_remote_desktop</span>: <span class="hl-num">false</span>   <span class="hl-comment"># Web RDP (Windows, xrdp, Mac Screen Sharing)</span>
 <span class="hl-var">remote_shell_user</span>: <span class="hl-string">root</span>     <span class="hl-comment"># the account a web shell runs as</span></pre>
@@ -1370,7 +1108,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
       <p class="prose">Then remove the host in the dashboard to drop its history.</p>
 
       <h3>Agent builds</h3>
-      <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Apple Silicon only; Intel Macs are not supported from 2026.15) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
+      <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Apple Silicon only; Intel Macs are not supported) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
 
       <h3 id="agent-updates">How an agent updates itself safely</h3>
       <p class="prose">An update replaces the one program that could report that the update went wrong, so the agent checks around the swap, on the host:</p>
@@ -1400,7 +1138,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
           </div>
         </div>
       </div>
-      <p class="prose">The API shows the outcome on each host as <code>agent_update</code>: <code>confirmed</code>, <code>rolled_back</code> or <code>not_applied</code>, with the two versions and the reason. Putting the old build back is for Linux and macOS. A Windows install is a folder its own running service cannot replace, so there the proof before the swap is the protection, and the outcome is still reported. Agents from before 2026.17 update the old way; this starts with the first update a 2026.17 agent performs.</p>
+      <p class="prose">The API shows the outcome on each host as <code>agent_update</code>: <code>confirmed</code>, <code>rolled_back</code> or <code>not_applied</code>, with the two versions and the reason. Putting the old build back is for Linux and macOS. A Windows install is a folder its own running service cannot replace, so there the proof before the swap is the protection, and the outcome is still reported.</p>
     </section>
     <div class="divider"></div>
 
@@ -1676,7 +1414,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
 
       <h3>The completion tag</h3>
       <p class="prose">Something has to say "this machine has already run this", or a playbook that keeps applying would keep re-running. That something is the <strong>completion tag</strong>: a tag the playbook applies to a host when it finishes successfully there, and which excludes the host from targeting afterwards.</p>
-      <p class="prose">The tag is deliberately not a hidden ledger. It sits on the host where you can see it, and <strong>removing it runs the playbook there again</strong>. That is the intended way to ask for a re-run, rather than a separate button that means the same thing.</p>
+      <p class="prose">The tag is shown on the host, so you can see it, and <strong>removing it runs the playbook there again</strong>. That is the way to ask for a re-run. There is no separate button for it.</p>
       <div class="callout">
         <div class="callout-icon">i</div>
         <div>A playbook cannot auto-enrol without a completion tag. Without one there is no definition of "done", so every reconcile pass would dispatch it to the whole target set again. Vigil refuses the combination rather than shipping it.</div>
@@ -1691,13 +1429,13 @@ cosign verify-blob vigil-agent-linux-amd64 \
       </div>
 
       <h3>Auto-enrolment is off by default</h3>
-      <p class="prose">Auto-enrolment means unattended dispatch to every matching host, forever, with nobody watching. It starts <strong>off</strong> for every playbook, including ones that already exist. Turning it on is always a deliberate act.</p>
+      <p class="prose">Auto-enrolment means unattended dispatch to every matching host, forever, with nobody watching. It starts <strong>off</strong> for every playbook, including ones that already exist. Turning it on is always a choice you make.</p>
       <p class="prose">The expected way to run a playbook across a fleet is a <strong>wave rollout</strong>, where the blast radius is staged and a bad step stops at the first wave instead of reaching everything. Auto-enrolment is for the narrower case: "any machine that ever carries this tag should end up in this state".</p>
       <p class="prose">Turning it on asks first. The confirmation names the tag being targeted, counts the hosts that match at that moment, states the completion tag that will mark each one done, and points at rollouts as the staged alternative.</p>
-      <p class="prose">Auto-enrolment says nothing about whether a playbook can be run <em>deliberately</em>. A playbook with it switched off is still callable from a task, still runnable by a rollout, still usable as a post-rebuild step. Before 2026.11.0 a rollout refused a disabled playbook, which made the recommended path impossible for the default configuration.</p>
+      <p class="prose">Auto-enrolment does not decide whether a playbook can be run <em>by hand</em>. A playbook with it switched off is still callable from a task, still runnable by a rollout, still usable as a post-rebuild step.</p>
 
       <h3>Retiring a playbook or a task</h3>
-      <p class="prose">Neither can be deleted, and that is deliberate. Deleting a task definition is refused because a playbook or automation pointing at it would silently lose a step; deleting a playbook would take its run history with it. So both are <strong>archived</strong> instead. An archived item leaves the lists and the pickers, stops auto-enrolling, and keeps working for everything that already references it. Restore puts it back without silently re-enabling auto-enrolment, which you have to turn on again yourself.</p>
+      <p class="prose">Neither can be deleted. Deleting a task definition is refused because a playbook or automation pointing at it would silently lose a step; deleting a playbook would take its run history with it. So both are <strong>archived</strong> instead. An archived item leaves the lists and the pickers, stops auto-enrolling, and keeps working for everything that already references it. Restore puts it back without silently re-enabling auto-enrolment, which you have to turn on again yourself.</p>
 
       <h3>What a wave is</h3>
       <p class="prose">A wave is a group of machines that get patched together, chosen by tag. You put waves in an order, and a rollout walks them one at a time.</p>
@@ -1735,7 +1473,7 @@ cosign verify-blob vigil-agent-linux-amd64 \
       <p class="prose">A halted rollout never resumes on its own. Open it and choose <strong>Resume from this wave</strong>; the failed machines are re-queued and the gate re-checks over the whole wave.</p>
 
       <h3>Sending a rollout to one group</h3>
-      <p class="prose">The start dialog has a <strong>Wave group</strong> field. Name a group and the rollout walks that ladder's waves in order and touches nothing outside it. Leave it blank and it walks every enabled wave, which is the behaviour every rollout had before groups existed.</p>
+      <p class="prose">The start dialog has a <strong>Wave group</strong> field. Name a group and the rollout walks that ladder's waves in order and touches nothing outside it. Leave it blank and it walks every enabled wave, which is the default behavior.</p>
       <p class="prose">The field tells you the blast radius before you commit, meaning how many waves the group holds and how many machines those waves actually patch. It says so plainly when no enabled wave carries the tag, rather than letting you start a rollout that gets refused.</p>
       <p class="prose">The group is <strong>pinned when the rollout starts</strong>. Re-tagging a wave afterwards cannot reshape a rollout that is already in flight.</p>
 
@@ -2269,7 +2007,7 @@ actions:
       <h3>What Vigil does not do</h3>
       <div class="callout callout-warn">
         <div class="callout-icon">!</div>
-        <div><strong>Third-party application updates are out of scope, by design.</strong> Vigil delegates application updates to <code>winget</code> and <code>choco</code> through the existing package-management actions, and it does <em>not</em> maintain a repackaged application catalogue of its own. So coverage of a given application is exactly whatever the winget and choco ecosystems carry. If neither publishes a package for it, Vigil cannot install it. This is a deliberate product decision, not a gap on a roadmap: hosting a repackaged catalogue is a supply-chain liability Vigil is not willing to take on. Evaluate it against your own fleet before counting on Vigil for third-party patching.</div>
+        <div><strong>Third-party application updates are not covered.</strong> Vigil delegates application updates to <code>winget</code> and <code>choco</code> through the existing package-management actions, and it does <em>not</em> maintain a repackaged application catalogue of its own. So coverage of a given application is exactly whatever the winget and choco ecosystems carry. If neither publishes a package for it, Vigil cannot install it. Vigil does not keep a catalog of repackaged applications, because that would be a supply-chain risk. Test coverage on your own hosts before you rely on Vigil for third-party patching.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -2278,7 +2016,7 @@ actions:
     <section class="section" id="reboot">
       <p class="section-label">OS Management</p>
       <h2 class="section-title" style="color:var(--rose-ink)">Reboot Behaviour</h2>
-      <p class="section-desc">A reboot is the one action that interrupts a person. This release makes the <code>reboot</code> action behave like a policy decision instead of a cliff edge: schedule it in a window, tell the person first, let them postpone it a bounded number of times, and surface pending reboots in the fleet view.</p>
+      <p class="section-desc">A reboot is the one action that interrupts a person. The <code>reboot</code> action works like a policy decision instead of a cliff edge: schedule it in a window, tell the person first, let them postpone it a bounded number of times, and surface pending reboots in the fleet view.</p>
 
       <h3>Maintenance windows</h3>
       <p class="prose">Reboot tasks reuse the standard task <code>schedule.window</code> (days + start/end hour, server timezone, wrap-around supported). There is no second windowing mechanism. A reboot dispatched outside its window waits like any other windowed task, so "patch and reboot on Windows at 23:00" is one task with one window.</p>
@@ -2450,7 +2188,7 @@ actions:
         </table>
       </div>
       <p class="prose">Vigil checks a compose file in two places. The server's check gives quick feedback while you edit. <strong>The guarantee is the host's check</strong>: before <code>up</code>, the agent has the engine resolve the file (variables, <code>include</code>, <code>extends</code>) and checks the result; then it runs that checked result, not the original text.</p>
-      <p class="prose">A bind mount must sit inside the stack's own folder, or in a folder where every parent is owned by root and writable only by root. So binds under a user's home directory are refused on purpose — a user who could rename a parent folder could redirect the mount.</p>
+      <p class="prose">A bind mount must sit inside the stack's own folder, or in a folder where every parent is owned by root and writable only by root. So binds under a user's home directory are refused. A user who could rename a parent folder could point the mount somewhere else.</p>
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
         <div>Move the data under a root-owned path such as <code>/srv</code>, or inside the stack folder.</div>
@@ -2521,7 +2259,7 @@ actions:
           <div class="feature-card-icon" style="background:rgba(240,184,136,0.15);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--peach)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           </div>
-          <div class="feature-card-title">Outbound-Only Agents</div>
+          <div class="feature-card-title">Outbound Connections Only</div>
           <div class="feature-card-desc">Agents never open a listening port. They connect to the server; the server never connects to them. Safe behind NAT and enterprise firewalls.</div>
         </div>
       </div>
@@ -2562,7 +2300,7 @@ actions:
       <h3>Lost a phone or key</h3>
       <p class="prose">An admin with shell access to the server clears that user's factors:</p>
       <div class="code-block"><pre>docker compose exec web python manage.py reset_2fa &lt;username&gt;</pre></div>
-      <p class="prose">The user sets up a new code at their next sign-in. There is no way to do this from the browser, on purpose: a stolen session must not be able to remove a factor.</p>
+      <p class="prose">The user sets up a new code at their next sign-in. You cannot do this from the browser. A stolen session must not be able to remove a factor.</p>
 
       <h3>Enrollment</h3>
       <div class="steps">
@@ -2602,7 +2340,7 @@ actions:
       <p class="prose">Codes and key taps are <strong>single-use</strong>: once used, they cannot be replayed, so an intercepted one is worthless.</p>
 
       <h3>Rebuilding over plain HTTP</h3>
-      <p class="prose">A rebuild's answer file carries the new machine's admin password hash, its SSH keys, and an enrolment token, all in clear text. Over the open internet that is worth refusing to send without a deliberate acknowledgement, and Vigil does refuse it.</p>
+      <p class="prose">A rebuild's answer file carries the new machine's admin password hash, its SSH keys, and an enrolment token, all in clear text. Over the open internet, Vigil refuses to send it unless you explicitly acknowledge the risk.</p>
       
       <p class="prose">The refusal now applies to public addresses. A request whose host is a private address (<code>10.x</code>, <code>192.168.x</code>, <code>172.16&ndash;31.x</code>), loopback, or a LAN name (<code>.local</code>, <code>.lan</code>, <code>.internal</code>, <code>.home</code>) proceeds. Set <code>VIGIL_REQUIRE_HTTPS_FOR_REBUILD=1</code> to demand the acknowledgement everywhere regardless.</p>
       <div class="callout callout-warn">
@@ -2733,7 +2471,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
       <p class="prose">An <strong>excepted</strong> finding always scores at 0.1 regardless of its date, the same weight as a finding with plenty of runway, so an accepted risk does not escalate and, importantly, accepting one can never make a score worse than leaving it alone. The summary on each host also carries <code>overdue_count</code> and <code>due_soon_count</code> (due within 14 days, including today), both excluding excepted findings, so the dashboard can show "3 overdue" without you having to read the findings list.</p>
 
       <h4>Exceptions</h4>
-      <p class="prose">An exception is a documented decision to not fix a finding by its due date, of kind <em>Accepted risk</em> or <em>Deferred</em>. It requires a written reason and an expiry date. There is deliberately no permanent exception, because a risk accepted forever is a risk nobody re-examines. While an exception is in force the finding is excluded from overdue counts and from escalation, but it is never hidden: it stays in the findings list, marked as excepted, so the exception is a reporting line rather than a delete button. When the expiry passes the exception simply stops matching. There is no sweep job, and the finding escalates normally from that day. Exceptions always expire; that is the whole point.</p>
+      <p class="prose">An exception records a decision not to fix a finding by its due date, of kind <em>Accepted risk</em> or <em>Deferred</em>. It requires a written reason and an expiry date. An exception cannot be permanent. While an exception is in force the finding is excluded from overdue counts and from escalation, but it is never hidden: it stays in the findings list, marked as excepted, so the risk stays visible in reports. When the expiry passes the exception simply stops matching. There is no sweep job, and the finding escalates normally from that day. Every exception expires.</p>
 
       <h3>Installing Nessus Essentials</h3>
       <p class="prose">Register for a free Essentials activation code at <a href="https://www.tenable.com/products/nessus/nessus-essentials" target="_blank" rel="noopener">tenable.com/products/nessus/nessus-essentials</a> (scans up to 16 IPs), then on the host that will run the scanner:</p>
@@ -2920,7 +2658,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
 
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
-        <div>The task editor is a deliberate, unguarded escape hatch. The guard only sits in front of the Firewall tab's write endpoint (<code>POST /api/v1/hosts/{id}/firewall/apply/</code>). A task written by hand using <code>set_firewall_policy</code>, <code>add_firewall_rule</code>, or <code>remove_firewall_rule</code> bypasses it entirely. A change the tab won't make from a form is still one you can make on purpose; that's what makes refusing in the tab reasonable instead of paternalistic.</div>
+        <div>The task editor does not apply these checks. The guard only sits in front of the Firewall tab's write endpoint (<code>POST /api/v1/hosts/{id}/firewall/apply/</code>). A task written by hand using <code>set_firewall_policy</code>, <code>add_firewall_rule</code>, or <code>remove_firewall_rule</code> bypasses it entirely. You can still make such a change on purpose in a task.</div>
       </div>
 
       <div class="callout callout-warn">
@@ -3012,7 +2750,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
 
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
-        <div><strong>RHEL proper and Windows are deliberately absent from the catalog.</strong> This is not a bug or a Vigil limitation. RHEL needs an active Red Hat subscription to download, so there is no anonymous URL to fetch. Microsoft publishes no stable direct-download URL with a published hash. Both reach the library exactly the same way any other operator-supplied image does: upload the ISO you're entitled to, or paste a URL you're already hosting it at along with its SHA-256.</div>
+        <div><strong>RHEL and Windows are not in the catalog.</strong> RHEL needs an active Red Hat subscription to download, so there is no anonymous URL to fetch. Microsoft publishes no stable direct-download URL with a published hash. To add either one, upload an ISO you are licensed to use, or enter the URL where you host it, along with its SHA-256.</div>
       </div>
 
       <h3>A digest is always required</h3>
@@ -3061,7 +2799,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
 
       <div class="callout callout-tip">
         <div class="callout-icon">T</div>
-        <div><strong>Private ranges are allowed on purpose.</strong> An internal mirror is a completely ordinary, legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil fetches it from inside your network, not from the browser. This is advisory, not a block.</div>
+        <div><strong>Private ranges are allowed.</strong> An internal mirror is a completely ordinary, legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil fetches it from inside your network, not from the browser. This is advisory, not a block.</div>
       </div>
 
       <h3>Upload limits Vigil doesn't control</h3>
@@ -3093,7 +2831,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
           </tbody>
         </table>
       </div>
-      <p class="prose">Image management has no per-site delegation. Whoever can upload or pull an ISO chooses what code runs as root on every rebuilt machine, so it's admin-only everywhere, unlike the view/rebuild split the rest of Reprovisioning grants through the operator matrix. Full design rationale is in <code>docs/reprovisioning.md</code>.</p>
+      <p class="prose">Image management has no per-site delegation. Whoever can upload or pull an ISO chooses what code runs as root on every rebuilt machine, so it's admin-only everywhere, unlike the view/rebuild split the rest of Reprovisioning grants through the operator matrix. See <code>docs/reprovisioning.md</code> for the full reprovisioning guide.</p>
     </section>
     <div class="divider"></div>
 
@@ -3193,7 +2931,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
 
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
-        <div>This replaces the older local "publish to community" flow. The <code>publish</code> / <code>unpublish</code> endpoints and the local <code>visibility=community</code> toggle were removed in 2026.1.9. The advantage of GitHub: one curated repo for everyone, version history, audit trail, and no shared DB to operate.</div>
+        <div>Submissions go through GitHub. Vigil does not host a community list of its own. GitHub gives everyone one curated repository, with version history and an audit trail.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -4838,7 +4576,7 @@ vigil login --url https://vigil.example.com</pre></div>
       </ul>
 
       <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Expression language</h4>
-      <p class="prose">Deliberately small. The server validates syntax at definition save; the agent evaluates at runtime. Allowed:</p>
+      <p class="prose">The list is short. The server validates syntax at definition save; the agent evaluates at runtime. Allowed:</p>
       <ul class="prose">
         <li>Comparisons: <code>==</code>, <code>!=</code>, <code>in</code>, <code>not in</code>, and <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code> for numbers (a text or yes/no value compared with them is refused at save)</li>
         <li>Logical: <code>and</code>, <code>or</code>, <code>not</code></li>
@@ -4930,7 +4668,7 @@ vigil login --url https://vigil.example.com</pre></div>
       </div>
       <div class="callout callout-warn">
         <div class="callout-icon">!</div>
-        <div>On Windows agents use <code>cmd /c "…"</code> (or <code>powershell -Command "…"</code>) instead of <code>sh -c</code>. The single-command examples in the template above are deliberately shell-operator-free; the full apt install (which adds the Trivy repo first) is wrapped in <code>sh -c</code> for exactly this reason.</div>
+        <div>On Windows agents use <code>cmd /c "…"</code> (or <code>powershell -Command "…"</code>) instead of <code>sh -c</code>. The single-command examples in the template above contain no shell operators; the full apt install (which adds the Trivy repo first) is wrapped in <code>sh -c</code> for this reason.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -4959,7 +4697,7 @@ vigil login --url https://vigil.example.com</pre></div>
             <tr><td><code>DJANGO_LOG_LEVEL</code></td><td><code>INFO</code></td><td>Root log level for the <code>vigil</code> loggers.</td></tr>
             <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display and scheduling (e.g. <code>America/Chicago</code>).</td></tr>
             <tr><td><code>VIGIL_TIME_FORMAT</code></td><td><code>12h</code></td><td><code>12h</code> or <code>24h</code> clock display.</td></tr>
-            <tr><td><code>VIGIL_SKIP_STARTUP_CHECKS</code></td><td><em>unset</em></td><td>Set <code>1</code> to bypass startup validation. Escape hatch for tooling/CI, not for production.</td></tr>
+            <tr><td><code>VIGIL_SKIP_STARTUP_CHECKS</code></td><td><em>unset</em></td><td>Set <code>1</code> to bypass startup validation. For tooling and CI only, not for production.</td></tr>
             <tr><td><code>VIGIL_SESSION_IDLE_MINUTES</code></td><td><code>15</code></td><td>Minutes without use before a sign-in ends (minimum 5).</td></tr>
             <tr><td><code>VIGIL_SESSION_MAX_HOURS</code></td><td><code>12</code></td><td>Hours after which a sign-in ends regardless of use (minimum 1).</td></tr>
           </tbody>
@@ -5197,7 +4935,7 @@ vigil login --url https://vigil.example.com</pre></div>
         <span style="margin:0 8px; color:var(--s4);">&middot;</span>
         <span>made by <a href="https://github.com/Susquehanna-Syntax" target="_blank" rel="noopener" style="color:var(--lavender-ink)">Susquehanna Syntax</a> With &#9829; from NEPA</span>
       </div>
-      <p style="margin-top:6px;">"Sleep well. Vigil's watching."</p>
+      
       <div>Vigil v2026.17.0 &middot; Released under AGPLv3 &middot; <a href="https://github.com/Susquehanna-Syntax/Vigil" target="_blank" rel="noopener">View on GitHub</a></div>
     </div>
   </main>

@@ -1,60 +1,36 @@
 # Vigil reference
 
-The full operator and developer manual: install options, configuration, every
-task action, the API, and the project layout. For the short tour, see the
+The full manual: install options, configuration, every task action, the API,
+and the project layout. For the short tour, see the
 [README](../README.md).
 
 ---
 
 ## Overview
 
-Vigil is a lightweight monitoring system where agents on your hosts phone home to a central Django server. The server collects metrics, evaluates alert rules, dispatches signed tasks back to agents, and maintains a hardware inventory of your fleet. Everything runs over HTTPS with Ed25519 task signing and TOFU key pinning.
+Vigil is a monitoring system. An agent on each host sends data to a central server. The server collects metrics, checks alert rules, sends signed tasks back to the agents, and keeps a hardware inventory of your hosts. Traffic uses HTTPS. Tasks are signed with Ed25519, and each agent pins the server's key on first use.
 
 **Key features:**
 - Real-time metric collection (CPU, memory, disk, network, swap, load average, processes)
 - 20 built-in alert rules with auto-resolution and host-offline detection
 - Notification dispatch (webhook, email)
 - Hardware inventory with OS, CPU, RAM, BIOS, MAC, uptime, timezone, and custom collector columns
-- Nessus/Tenable vulnerability integration — ingest scan results, launch scans from the UI ("Scan now"), or have agents request a scan via a task action; high-risk and critical findings raise alerts
+- Nessus/Tenable vulnerability integration: import scan results, start scans from the UI with "Scan now", or have agents request a scan through a task action. High and critical findings raise alerts
 - Active Directory computer import with auto-tagging from OU paths
 - Tag-based fleet segmentation — deploy tasks by tag or by individual host
 - Multistep task authoring (YAML editor) with schedule windows, retry policies, and success criteria
-- Live-polled task history with pagination (5 s refresh while the History tab is visible)
-- Community task catalog on GitHub — submit your YAML as a pull request from the editor, browse approved entries
-- TOTP-based two-factor authentication for task execution and host enrollment approval, with single-use codes (replay protection)
-- Signed remote task execution with mode/allowlist enforcement on the agent
-- SQSY dark-theme dashboard with Chart.js visualizations
+- Task history with pagination, refreshed every 5 seconds while the History tab is open
+- Community task catalog on GitHub. Submit your YAML as a pull request from the editor, and browse approved entries
+- Two-factor authentication (TOTP) for running tasks and approving hosts. Each code works once
+- Signed remote tasks. The agent enforces its mode and allowlist
+- Dashboard with charts
 
 ## Editions
 
-Free Vigil answers "is my stuff up"; Business Vigil answers "can I prove to a
-third party that their stuff is up." Monitoring, alerting, and unlimited
-agents, hosts, and retention are free forever — the Business tier adds
-accountability features (sites, audit log, roles, branding). See
-[docs/EDITIONS.md](EDITIONS.md) for the full feature matrix.
-
-## What's new in 2026.12.1
-
-**A dashboard keeps the size you gave it.** Shrinking a widget to its smallest
-allowed size was discarded on save — the card came back at whatever size it had
-been before, and because a restored, larger widget collides with whatever is
-beside it, one ignored resize shoved its neighbours down and read as the whole
-board rearranging itself.
-
-The cause was in how the layout was collected, not in how it was stored.
-Gridstack's `save()` is a lossy serialiser: it drops a widget's width whenever
-that width equals the widget's own minimum, and its height on the same rule.
-Vigil passes the catalogue's minimums into every widget, so every widget sitting
-at its minimum came back from `save()` carrying no size at all, and the gap was
-filled from the last layout the server had sent — the size from before the
-resize. The layout is now read off the live grid nodes, which always carry a
-complete position and size, so what is saved is what is on screen.
-
-This is the third and last part of a defect whose first two parts shipped in
-2026.12.0: saves used to grow every minimum-sized widget to its catalogue size,
-and gravity used to pull every widget up so that deliberate whitespace could not
-be expressed at all. Verified as a round trip — arrange, save, reload — with
-widgets at their minimums and gaps between them.
+Vigil has two editions. Free covers monitoring, alerting, and unlimited agents,
+hosts, and retention. Business adds features for proving to a third party that
+your systems are running, such as sites, the audit log, roles, and branding.
+See [docs/EDITIONS.md](EDITIONS.md) for the full feature matrix.
 
 ---
 
@@ -73,7 +49,7 @@ USE_SQLITE=true .venv/bin/python manage.py runserver
 - Health check: http://localhost:8000/api/v1/health/
 - Admin: http://localhost:8000/admin/
 
-`USE_SQLITE=true` switches the database engine to SQLite and bypasses the need for PostgreSQL and TimescaleDB.
+`USE_SQLITE=true` uses SQLite instead of PostgreSQL and TimescaleDB, so you do not need those for local testing.
 
 ---
 
@@ -83,22 +59,22 @@ USE_SQLITE=true .venv/bin/python manage.py runserver
 cp .env.example .env
 ```
 
-**1. Generate a signing key seed** (32-byte Ed25519 seed, base64-encoded — required, every checkin signs with it):
+**1. Generate a signing key seed.** This is a 32-byte Ed25519 seed, base64-encoded. It is required, because every check-in is signed with it:
 
 ```bash
 python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 # Output is exactly 44 characters ending in '=' — example: Hk3PtP...P0c=
 ```
 
-**2. Put it in `.env`** (along with `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`). In a `.env` file the value is bare, no quotes:
+**2. Add it to `.env`,** together with `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`. In a `.env` file, write the value without quotes:
 
 ```
 VIGIL_SIGNING_KEY_SEED=Hk3PtP...P0c=
 ```
 
-> **If you're pasting the compose stack into Portainer** (or any other UI that round-trips through YAML), set the value in the **Environment variables** tab — never inline it into the YAML. If you must inline it, **wrap it in double quotes** (`"Hk3...P0c="`) — the trailing `=` is base64 padding and unquoted YAML can strip or mangle it. A malformed seed produces `binascii.Error: Incorrect padding` and breaks every agent checkin in the fleet.
+> **If you paste the compose stack into Portainer** (or another tool that rewrites YAML), set the value in the **Environment variables** tab, not in the YAML. If you must put it in the YAML, **wrap it in double quotes** (`"Hk3...P0c="`). The trailing `=` is base64 padding, and unquoted YAML can strip or change it. A malformed seed causes `binascii.Error: Incorrect padding` and stops every agent from checking in.
 
-**3. Verify the seed is good before bringing the stack up:**
+**3. Check the seed before you start the stack:**
 
 ```bash
 python3 -c "import base64,sys; s=sys.argv[1]; print('OK',len(base64.b64decode(s)),'bytes')" \
@@ -106,7 +82,7 @@ python3 -c "import base64,sys; s=sys.argv[1]; print('OK',len(base64.b64decode(s)
 # Expect: OK 32 bytes
 ```
 
-Any other output (especially `binascii.Error: Incorrect padding` or a length that isn't 32) means fix the seed before continuing.
+Any other output, especially `binascii.Error: Incorrect padding` or a length other than 32, means the seed is wrong. Fix it before you continue.
 
 **4. Start the stack:**
 
@@ -115,7 +91,7 @@ docker compose up -d
 docker compose exec web python manage.py createsuperuser
 ```
 
-This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celery beat.
+This starts Django, PostgreSQL with TimescaleDB, Redis, the Celery worker, and Celery beat.
 
 ---
 
@@ -127,39 +103,38 @@ docker compose pull
 docker compose up -d
 ```
 
-What that does, so nothing is a surprise:
+What the upgrade does:
 
-- **Migrations run automatically**, from the entrypoint of whichever container
-  starts first. They are applied once and are safe to attempt concurrently.
-- **In-flight tasks are lost.** Replacing the worker container drops whatever
-  it was executing; Vigil expires those tasks server-side rather than leaving
-  them `DISPATCHED` forever, and you re-run them. Upgrade when a rollout is not
-  mid-wave.
-- **Agents keep working across the upgrade.** They retry with backoff and
-  reconnect on their own; you do not need to touch them.
-- **A new agent version in the image does not update your fleet.** Deploy the
-  `update_agent` task when you want that, which verifies the new binary's
-  SHA-256 against the digest in the signed task before replacing anything.
+- **Migrations run automatically** when the first container starts. Each migration is applied once.
+- **Running tasks are lost.** Replacing the worker container stops any task it
+  is running. Vigil marks those tasks as expired, so they do not stay
+  `DISPATCHED`. You must run them again. Upgrade when no task is in progress.
+- **Agents keep working during the upgrade.** They retry with backoff and
+  reconnect on their own. You do not need to change them.
+- **A new agent version in the image does not update your agents.** To update
+  them, deploy the `update_agent` task. Before it replaces anything, it checks
+  the new binary's SHA-256 against the digest in the signed task.
 
-Downgrading is not supported: migrations are one-way. Restore a backup instead.
+Downgrading is not supported, because migrations cannot be reversed. To go back,
+restore a backup.
 
 ## Backups
 
-There are three named volumes — `pgdata`, `media` and `images` — and deleting
-any of them deletes exactly what it holds, with no copy anywhere else.
+There are three named volumes: `pgdata`, `media`, and `images`. Deleting a volume
+deletes everything in it. No other copy is kept.
 
 ```bash
 ./scripts/vigil-backup.sh /mnt/backups     # db + media + a manifest
 ./scripts/vigil-restore.sh /mnt/backups/vigil-20260910T120000Z
 ```
 
-`images` is deliberately not included: those are multi-gigabyte OS install
-trees that can be re-imported from source, and copying them would make a
-routine backup too expensive to run often. The manifest records what was
-registered so it can be fetched again.
+The backup script does not include `images`. Those are OS install trees of several
+gigabytes, and you can import them again from their source. Copying them would
+make each backup too large to run often. The manifest lists the registered
+images so you can download them again.
 
 Run the backup from cron and keep a copy off the machine. A backup on the same
-disk as the database is a copy, not a backup.
+disk as the database is only a copy.
 
 ---
 
@@ -168,7 +143,7 @@ disk as the database is a copy, not a backup.
 | Variable | Default | Description |
 |---|---|---|
 | `DJANGO_SECRET_KEY` | _(none — required)_ | Django secret key. Vigil refuses to start without it; the compose file no longer substitutes a default |
-| `DJANGO_DEBUG` | `false` | Leave it off. On, it disables the production configuration checks and serves verbose error pages |
+| `DJANGO_DEBUG` | `false` | Leave it off. When on, it turns off the production configuration checks and shows detailed error pages |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | _(empty)_ | Comma-separated origins trusted for POSTs, scheme included — required behind a proxy or external hostname, else `Origin checking failed` |
 | `USE_SQLITE` | _(unset)_ | Set to `true` to use SQLite instead of PostgreSQL |
@@ -181,8 +156,8 @@ disk as the database is a copy, not a backup.
 | `VIGIL_TIMEZONE` | `UTC` | IANA timezone for schedule window evaluation (e.g. `America/New_York`) |
 | `VIGIL_METRIC_RETENTION_DAYS` | `30` | Days of raw metric history to keep |
 | `VIGIL_ALERT_RETENTION_DAYS` | `90` | Days to keep *resolved* alerts. Firing and acknowledged alerts are never pruned. `0` disables pruning |
-| `VIGIL_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MB) | Largest request body Django will accept. Task results are the big payload — a Trivy scan report. Raising Django's 2.5 MB default matters because the limit is enforced before any view runs: an oversized result fails the whole POST with a bare `400` nothing can annotate, and the task stays `DISPATCHED` forever |
-| `VIGIL_AGENT_VERSION` | _(ignored)_ | **No longer used.** The expected agent version is detected from the agent bundled in the build. Leaving it set is harmless — the server logs a note at startup and carries on |
+| `VIGIL_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MB) | Largest request body Vigil accepts. Task results can be large, such as a Trivy scan report. If a result is larger than this limit, the request fails with a plain `400` error, and the task stays `DISPATCHED` |
+| `VIGIL_AGENT_VERSION` | _(ignored)_ | Not used. The expected agent version comes from the agent bundled with the server. If you set it, the server logs a note at startup and continues |
 | `NESSUS_URL` | _(empty)_ | Nessus/Tenable server URL |
 | `NESSUS_ACCESS_KEY` | _(empty)_ | Nessus API access key |
 | `NESSUS_SECRET_KEY` | _(empty)_ | Nessus API secret key |
@@ -191,16 +166,16 @@ disk as the database is a copy, not a backup.
 | `EMAIL_HOST` | `localhost` | SMTP host |
 | `EMAIL_PORT` | `587` | SMTP port |
 | `VIGIL_NOTIFICATION_FROM_EMAIL` | `vigil@localhost` | From address for alert emails |
-| `VIGIL_PUBLIC_URL` | — | External URL for remote access; its host/origin are auto-added to `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` |
-| `VIGIL_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto`/`Host` from a TLS-terminating proxy/tunnel |
+| `VIGIL_PUBLIC_URL` | — | External URL for remote access. Its host and origin are added to `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` automatically |
+| `VIGIL_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto` and `Host` headers from a proxy or tunnel that ends TLS |
 | `TUNNEL_TOKEN` | — | Cloudflare Tunnel token for `docker compose --profile tunnel up` |
 
 ---
 
 ## Remote Access (off-LAN check-in)
 
-Agents are outbound-only, so reaching Vigil from outside the LAN is just a matter
-of exposing the server at a public or overlay address. Set `VIGIL_PUBLIC_URL` to
+Agents only make outbound connections, so you reach Vigil from outside your
+network by exposing the server at a public or overlay address. Set `VIGIL_PUBLIC_URL` to
 your external URL and `VIGIL_TRUST_PROXY=true` when a proxy terminates TLS. The
 repo ships a `cloudflared` sidecar (`docker compose --profile tunnel up -d`) for
 Cloudflare Tunnel. Full recipes for **Cloudflare Tunnel**, **Tailscale**, and a
@@ -228,13 +203,13 @@ checkin_interval: 15     # faster for testing
 data_dir: ./data
 ```
 
-> **Monitor mode runs unprivileged**, on Windows as well as Linux — as
-> `vigil-agent` under systemd hardening, or as the `NT SERVICE\vigil-agent`
-> virtual account. Switching to `managed` or `full_control` runs it privileged
-> and is one config line plus a re-run of the installer. See
-> [docs/AGENT-PRIVILEGES.md](AGENT-PRIVILEGES.md) for what each mode can
-> and cannot do — notably, an unprivileged Windows agent cannot report Windows
-> Update status, and cannot stage a reprovision.
+> **Monitor mode runs without privileges**, on Windows and Linux. On Linux it runs
+> as `vigil-agent` with systemd hardening. On Windows it runs as the
+> `NT SERVICE\vigil-agent` virtual account. To switch to `managed` or
+> `full_control`, change one line in the config and run the installer again. See
+> [docs/AGENT-PRIVILEGES.md](AGENT-PRIVILEGES.md) for what each mode can and
+> cannot do. In monitor mode, a Windows agent cannot report Windows Update
+> status, and cannot prepare a rebuild.
 
 Run the agent:
 
@@ -242,10 +217,10 @@ Run the agent:
 python3 -m vigil_agent -c agent.yml --log-level DEBUG
 ```
 
-On first run the agent will:
-- Generate a cryptographic token and save it to `agent.yml`
-- Register with the server (creates a **pending** host)
-- Start checking in — the server responds with `{"status": "pending"}` until you approve
+On the first run, the agent:
+- Generates a token and saves it to `agent.yml`
+- Registers with the server, which creates a **pending** host
+- Starts checking in. The server replies with `{"status": "pending"}` until you approve the host
 
 Approve the host from **Settings → Enrollment Queue** in the dashboard, or via API:
 
@@ -274,10 +249,10 @@ allowlist:
 ```
 
 **Security notes:**
-- `chmod 600 agent.yml` — the config contains the agent token
-- **TOFU key pinning:** the first public key received from the server is pinned to `data_dir/server_public_key.pin`. Any future key change is treated as a potential compromise — all tasks are rejected until the pin file is manually deleted
-- **Agent mode is authoritative** — a compromised server cannot escalate an agent's mode or allowlist
-- No `shell=True` anywhere; all task parameters are validated before execution
+- Run `chmod 600 agent.yml`. The config file contains the agent token.
+- **Server key pinning:** the agent saves the first public key it receives from the server to `data_dir/server_public_key.pin`. If the key ever changes, the agent rejects all tasks until you delete the pin file by hand. Delete it only after you confirm the change is expected.
+- **The agent enforces its own mode.** A compromised server cannot raise an agent's mode or allowlist.
+- The agent does not run commands with `shell=True`. It checks every task parameter before it runs the task.
 
 ---
 
@@ -285,21 +260,21 @@ allowlist:
 
 | Page | Description |
 |---|---|
-| **Dashboard** | A grid of widgets you arrange, resize and name. Add from a catalogue grouped by what they are for; keep several dashboards and switch between them. The **Host status** widget carries the full host cards — status dot, OS logo, tags, mode badge, live CPU/Memory/Disk/Network bars, RDP, Deploy, Remove — and opens the host detail drawer on click. |
-| **Inventory** | Hardware table for all enrolled hosts. Columns: hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, timezone, and more. Scrollable, sortable (click header), filterable per-column (`=value` for exact, default contains), drag-to-reorder columns, column visibility toggled via Columns button. |
-| **Tasks** | YAML task editor (with **Submit to Community** that opens a GitHub PR) and your private library. The **History** tab lists every dispatched task with live polling — newest first, paginated. |
-| **Vulns** | Nessus/Tenable scan findings per host, with a **Scan now** button per row. The **Recent scans** section below shows every scan request — UI-launched or agent-requested — and its state. |
-| **Firewall** | Per-host firewall rules and default policies, fetched on demand (not polled). See [Firewall Management](#firewall-management). |
-| **Monitor** | Select a host for live SVG gauges (CPU, Memory, Disk, Load) and Chart.js time-series with 1h/6h/24h/7d range selector. RDP download button for Windows hosts. |
+| **Dashboard** | A grid of widgets that you can arrange, resize, and rename. Add widgets from the catalog, which is grouped by purpose. You can keep several dashboards and switch between them. The **Host status** widget shows a card for each host: a status dot, the OS logo, tags, the mode badge, live CPU, memory, disk, and network bars, and the RDP, Deploy, and Remove buttons. Click a card to open the host details. |
+| **Inventory** | A hardware table for all enrolled hosts. Columns include hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, and timezone. Click a column header to sort. Filter each column with `=value` for an exact match, or type text for a partial match. Drag columns to reorder them. Use the Columns button to show or hide columns. |
+| **Tasks** | The YAML task editor, with a **Submit to Community** button that opens a GitHub pull request, and your private library. The **History** tab lists every task sent to hosts. It updates live, shows the newest first, and is paginated. |
+| **Vulns** | Nessus/Tenable scan findings for each host, with a **Scan now** button on each row. The **Recent scans** section lists every scan request, whether it came from the UI or an agent, and its status. |
+| **Firewall** | Firewall rules and default policies for each host. Vigil reads them when you open the tab. See [Firewall management](#firewall-management). |
+| **Monitor** | Select a host to see live gauges for CPU, memory, disk, and load, and charts over time. Choose a range of 1 hour, 6 hours, 24 hours, or 7 days. Windows hosts have an RDP download button. |
 | **Alerts** | Firing, acknowledged, and resolved alerts across the fleet. |
-| **Community** | Browse forks of approved community tasks. New submissions live on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts) — use **Submit to Community** in the task editor to open a PR. |
-| **Settings** | Enrollment queue (approve/reject pending hosts), TOTP enrollment, AD import, server timezone display. |
+| **Community** | Browse forks of approved community tasks. Submissions are stored on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts). To submit a task, use **Submit to Community** in the task editor. |
+| **Settings** | The enrollment queue (approve or reject pending hosts), TOTP setup, Active Directory import, and the server time zone. |
 
 ---
 
 ## Hardware Inventory
 
-Agents ship a hardware snapshot on an hourly cadence (separate from the 60-second metric checkin). The inventory page shows:
+Agents send a hardware snapshot every hour. Metrics are sent every 60 seconds. The inventory page shows:
 
 | Field | Source |
 |---|---|
@@ -327,35 +302,35 @@ Agents ship a hardware snapshot on an hourly cadence (separate from the 60-secon
 
 ## Tags
 
-Tags are free-form strings attached to hosts. They enable tag-based task deployment and fleet segmentation.
+Tags are text labels on hosts. Use them to deploy tasks to groups of hosts.
 
-**Sources (merged in order):**
-1. `agent.yml` — `tags: [web-server, prod, rack-3]` — sent at each checkin
-2. Server-side tags — editable in the host detail panel (click any host card)
-3. Auto-tags — applied at checkin based on OS (`linux`, `windows`, `macos`) and mode (`managed`, `monitor`, `full_control`)
-4. AD import — tags from OU path segments (e.g. `OU=Servers,OU=IT` → `servers`, `it`)
-5. Tasks — the `add_tag` / `remove_tag` actions (2026.8.0), so a task or baseline can tag a host it just changed
-6. Install profiles — a rebuilt host is tagged when it checks back in (2026.7.4)
+**Where tags come from, in order:**
+1. `agent.yml`: `tags: [web-server, prod, rack-3]`. The agent sends these at each check-in.
+2. Server tags, which you edit in the host details panel (click any host card).
+3. Automatic tags, set at check-in from the OS (`linux`, `windows`, `macos`) and the mode (`managed`, `monitor`, `full_control`).
+4. Active Directory import, which uses the OU path. For example, `OU=Servers,OU=IT` gives the tags `servers` and `it`.
+5. Tasks, with the `add_tag` and `remove_tag` actions. A task or baseline can tag a host it has just changed.
+6. Install profiles. A rebuilt host gets the profile's tags when it checks in.
 
-**Deploy by tag** — in the deploy modal, switch the target toggle from "Individual Hosts" to "By Tag" to deploy to all online managed hosts with a given tag.
+**Deploy by tag.** In the deploy window, switch the target from "Individual Hosts" to "By Tag". The task goes to all online managed hosts with that tag.
 
-**Distro logos** are real logo images bundled under `server/static/img/os/`
-(built from [Simple Icons](https://simpleicons.org), CC0-1.0, on a
-brand-coloured disc; Windows and Bazzite drawn by hand since Simple Icons
-carries neither). They are served from Vigil, never hot-linked — the console
-has to work on a network with no route to the internet.
+**OS logos** are stored under `server/static/img/os/`. They are based on
+[Simple Icons](https://simpleicons.org) (CC0-1.0), placed on a colored disc.
+The Windows and Bazzite logos were drawn by hand. Vigil serves the logos itself.
+They are not loaded from the internet, so the console works on a network
+without internet access.
 
-**The `agent:` namespace is reserved.** Tags an agent asserts about itself at
-check-in live under `agent:`, and nothing else may write there — not a task,
-not an install profile, not the API. That separation is what stops a
-compromised agent from granting itself a tag that an operator's baselines or
-deploy rules target.
+**The `agent:` prefix is reserved.** Tags that an agent reports about itself use
+this prefix. Tasks, install profiles, and the API cannot write tags with this
+prefix. This stops an agent from giving itself a tag that your baselines or
+deploy rules use.
 
 ---
 
 ## Task Authoring
 
-Tasks are YAML definitions authored in the built-in editor (Tasks → New Task) and deployed across hosts via the deploy modal.
+Tasks are written as YAML in the built-in editor (Tasks > New Task). You deploy
+them to hosts from the deploy window.
 
 ### Full YAML schema
 
@@ -429,30 +404,28 @@ deploy time). A step whose predicate is false is skipped and recorded, and does
 not block later steps. Referencing an input you did not declare is rejected when
 the task is saved — otherwise the step would silently never run.
 
-**`timeout:`** raises the per-step limit past the 120-second default, up to one
-hour. Use it for source builds, large image pulls, and filesystem scans on big
-volumes rather than detaching the work with `nohup` and polling for it.
+**`timeout:`** sets the time limit for a step, in seconds. The default is 120 seconds, and the maximum is 3600 seconds (one hour). Use it for long steps such as source builds, large image pulls, and scans of large file systems.
 
-**Schedule windows** are evaluated in the server's `VIGIL_TIMEZONE`. Tasks outside the window stay `PENDING` and are dispatched on the next checkin that falls inside the window.
+**Schedule windows** use the server's `VIGIL_TIMEZONE`. A task that is outside its window stays `PENDING`. It is sent at the next check-in that falls inside the window.
 
-**Retry** — on step failure the agent re-runs the step after `delay_seconds`, up to `attempts` times, before marking the task as failed.
+**Retry.** If a step fails, the agent runs it again after `delay_seconds`, up to `attempts` times. If every attempt fails, the task is marked as failed.
 
-**Success criteria** — even a zero exit code is treated as failure if `output_contains` or `output_regex` doesn't match. Per-step criteria override the top-level criteria.
+**Success criteria.** A step with exit code 0 still fails if `output_contains` or `output_regex` does not match. Criteria on a step replace the top-level criteria.
 
-**Collect** — a task marked with a top-level `collect:` block becomes an inventory data collector: when the run finishes on a host, the task's output is written into that host's `HostInventory.custom_columns`, and the column auto-appears on the Inventory page. The block is a **single mapping** (not a list, and not one entry per column — one task collects one column), with these keys:
+**Collect.** A task with a top-level `collect:` block saves its output as a column on the Inventory page. When the run finishes on a host, the output is saved for that host, and the column appears on the Inventory page. The block is a **single mapping**. One task fills one column. It keys are:
 
 | Key | Required | Meaning |
 |---|---|---|
 | `column` | yes | The `custom_columns` key to write. String, ≤ 80 characters. |
 | `parse` | no | How the task output becomes the stored value. One of `output_line_1` (default), `output_trim`, `output_full`. |
 
-There is **no `value:` key and no `{{ steps.* }}` templating** — the value always comes from the task's own output, transformed by `parse`:
+There is **no `value:` key and no `{{ steps.* }}` templating**. The value always comes from the task's own output, changed by `parse`:
 
 - `output_line_1` *(default)* — the first non-empty line of output, with a leading `[OK]` step prefix and any `label:` prefix stripped; truncated to 500 characters. Best for a task whose script echoes a single value.
 - `output_trim` — the entire output, whitespace-trimmed, truncated to 500 characters.
 - `output_full` — the entire output verbatim, truncated to 2000 characters.
 
-The column is written per host when that host's task completes, so running one `collect:` task against a tag or fleet fills the column for every targeted host. Worked example — record each host's kernel release into a `kernel` column:
+The column is written for each host when its run finishes. If you run a `collect:` task against a tag or the whole fleet, the column fills for every targeted host. Example: record each host's kernel version in a `kernel` column:
 
 ```yaml
 name: Record kernel version
@@ -470,7 +443,7 @@ actions:
 
 ### Available actions
 
-All 53 primitives are defined in `server/apps/tasks/spec.py` and executed in `agent/vigil_agent/executor.py`. `run_command` and `execute_script` require `full_control` mode; all others require `managed` or higher.
+Vigil has 53 actions. `run_command` and `execute_script` require the `full_control` mode. All other actions require `managed` or `full_control`.
 
 **Service management**
 
@@ -540,7 +513,7 @@ All 53 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 | `enable_firewall` | — | — |
 | `disable_firewall` | — | — |
 
-`list_firewall_rules` is the only low-risk action in this group — it changes nothing, so the Firewall tab dispatches it freely. The other five are high-risk. See [Firewall Management](#firewall-management).
+`list_firewall_rules` is the only low-risk action in this group. It changes nothing, so the Firewall tab sends it freely. The other five are high-risk. See [Firewall management](#firewall-management).
 
 **User management**
 
@@ -568,15 +541,14 @@ All 53 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 
 The two `request_*` actions only leave a marker: the agent finishes, and the server creates a `VulnScan` for the central scanner to run. `run_trivy_scan` is the opposite — the scan *is* the task, and the findings arrive with its output. See [Vulnerability Management](#vulnerability-management).
 
-**Host tagging** *(2026.8.0 — needs an agent on 2026.8.0 or newer)*
+**Host tagging** *(needs an agent version that supports tagging; update your agents first)*
 
 | Action | Params | Optional |
 |---|---|---|
 | `add_tag` | `tags` | — |
 | `remove_tag` | `tags` | — |
 
-`tags` is a **comma-separated string**, not a list — every param value has to
-be a primitive so the signed payload stays flat:
+`tags` is a **comma-separated string**, not a list:
 
 ```yaml
 actions:
@@ -586,13 +558,11 @@ actions:
       tags: "role:docker, env:lab"
 ```
 
-Like the `request_*` scan actions these only leave a marker; tags are
-server-side metadata about a host, not state on it, so the server applies the
-change when the result arrives. What it applies comes from the task it signed,
-**never from what the agent reports back** — a compromised agent can at most
-claim success on a tag you already wrote into the definition, it cannot choose
-one. The reserved `agent:` prefix is refused when the definition is saved and
-again when the tags are applied.
+Like the `request_*` scan actions, these actions only leave a marker. The server
+applies the change when the result comes back. The server uses the tags in the
+signed task, **not the tags the agent reports back**. An agent can only confirm a
+tag that is already in the task. The reserved `agent:` prefix is refused when
+you save the task and again when the tags are applied.
 
 **Agent & baselines**
 
@@ -601,9 +571,9 @@ again when the tags are applied.
 | `baseline` | `name` | — |
 | `update_agent` | — | `platform` |
 
-`update_agent` replaces the agent executable, so the server stamps the verified SHA-256 of each platform binary into the signed task — TLS alone is not proof enough for that swap.
+`update_agent` replaces the agent program. The server writes the SHA-256 of each platform's binary into the signed task. An HTTPS connection alone is not enough to check the new program.
 
-**Reprovisioning** (see [`docs/reprovisioning.md`](reprovisioning.md))
+**Reprovisioning** (see [Reprovisioning](reprovisioning.md))
 
 | Action | Params | Optional |
 |---|---|---|
@@ -612,34 +582,34 @@ again when the tags are applied.
 | `reprovision_commit` | `job_id`, `cmdline` | — |
 | `reprovision_cleanup` | `job_id` | — |
 
-All except `reprovision_preflight` are high-risk and additionally gated by the agent's own `allow_reprovision` opt-in — a compromised server cannot wipe a host that never opted in.
+All of these except `reprovision_preflight` are high-risk. They also need `allow_reprovision: true` in the agent's `agent.yml`. A host that has not set this flag cannot be wiped by the server.
 
 ### Deployment flow
 
-1. Write a task definition in the YAML editor (Tasks → New Task)
-2. Click **Deploy** on a library card
-3. Fill in any inputs on the **Inputs** tab
-4. Optionally set a schedule window, retry policy, and success criteria on their tabs
-5. Select target hosts (or choose a tag) on the **Hosts** tab
-6. Enter your 6-digit TOTP code and submit
-7. Track execution in the run detail view (Tasks → History — the list polls every 5 seconds while open)
+1. Write a task in the YAML editor (Tasks > New Task).
+2. Click **Deploy** on a card in the library.
+3. Enter any values on the **Inputs** tab.
+4. If you need them, set a schedule window, retry policy, and success criteria on their tabs.
+5. Choose the target hosts, or a tag, on the **Hosts** tab.
+6. Enter your 6-digit TOTP code and submit.
+7. Follow the run in the run details (Tasks > History). The list refreshes every 5 seconds while it is open.
 
 ---
 
 ## Community Catalog
 
-The Vigil community catalog lives on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts). Every Vigil instance can browse approved entries; submissions are PR-reviewed by SQSY maintainers.
+The community catalog is on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts). Any Vigil install can browse approved entries. SQSY maintainers review every submission.
 
 ### Submitting your task
 
 The task editor's toolbar has a **Submit to Community** button. Clicking it:
 
-1. Reads the YAML currently in the editor and slugifies the task name into a filename (e.g. `restart-nginx-and-verify.yaml`).
-2. **Auto-injects attribution** — adds `author: <your-vigil-username>` and `created: <today>` after the `name:` line if they aren't already declared. The community repo policy requires both fields; auto-injection means you never have to remember.
-3. Opens a modal with two actions: **Copy YAML** (clipboard) and **Open GitHub PR**.
-4. The **Open GitHub PR** link points at `github.com/SusquehannaSyntax/Vigil-Approved-Scripts/new/main/tasks?filename=<slug>.yaml&value=<your YAML>` — GitHub's new-file editor with the body pre-filled.
-5. If you don't have write access on the repo, GitHub forks it into your account automatically; click **Propose new file** → **Create pull request**.
-6. A SQSY maintainer reviews and merges. Once merged, every Vigil instance can see the entry.
+1. Vigil reads the YAML in the editor and turns the task name into a file name, such as `restart-nginx-and-verify.yaml`.
+2. Vigil adds `author: <your-vigil-username>` and `created: <today>` after the `name:` line, if they are not already there. The community repository requires both fields.
+3. A window opens with two buttons: **Copy YAML** and **Open GitHub PR**.
+4. The **Open GitHub PR** link opens GitHub's new-file editor with your YAML filled in.
+5. If you do not have write access to the repository, GitHub makes a fork for you. Click **Propose new file**, then **Create pull request**.
+6. A SQSY maintainer reviews and merges the pull request. After it is merged, every Vigil install can see the entry.
 
 ### Required YAML fields for community submissions
 
@@ -652,16 +622,16 @@ The task editor's toolbar has a **Submit to Community** button. Clicking it:
 | `author` | string (your Vigil username) | **Yes** |
 | `created` | ISO-8601 date (`YYYY-MM-DD`) | **Yes** |
 
-`author` and `created` are also optional in the local schema, so private tasks aren't forced to carry them. When present, both fields surface in card meta lines and the editor preview — YAML-declared `author` takes precedence over the local `owner_username` so a forked task keeps its original attribution.
+`author` and `created` are optional for private tasks. When they are present, they appear on the task card and in the editor preview. If a task declares an `author`, that name is shown instead of the local owner, so a forked task keeps its original author.
 
-This replaces the older local "publish to community" flow — there is no per-server community tab managed by API anymore. The advantage: one curated repo for everyone, version history, audit trail, and no shared DB to operate.
+Submissions go through GitHub. Vigil does not host its own community list.
 
 ---
 
 ## Automations — event filters
 
-An event automation fires when a hook does. Beyond severity and alert rule,
-these narrow *which* alerts count:
+An event automation runs when an alert is raised. Besides severity and alert rule,
+these filters limit which alerts count:
 
 | Filter | Effect |
 |---|---|
@@ -669,21 +639,21 @@ these narrow *which* alerts count:
 | **Only when the alert's name/description contains…** | Substring match, case-insensitive |
 | **…does not contain** | Fires only when the text is absent |
 
-The alert's **name** is its rule's name; its **description** is the alert
-text. Matching "name or description" with *does not contain* means the text
-appears in **neither** — a filter meant to exclude something must not let it
-through because it matched the field you weren't thinking about.
+The alert's **name** is the name of its rule. Its **description** is the alert
+text. The filters check the name or the description. The *does not contain*
+filter fails if the text appears in either one.
 
-These scope the **trigger**, not the target: an automation can watch one host
-and act on another, which is why "Only for events on host" is separate from
-"Run on" below it. An alert Vigil raises directly (rather than from a rule)
-has no name, so *contains* cannot match it and *does not contain* passes it.
+These filters choose which alerts trigger the automation. They do not choose
+where it runs. An automation can watch one host and act on another, which is why
+"Only for events on host" is separate from "Run on". An alert that Vigil raises
+directly, instead of from a rule, has no name. *Contains* never matches it, and
+*does not contain* passes it.
 
 ---
 
 ## Alerting
 
-Vigil ships with **20 default alert rules** created automatically on first migration. Rules evaluate every 60 seconds via Celery beat. Alerts auto-resolve when the metric returns below the threshold.
+Vigil has **20 default alert rules**, created when the database is first set up. Rules are checked every 60 seconds. An alert resolves automatically when its metric drops below the threshold.
 
 **CPU**
 
@@ -730,56 +700,52 @@ Vigil ships with **20 default alert rules** created automatically on first migra
 | Process CPU Spike | > 95% (single process) | Warning | 2 min |
 | Process Memory Spike | > 50% (single process) | Warning | 2 min |
 
-**Host offline** — when a host misses 5+ minutes of checkins, an alert is automatically created. It auto-resolves on the next successful checkin.
+**Host offline.** When a host misses check-ins for 5 minutes or more, Vigil creates an alert. The alert resolves at the next successful check-in.
 
-Custom rules can be created via the Django admin.
+You can create your own rules in the Django admin.
 
 ---
 
 ## Notifications
 
-Configure notification channels in the Django admin under **Alerts → Notification channels**:
+Set up notification channels in the Django admin, under **Alerts > Notification channels**:
 
-- **Webhook** — POST JSON payload to a URL. Set a `secret` in the config for an `X-Vigil-Secret` request header.
-- **Email** — Sent via Django's email backend. Configure `EMAIL_HOST`, `EMAIL_PORT`, etc. in your `.env`.
+- **Webhook.** Vigil sends a JSON message by POST to a URL. To add a signature check, set a `secret` in the config. Vigil then sends it in the `X-Vigil-Secret` header.
+- **Email.** Vigil sends email through Django's email backend. Set `EMAIL_HOST`, `EMAIL_PORT`, and the other email settings in your `.env` file.
 
 ---
 
 ## Two-Factor Authentication (TOTP)
 
-Vigil implements RFC 6238 TOTP natively. Task deployments require a 6-digit TOTP code once enrolled.
+Vigil uses time-based one-time passwords (TOTP, RFC 6238). After you set up TOTP,
+deploying a task requires a 6-digit code.
 
-**Enrollment:**
-1. Go to Settings → Two-Factor Authentication
-2. Click **Enroll TOTP** — copy the secret into any authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, Aegis)
-3. Enter a code from the app to confirm
+**Set up TOTP:**
+1. Go to Settings > Two-Factor Authentication.
+2. Click **Enroll TOTP**. Copy the secret into an authenticator app, such as Google Authenticator, Authy, 1Password, Bitwarden, or Aegis.
+3. Enter a code from the app to confirm.
 
-Task deploys are blocked until enrolled. TOTP can be disabled from Settings (requires a current code).
+You cannot deploy tasks until TOTP is set up. To turn TOTP off, go to Settings. You need a current code to do so.
 
 ### High-risk steps in a baseline
 
-A baseline dispatches **unattended**, on every host that matches it at
-enrollment. Run by hand, a high-risk task costs a TOTP code and a 60-second
-delay with somebody watching; in a baseline there is nobody to prompt. So
-baselines refused high-risk definitions outright.
+A baseline runs on its own, on every host that matches it when the host is
+enrolled. Nobody is there to enter a TOTP code. For that reason, baselines do
+not accept high-risk steps by default.
 
-Since 2026.7.3 that is a per-baseline opt-in — **Allow high-risk steps in this
-baseline**, off by default. Ticking it costs a fresh TOTP code, and that one
-confirmation authorizes every future dispatch of that baseline, the same
-bargain baseline creation already makes for standard-risk steps. Unticking it
-costs nothing: withdrawing an authorization needs no authorization.
-Duplicating a baseline does not inherit the flag — the original's code
-authorized that baseline, not a copy of it.
+To allow high-risk steps, tick **Allow high-risk steps in this baseline**. This
+is off by default. When you tick it, you enter a new TOTP code. That code
+approves every later run of this baseline. Clearing the box needs no code.
+Duplicating a baseline does not copy this setting. You must tick it again on the
+copy.
 
-**`update_agent` stays excluded whatever the flag says.** It replaces the
-executable that enforces the agent's own allowlist, so it keeps the human and
-the digest ceremony in the loop.
+**`update_agent` is never allowed in a baseline**, even with this setting on. Run it by hand, so you can check the SHA-256 digest.
 
 ---
 
 ## Vulnerability Management
 
-Vigil ingests findings from three scanners into one `VulnFinding` table, one host score, and one Vulnerabilities tab. Configure whichever you have — none are required, and an unconfigured scanner is skipped silently.
+Vigil collects findings from three scanners and shows them on one Vulnerabilities tab, with one score per host. Set up whichever scanners you use. None are required. Vigil skips a scanner that is not set up.
 
 | Scanner | Where it runs | How Vigil gets findings | Setup |
 |---|---|---|---|
@@ -787,13 +753,16 @@ Vigil ingests findings from three scanners into one `VulnFinding` table, one hos
 | **Greenbone / OpenVAS** | Container you run | Vigil launches scans over GMP (XML/TLS) and polls | `GREENBONE_*` env vars |
 | **Trivy** | The monitored host itself | The scan *is* an agent task; findings arrive with its output | Nothing server-side |
 
-`vulns.sync_vulns` (hourly beat) walks every registered scanner, skips the unconfigured ones, and isolates failures so one bad scanner can't break the rest. Trivy is event-driven and does nothing during that walk — its findings land when the task completes.
+Every hour, Vigil checks each configured network scanner. If one scanner fails,
+the others still run. Trivy works differently. Its findings arrive when its task finishes.
 
-> `vulns.sync_nessus_vulns` still exists as a deprecated alias for one release, for pinned callers. New code should call `sync_vulns`.
+> `vulns.sync_nessus_vulns` is an old name that still works for now. It will be removed. Use `vulns.sync_vulns` instead.
 
 ### Trivy — agent-local, no server setup
 
-Trivy scans the monitored host's own filesystem and installed packages against a CVE database. Nothing listens on the network and there is no central scanner to run. Deploy a task using the `run_trivy_scan` action:
+Trivy scans the host's own file system and installed packages against a CVE
+database. It does not open a network port, and you do not need a central scanner.
+Deploy a task that uses the `run_trivy_scan` action:
 
 ```yaml
 name: Trivy filesystem scan
@@ -804,21 +773,21 @@ actions:
     params: { scope: fs }      # or image:<name> for a container image
 ```
 
-The agent needs the `trivy` binary — use the **Install Trivy on this host** task template, or install it by hand.
+The agent needs the `trivy` program. Use the **Install Trivy on this host** task template, or install it yourself.
 
-> **`managed`-mode agents must allowlist the action.** The shipped `agent.yml` allowlist does *not* include `run_trivy_scan`, so a managed agent rejects the task and no findings ever arrive. Add it (and `trivy_db_update` if you refresh the DB explicitly) to the host's `allowlist:`. `full_control` agents ignore the allowlist entirely.
+> **`managed` agents must allow the action.** The default `agent.yml` allowlist does *not* include `run_trivy_scan`. A managed agent rejects the task, and no findings arrive. Add `run_trivy_scan` to the host's `allowlist:`. Add `trivy_db_update` too if you update the database yourself. `full_control` agents ignore the allowlist.
 
-On completion the server writes one `VulnFinding` per (package, CVE) pair, marks previously-open findings that didn't reappear as `FIXED`, and recomputes the host score. The outcome is appended to the task's own output, so run details show either `[INGEST] trivy: N finding(s) ingested` or `[INGEST FAILED] <reason>`.
+When the scan finishes, the server records one finding for each package and CVE pair. Earlier open findings that did not appear again are marked `FIXED`. The host score is updated. The result is added to the task output. The run details show either `[INGEST] trivy: N finding(s) ingested` or `[INGEST FAILED] <reason>`.
 
-**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent strips it to the fields the server ingests, deduplicates on (package, CVE) — the same package/CVE is reported once per binary that links it, so a raw report carries about 3x the findings the server actually stores — and gzips the result. That workstation's report goes out at 22.9 KB, **1317x smaller**, with every finding intact. A host with thousands of findings still fits in one request. Two consequences worth knowing:
+**Report size.** A full `trivy fs /` report can be about 30 MB on a typical Ubuntu workstation. About 90 percent of it is a package list that Vigil does not use. The agent keeps only the fields that Vigil needs. It removes duplicate package and CVE pairs, and compresses the result. In one test, a 30 MB report was reduced to 22.9 KB, with every finding kept. A host with thousands of findings still fits in one request. Keep these points in mind:
 
-- Agents older than **2026.6.2** send the raw report, which is truncated in transit and cannot be ingested. The Vulnerabilities tab stays empty and run details say the report is truncated. Update the agent.
-- If you put a proxy in front of Vigil, its request body limit must clear `VIGIL_MAX_REQUEST_BODY_BYTES` (8 MB by default), or results are rejected before Vigil ever sees them.
-- Compression is transparent to the server: a plain report from an older agent still ingests, and a compressed one is decompressed before any diagnostic quotes it back, so refusal messages stay readable rather than showing base64.
+- Agents older than **2026.6.2** send the full report. Vigil cannot read it, because it is cut off in transit. The Vulnerabilities tab stays empty, and the run details say the report is truncated. Update the agent.
+- If a proxy sits in front of Vigil, its request size limit must be at least `VIGIL_MAX_REQUEST_BODY_BYTES` (8 MB by default). Otherwise the proxy rejects the results before Vigil receives them.
+- Vigil reads both compressed and uncompressed reports. Error messages show readable text, not base64.
 
 ### Suggest Fix
 
-Every finding on the Vulnerabilities tab has a **Suggest Fix** button. Where the scanner reported a package and a fixed version — always the case for Trivy — it prefills a precise `update_package` task with **no model call at all**:
+Every finding on the Vulnerabilities tab has a **Suggest Fix** button. When the scanner reports a package and a fixed version, which is always the case for Trivy, the button fills in an `update_package` task. This does not use an AI model:
 
 ```yaml
 name: "Upgrade openssl to 3.0.3"
@@ -830,15 +799,15 @@ actions:
       package_name: "openssl"
 ```
 
-It is scoped to the **package**, not the CVE. One upgrade clears every CVE open against that package, so the suggestion says how many it covers rather than implying it fixes only the one you clicked.
+The suggestion applies to the **package**, not the single CVE. One upgrade fixes every CVE open against that package. The suggestion states how many CVEs it covers.
 
-Any AI providers you have configured run alongside it, in parallel, for the cases a deterministic task cannot cover: no fixed version published, or no package at all (common for Nessus network findings, where the prompt asks for a diagnostic rather than an upgrade). Suggestions are still untrusted — everything passes through `parse_and_validate`, `update_agent` is dropped on sight, and nothing runs until you deploy it.
+If you have set up an AI provider, it also runs for cases that the task cannot cover. These are findings with no fixed version, or findings with no package, which is common for Nessus network findings. The AI asks for a diagnostic instead of an upgrade. Vigil checks every AI suggestion before showing it. It removes `update_agent` from any suggestion. Nothing runs until you deploy it.
 
-**A report with no `Vulnerabilities` section is refused rather than ingested.** That shape means the scan never ran the vulnerability scanner — ingesting it would mark every existing finding fixed and report the host clean, which is the worst possible failure for a security feature. Existing findings are left untouched and the reason appears in run details.
+**A report with no `Vulnerabilities` section is rejected.** That report means the vulnerability scan did not run. If Vigil accepted it, every existing finding would be marked fixed, and the host would look clean. Vigil leaves the existing findings as they are, and the reason appears in the run details.
 
 ### Nessus setup
 
-1. Install **Nessus Essentials** (free, scans up to 16 IPs) — register at <https://www.tenable.com/products/nessus/nessus-essentials> for an activation code, then:
+1. Install **Nessus Essentials**. It is free, and it scans up to 16 IP addresses. Register at <https://www.tenable.com/products/nessus/nessus-essentials> to get an activation code. Then run:
 
    ```bash
    curl -o nessus.deb 'https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb'
@@ -846,7 +815,7 @@ Any AI providers you have configured run alongside it, in parallel, for the case
    sudo systemctl enable --now nessusd
    ```
 
-   Open `https://localhost:8834`, complete activation, and wait ~20–30 minutes for plugin compilation. Generate API keys under **My Account → API Keys → Generate**.
+   Open `https://localhost:8834` and complete activation. Plugin compilation takes about 20 to 30 minutes. Create API keys under **My Account > API Keys > Generate**.
 
 2. Wire the keys into Vigil's `.env`:
 
@@ -857,7 +826,7 @@ Any AI providers you have configured run alongside it, in parallel, for the case
    NESSUS_VERIFY_SSL=false        # self-signed cert by default
    ```
 
-   When Vigil runs in Docker against a host-installed Nessus, use `https://host.docker.internal:8834` (Mac) or `https://172.17.0.1:8834` (Linux bridge).
+   If Vigil runs in Docker and Nessus is installed on the host, use `https://host.docker.internal:8834` on a Mac, or `https://172.17.0.1:8834` on Linux.
 
 3. Verify the connection:
 
@@ -868,15 +837,15 @@ Any AI providers you have configured run alongside it, in parallel, for the case
 
 ### What runs automatically
 
-The `vulns.sync_vulns` Celery beat (hourly) does three things in order, for each configured network scanner:
+Every hour, `vulns.sync_vulns` does three things for each configured network scanner:
 
-1. **Launches** every `VulnScan` in the `requested` state by calling Nessus's `Basic Network Scan` template against the host's IP (or the Greenbone equivalent over GMP).
-2. **Polls** in-flight scans and updates their state in the dashboard.
-3. **Ingests** results from completed scans into `VulnSummary`, fires alerts on new criticals and new highs, and resolves them once findings clear.
+1. **Starts** each scan in the `requested` state, using Nessus's `Basic Network Scan` template against the host's IP address. For Greenbone, it uses the equivalent template.
+2. **Checks** scans that are running and updates their status on the dashboard.
+3. **Imports** results from finished scans. It raises alerts for new critical and high findings, and resolves them when the findings are gone.
 
 ### Launching scans from Vigil
 
-Three paths, all converge on a `VulnScan` row visible in the **Recent scans** list:
+There are three ways to start a scan. Each one adds a scan to the **Recent scans** list:
 
 | Path | Who triggers | TOTP gate |
 |---|---|---|
@@ -884,7 +853,7 @@ Three paths, all converge on a `VulnScan` row visible in the **Recent scans** li
 | **Request a Nessus scan** task template | Operator dispatches to a host | Yes (at deploy time) |
 | `request_nessus_scan` action in a custom YAML task | Anyone with a published YAML using this action | Yes (deploy gate) |
 
-One active scan per host is enforced — repeated requests while a scan is in flight return `409 Conflict`.
+A host can have only one active scan. If you request another while a scan is running, Vigil returns `409 Conflict`.
 
 ### Ready-made templates in the editor
 
@@ -903,42 +872,42 @@ The task editor's **Start from template…** dropdown covers all three scanners:
 
 ## Firewall Management
 
-The **Firewall** app (sidebar, between Vulns and Monitor) reads and edits a host's `ufw`, `firewalld`, or Windows Firewall state — rules, per-rule source/interface, and the default incoming/outgoing policy.
+The **Firewall** tab (between Vulns and Monitor) shows and edits the `ufw`, `firewalld`, or Windows Firewall settings on a host. You can change the rules, each rule's source and interface, and the default incoming and outgoing policies.
 
 ### Fetch-on-demand, not polled
 
-Unlike metrics, firewall state is not part of the regular checkin. Selecting a host dispatches `list_firewall_rules`; the snapshot lands with the host's *next* check-in, not immediately. **The first view of a host is an empty "Nothing read yet" state — that's normal, not a bug.** Press Refresh (or wait for the interval) and the tab fills in once the read completes. The same is true after any edit: the tab doesn't re-read automatically, so re-refresh to confirm a change landed.
+Firewall settings are not read with the regular metrics. When you select a host, Vigil sends a `list_firewall_rules` task. The result arrives at the host's *next* check-in. **The first time you open a host, the tab shows "Nothing read yet". This is expected.** Click Refresh, or wait for the next check-in, and the tab fills in. After you change a rule, the tab does not read the firewall again. Click Refresh to confirm the change.
 
 ### Three changes the tab refuses
 
-`server/apps/hosts/firewall_guard.py` refuses three shapes of change outright, before the 2FA prompt ever appears:
+The Firewall tab refuses three kinds of change. Vigil refuses them before it asks for a TOTP code:
 
-1. **Setting the default outgoing policy to `deny` or `reject`.** Lead concern: Vigil agents are outbound-only, so this severs the agent's own connection back to the server. The host stops checking in, and — because dispatch itself requires the agent to check in — no task can ever be sent to undo it. Recovery needs console access to the host.
+1. **Setting the default outgoing policy to `deny` or `reject`.** Agents connect outward to the server, so this cuts the agent off. The host stops checking in, and no task can be sent to undo the change. Recovery needs console access to the host.
 2. **Denying the remote-access port, or removing the rule that allows it** — port 22 always, plus 3389 on Windows.
 3. **Setting the default incoming policy to `deny`** when no allow rule covers the remote-access port.
 
-`disable_firewall` is **not** refused — it opens the host rather than closing it, so it goes through the ordinary high-risk 2FA gate like any other write, not the lockout guard.
+`disable_firewall` is **not** refused. It opens the host rather than closing it. It needs a TOTP code, like any other high-risk task.
 
-**The task editor is the deliberate, unguarded escape hatch.** The guard only applies to the Firewall tab's write endpoint (`POST /api/v1/hosts/{id}/firewall/apply/`); a task written by hand in the YAML editor using `set_firewall_policy`, `add_firewall_rule`, or `remove_firewall_rule` bypasses it entirely. A rule Vigil won't write from the form is still one you can write on purpose — that's what makes refusing in the tab reasonable instead of paternalistic.
+**The task editor does not apply these checks.** The checks apply only to the Firewall tab's save action (`POST /api/v1/hosts/{id}/firewall/apply/`). A task you write in the YAML editor that uses `set_firewall_policy`, `add_firewall_rule`, or `remove_firewall_rule` is not checked. Use the task editor only if you understand the change.
 
-**Known limitation, by design:** the protected ports (22, 3389) are the well-known ones, hard-coded — never read from the host. A host with SSH moved to a custom port is **not** protected by this guard; a `deny`/incoming-default change against it goes through even though it would lock the host out just the same.
+**Known limitation:** the protected ports are 22 and 3389, and they are fixed in the code. Vigil does not read the actual SSH port from the host. A host that runs SSH on a different port is **not** protected. A change that denies incoming traffic can lock you out of that host.
 
 ### `managed`-mode agents must allowlist the actions
 
-Same trap as [Trivy](#trivy--agent-local-no-server-setup): the shipped `agent.yml` allowlist does not include any of the six firewall actions. On a `managed`-mode agent that hasn't added them, every firewall task — including the read — is rejected, and the Firewall tab just shows nothing for that host, with no obvious error on screen. `full_control` agents ignore the allowlist entirely. See `agent/config.example.yml` for the commented-out block.
+The default `agent.yml` allowlist does not include the six firewall actions. On a `managed` agent, add them to the allowlist. Until you do, every firewall task is rejected, including the read. The Firewall tab then shows nothing for that host, and the screen gives no clear error. `full_control` agents ignore the allowlist. See `agent/config.example.yml` for the commented-out block.
 
 ### Rules Vigil couldn't parse
 
-Some rules don't fit Vigil's port/protocol/source model — ufw app-profile rules (`ufw allow OpenSSH`), firewalld port ranges, Windows rules with a non-integer port. These are never silently dropped: they land in a separate "Unparsed rules" section on the tab, listed as raw text ("these rules exist on the host but Vigil could not interpret them"), and cannot be edited from there. A host whose SSH access comes entirely from an app-profile rule has no port-22 entry in the parsed rule list — the lockout guard treats that as *not* covered and refuses a default-deny-incoming change, which is the correct, conservative call even though the host may in fact be fine.
+Some rules do not fit Vigil's port, protocol, and source model. Examples are ufw application profile rules (`ufw allow OpenSSH`), firewalld port ranges, and Windows rules with a port that is not a number. Vigil does not drop these rules. They appear in an "Unparsed rules" section, as plain text. You cannot edit them in Vigil. If a host allows SSH only through an application profile, Vigil does not see port 22 in the parsed rules. The lockout check then treats SSH as not allowed, and it refuses a change that denies incoming traffic by default. This is a cautious result, even if the host is fine.
 
 ---
 
 ## Active Directory Import
 
-Configure AD in **Settings → Active Directory**:
+Set up Active Directory in **Settings > Active Directory**:
 
 - LDAP server URL, bind DN, bind password, base DN, and the OU containing computer objects
-- **Import Now** runs a Celery task that queries LDAP for computer objects, creates `PENDING` host records for any not already enrolled, and auto-tags them from their OU path (e.g. `OU=Servers,OU=IT` → tags `servers`, `it`)
+- **Import Now** asks LDAP for computer objects. It creates a `PENDING` host for each computer that is not yet enrolled, and tags it from its OU path. For example, `OU=Servers,OU=IT` gives the tags `servers` and `it`.
 
 ---
 
@@ -950,46 +919,44 @@ Configure AD in **Settings → Active Directory**:
 | `managed` | Collected | Only allowlisted actions |
 | `full_control` | Collected | Any action |
 
-The allowlist is defined in `agent.yml` and enforced locally by the agent — the server cannot override it.
+The allowlist is set in `agent.yml`. The agent enforces it locally, and the server cannot change it.
 
-One action sits outside this table entirely. **Remote reprovisioning — wiping
-and reinstalling the machine — is not granted by `full_control`** and cannot be
-allowlisted. It requires its own flag:
+Rebuilding a machine with [reprovisioning](reprovisioning.md) is not covered by
+this table. `full_control` does not allow it, and you cannot add it to the
+allowlist. It needs its own setting:
 
 ```yaml
 allow_reprovision: true   # default false, everywhere
 ```
 
-The authority to destroy a machine lives on that machine, so a compromised
-Vigil server cannot order a fleet to rebuild itself.
+A compromised server cannot order machines to rebuild, because the permission is set on each machine.
 
 ---
 
 ## Remote Reprovisioning
 
-Start one from **Reprovision → Rebuild jobs → Rebuild a host…**, or from the
-host's detail drawer. Both open the same ceremony — picking the host up front
-only saves finding its card first, it does not shorten the confirmation.
+Start a rebuild from **Reprovision > Rebuild jobs > Rebuild a host**, or from
+the host's details panel. Both open the same confirmation.
 
-Rebuild a host's operating system from the console: pick an image and a
-profile, confirm with password + authenticator code + the typed hostname, and
-the machine wipes itself, installs unattended, re-enrols its agent against the
-same host record, takes a tag you chose, and optionally runs a baseline —
-taking a drifted or compromised box back to known-good without a site visit.
+A rebuild installs a new operating system on a host from the console. You choose
+an image and a profile. Then you confirm with your password, an authenticator
+code, and the hostname. The machine wipes its disk, installs unattended, and
+reconnects under the same host record. It gets a tag you choose. You can also
+run a baseline afterward. This returns a drifted or compromised machine to a
+known-good state without a site visit.
 
-Ubuntu, Debian, and the RHEL family. Free feature.
+Supported systems are Ubuntu, Debian, and the RHEL family. This feature is free.
 
-**This destroys all data on the target disk, and there is no undo once the
-installer starts.** Read [docs/reprovisioning-runbook.md](reprovisioning-runbook.md)
-before running one — including its note on why rebuild is *not* a guaranteed
-eradication path against an attacker with kernel-level persistence. Design
-rationale is in [docs/reprovisioning.md](reprovisioning.md).
+**A rebuild erases all data on the target disk. It cannot be undone once the
+installer starts.** Read [the reprovisioning guide](reprovisioning.md) before
+you start a rebuild. It explains the limits, including that a rebuild does not
+remove malware that has kernel-level access.
 
 ### OS image library
 
-The **Reprovision** sidebar app manages the images a rebuild installs from. Vigil fetches an image once and serves it to every host that rebuilds against it — one download per fleet instead of one per host, and it means a rebuild works on a machine with no route to the internet at all, only to Vigil.
+The **Reprovision** section manages the images that a rebuild installs from. Vigil downloads each image once and serves it to every host that rebuilds from it. A rebuild needs a route only to Vigil, not to the internet.
 
-`apps/reprovision/catalog.py` ships a small, hand-curated list of distros Vigil can pull on its own:
+Vigil includes a short list of distributions that it can download by itself:
 
 | Catalog entry | Family | Size |
 |---|---|---|
@@ -1005,64 +972,61 @@ The **Reprovision** sidebar app manages the images a rebuild installs from. Vigi
 | Rocky Linux 9 (minimal) | `rhel` | 2.8 GB |
 | AlmaLinux 9 (minimal) | `rhel` | 2.8 GB |
 
-The **Add an image** tab shows these as cards, one per distro; anything
-already in your library is greyed out, because the same bytes are never
-fetched twice — a digest already present answers 409, and a *failed* pull
-retries in place rather than leaving a second row behind.
+The **Add an image** tab shows each distribution as a card. Images already in
+your library are greyed out. Vigil never downloads the same file twice. If you
+pull an image whose checksum is already in the library, Vigil returns a 409
+error. If an earlier download failed, pulling it again retries that entry.
 
-Import needs room for the ISO **and** the extracted tree at the same time —
-roughly twice the size above, transiently, falling back to about one after
-the ISO is discarded. Import is also single-threaded pure Python (`pycdlib`,
-so no loop mount and no privileged container), so on a low-power host expect
-a long first import per image. It is a one-time cost per image, not per
-rebuild.
+Importing an image needs free space for the ISO and the extracted files at
+the same time. That is about twice the sizes listed above, for a short time. After
+Vigil deletes the ISO, the space needed drops to about the size listed. Import
+runs on one CPU core, so a low-power host can take a long time to import an
+image. You import each image once, not once per rebuild.
 
-Every entry needs a stable anonymous URL *and* a published SHA-256 — an entry that can't actually fetch would fail at the worst possible moment, after an operator has already chosen it for a rebuild. Entries go stale as distros cut new releases; the custom-URL path below covers the gap until `catalog.py` is updated.
+Each catalog entry has a public download URL and a published SHA-256 checksum. The list is updated with each Vigil release. To use a newer release before it is added, enter a custom URL and its SHA-256 checksum.
 
-**RHEL proper and Windows are not in the catalog, on purpose.** RHEL needs an active Red Hat subscription to download, so there's no anonymous URL to point at; Microsoft publishes no stable direct download with a published hash. Neither is a Vigil limitation — both reach the library the same way: upload the ISO you're entitled to, or paste a URL (plus its SHA-256) to wherever you're already hosting it. **A digest is always required** — pulling from the catalog carries the published digest automatically, but a custom URL or an upload needs the operator to supply one; an image with no SHA-256 is refused before a single byte moves.
+**RHEL and Windows are not in the catalog.** RHEL needs a Red Hat subscription to download, so it has no public URL. Microsoft does not publish a stable download with a checksum. To add these images, upload an ISO you are licensed to use, or enter a URL and its SHA-256 checksum. **A SHA-256 checksum is always required.** Catalog entries include it. For a custom URL or an upload, you must enter it. An image without one is refused before any data is transferred.
 
-**Windows images can't be imported yet.** The upload/pull buttons for it are disabled in the UI rather than silently failing after a multi-gigabyte transfer. Vigil's importer extracts a Linux-style `vmlinuz`/`initrd` pair to PXE-boot the installer; Windows boots from `bootmgr` against `boot.wim`, a different pipeline that doesn't exist yet. It's planned as its own piece of work, not a config flag someone forgot to flip.
+**Windows images cannot be imported.** The upload and pull buttons for Windows are disabled. Vigil imports Linux images, which use a `vmlinuz` kernel and an `initrd`. Windows uses a different boot method, so Vigil does not support it.
 
 ### Install profiles
 
-A profile is the set of answers the installer needs to run unattended — which
-image and disk, partitioning and filesystem, addressing, locale, and who can
-log in afterwards. **Reprovision → Install profiles → + New profile.**
+An install profile holds the answers the installer needs to run unattended. It
+sets the image and disk, the partitions and file system, the network address,
+the locale, and who can log in afterward. Go to **Reprovision > Install profiles > + New profile**.
 
-Two things the form enforces, because both are otherwise discovered after the
-disk has already been wiped:
+The form checks two things, because a mistake would only show up after the disk
+is wiped:
 
-- **Somebody has to be able to log in.** A profile with neither an SSH key nor
-  an admin password hash is refused. The password field takes a *crypt hash*
-  (`mkpasswd -m sha-512`), never a plaintext password — the answer file
-  carries it verbatim.
-- **Static addressing needs an address and a gateway.** Those fields only
-  appear when you pick Static.
+- **Someone must be able to log in.** A profile needs an SSH key or an admin password hash. The password field takes a *crypt hash*, made with `mkpasswd -m sha-512`. It does not take a plain password.
+- **A static address needs an address and a gateway.** These fields appear only when you choose Static.
 
-Editing an existing profile leaves the password box blank, and blank means
-*keep the stored hash* — Vigil never hands a stored secret back, not even to
-the admin who set it.
+When you edit a profile, leave the password box blank to keep the stored
+password. Vigil never shows a stored password again, even to the admin who set it.
 
-**Tag the host with** *(2026.7.4)* applies tags when the rebuilt machine
-checks back in, so baselines and alert rules that target those tags pick it up
-on its own without anyone remembering to tag it. The rebuild ceremony's own
-tag field still works alongside it for a one-off; both are applied, and the
-reserved `agent:` prefix is refused in either.
+**Completion tags** apply tags when the rebuilt machine checks in. Baselines and alert rules that use those tags then apply to the machine without a manual step.
 
 ### The fetch guard
 
-Before Vigil fetches any URL — catalog or custom — `apps/reprovision/fetch_guard.py` checks the address it actually resolves to (re-checked after every redirect, so a hostname can't launder its way past the check). It refuses outright: loopback (`127.0.0.0/8`, `::1`), the unspecified address (`0.0.0.0`, `::`), link-local (`169.254.0.0/16`, `fe80::/10` — this range covers AWS/Azure instance metadata), and the metadata addresses specific to other clouds (`metadata.google.internal`/`metadata.goog`, Alibaba's `100.100.100.200`, AWS's IMDSv6 address). The reason is the same for all of them: on a cloud-hosted Vigil, the metadata service hands out credentials for the whole account, and Vigil's server sits where it can reach that service even though an operator's own workstation cannot — fetching a URL on the operator's behalf must not become a proxy into the account.
+Before Vigil downloads any URL, catalog or custom, it checks the address the URL resolves to. It checks again after each redirect. Vigil refuses these addresses:
 
-**Private ranges are allowed on purpose.** An internal mirror is a completely legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil will fetch it from inside your network, not from your browser — advisory, not a block.
+- Loopback: `127.0.0.0/8` and `::1`
+- Unspecified: `0.0.0.0` and `::`
+- Link-local: `169.254.0.0/16` and `fe80::/10`. This range includes the instance metadata service on AWS and Azure.
+- Metadata addresses for other clouds: `metadata.google.internal`, `metadata.goog`, `100.100.100.200` (Alibaba), and the AWS IPv6 metadata address.
+
+If Vigil runs in a cloud, its metadata service can give out credentials for the whole account. Vigil must not be used to fetch from that service.
+
+**Private network addresses are allowed.** An internal mirror is a valid image source, so RFC 1918 addresses are not refused. For a custom URL, Vigil shows a warning that it will download from your network, not from your browser. The warning does not block the download.
 
 ### Upload limits Vigil doesn't control
 
-An ISO upload passes through whatever sits in front of Vigil. **Cloudflare Tunnel** caps request bodies at 100 MB on free plans; **nginx** defaults `client_max_body_size` to 1 MB. Either one will fail a multi-gigabyte ISO upload with no explanation from Vigil itself — raise the limit on the proxy, or use the URL-pull path instead, which never touches the browser's upload connection.
+An ISO upload goes through any proxy in front of Vigil. **Cloudflare Tunnel** limits request bodies to 100 MB on free plans. **nginx** limits them to 1 MB by default (`client_max_body_size`). If a limit is smaller than the ISO, the upload fails, and Vigil shows no reason. Raise the limit on the proxy. Or use the URL pull instead, which does not upload through your browser.
 
-Two settings exist in this repo specifically because of the upload path — both are load-bearing, not leftovers:
+The server is set up for large uploads in two ways:
 
-- **`server/Dockerfile`**'s gunicorn `--timeout 1800` — the 30-second default kills the worker mid-upload, because the ISO upload endpoint holds the request open synchronously for the whole transfer.
-- **`FILE_UPLOAD_TEMP_DIR`** (`server/vigil/settings.py`) — points Django's multipart spool at the `VIGIL_IMAGE_ROOT` volume instead of the container's writable layer, which a multi-gigabyte upload would otherwise fill.
+- The gunicorn timeout in `server/Dockerfile` is `--timeout 1800`, which gives an upload 30 minutes. The default of 30 seconds would stop a large upload.
+- `FILE_UPLOAD_TEMP_DIR` in `server/vigil/settings.py` stores uploads on the `VIGIL_IMAGE_ROOT` volume. Without it, large uploads would fill the container's disk.
 
 ---
 
@@ -1100,27 +1064,25 @@ Two settings exist in this repo specifically because of the upload path — both
 | `GET` | `/api/v1/metrics/{host}/{cat}/{metric}/` | Metric history (supports `?from=`, `?to=`, `?limit=`) |
 | `GET` | `/api/v1/metrics/catalog/` | The category/metric pairs this fleet is actually reporting |
 
-Categories the agent emits: `cpu`, `memory`, `disk`, `network`, `process`,
+Categories the agent sends: `cpu`, `memory`, `disk`, `network`, `process`,
 `temperature`, and `gpu`.
 
-**Processes.** The agent reports the ten busiest by CPU and the ten busiest by
-memory, labelled `name`, `pid` and `rank`. Names listed under `process_watch`
-in `agent.yml` are additionally sampled at *every* check-in regardless of
-rank, labelled `watched=1` — without that, a chart of one named service has
-holes exactly when the service is behaving, and an outage looks the same as a
-quiet period. Processes sharing a name are summed, with the live count
-reported as `process/instances`, so a watched name that is not running reports
-zero rather than nothing.
+**Processes.** The agent reports the ten processes that use the most CPU and the
+ten that use the most memory. Each is labelled with `name`, `pid`, and `rank`.
+Names listed under `process_watch` in `agent.yml` are sampled at every check-in,
+whatever their rank. They are labelled `watched=1`. Processes with the same name
+are added together, and the count of running processes is reported as
+`process/instances`. A watched name that is not running reports zero.
 
-**GPUs.** Collected from `nvidia-smi` and `rocm-smi` when either is on the
-PATH, and skipped silently when neither is — no configuration needed. Per GPU,
-labelled `vendor`, `index` and `name`: `utilization_percent`,
-`memory_used_mb`, `memory_total_mb`, `memory_percent`, `temperature_celsius`
-and `power_watts`. Setting `gpu_extended: true` adds `fan_percent`,
-`clock_graphics_mhz`, `clock_memory_mhz`, `memory_bandwidth_percent`,
-`pcie_generation`, `pcie_width` and ECC counters where the card reports them —
-roughly twice the points per GPU per check-in, which is worth being deliberate
-about on a multi-GPU host.
+**GPUs.** The agent reads GPU data from `nvidia-smi` and `rocm-smi` when either
+is on the PATH. If neither is found, it skips GPU data, and you need no setup.
+Each GPU is labelled with `vendor`, `index`, and `name`. The values are
+`utilization_percent`, `memory_used_mb`, `memory_total_mb`, `memory_percent`,
+`temperature_celsius`, and `power_watts`. Set `gpu_extended: true` to add
+`fan_percent`, `clock_graphics_mhz`, `clock_memory_mhz`,
+`memory_bandwidth_percent`, `pcie_generation`, `pcie_width`, and ECC counters,
+where the card reports them. This roughly doubles the data points per GPU at
+each check-in, so use it with care on hosts with many GPUs.
 
 ### Alerts
 
@@ -1143,7 +1105,7 @@ about on a multi-GPU host.
 | `GET` | `/api/v1/tasks/history/?page=N` | Paginated task history feed (50/page, polled by the History tab) |
 | `GET` | `/api/v1/tasks/runs/{id}/` | Run detail with per-host step status |
 
-> The legacy single-action dispatch endpoint (`POST /api/v1/tasks/`) was removed in 2026.1.9 — it bypassed the TOTP gate. Use the definition-deploy endpoint instead. Community publish/unpublish endpoints were also removed; the community catalog now lives on GitHub (see [Community catalog](#community-catalog)).
+> The single-action dispatch endpoint (`POST /api/v1/tasks/`) has been removed, because it skipped the TOTP check. Use the definition deploy endpoint instead. The community catalog is on GitHub. See [Community catalog](#community-catalog).
 
 ### Reprovisioning — image library
 
@@ -1158,11 +1120,11 @@ about on a multi-GPU host.
 | `GET` `PATCH` `DELETE` | `/api/v1/reprovision/profiles/{id}/` | Profile detail (`view`) / edit or remove (admin only) |
 | `POST` | `/api/v1/reprovision/profiles/{id}/preview/` | Render the answer file this profile would produce, without running anything |
 
-A pull of a digest already in the library answers **409** naming the existing
-image; a pull of one whose last attempt *failed* retries in place on the same
-row rather than adding a duplicate.
+A pull of an image already in the library returns **409** and names the existing
+image. If the last attempt for that image failed, the pull retries on the same
+entry instead of creating a duplicate.
 
-Full job/ceremony surface is in [docs/reprovisioning.md §9](reprovisioning.md#9-api-surface).
+For the rebuild job endpoints, see [Reprovisioning](reprovisioning.md#api-reference).
 
 ### Misc
 
@@ -1221,18 +1183,18 @@ Vigil/
 
 ---
 
-## Tiers
+## Editions
 
-Vigil is free — full monitoring, alerting, unlimited agents, hosts, and
-retention, forever. **SQSY Business** adds the accountability features
-(unlimited Sites, audit-log viewer/export, seats + Operator role, branding)
-via a signed, instance-bound, offline-verified license. Nothing ever blocks:
-an expired license means Business features switch off and monitoring carries
-on untouched. See `docs/EDITIONS.md`.
+Vigil Free includes full monitoring, alerting, and unlimited agents, hosts, and
+retention. **SQSY Business** adds unlimited sites, the audit log viewer and export,
+per-seat pricing with the Operator role, and branding. Business uses a signed
+license that is tied to one instance and checked offline. If a Business license
+expires, the Business features turn off, and monitoring keeps working. See
+[EDITIONS.md](EDITIONS.md).
 
 ## License
 
-AGPLv3. The Business features are a separate package under a commercial
-license: official images include it compiled, it requires a SQSY Business
-subscription for production use, and its source is available to customers for
-audit on request
+Vigil's core is licensed under AGPLv3. The Business features are a separate package
+under a commercial license. Official images include them. Production use of the
+Business features requires a SQSY Business subscription. Customers can request
+the Business source code for an audit.

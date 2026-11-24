@@ -1,142 +1,55 @@
-# Remote reprovisioning — design (2026.6.0)
+# Reprovisioning
 
-Rebuild a machine's operating system from the Vigil console: pick an image and
-a profile, pass a three-factor confirmation, and the host wipes itself, installs
-unattended, re-enrols its agent against the same `Host` row, takes a tag you
-chose, and optionally runs a baseline. A compromised or drifted server goes back
-to known-good without anyone walking to it.
+Reprovisioning rebuilds a machine's operating system from the Vigil console.
+You choose an image and an install profile, confirm the rebuild, and the
+machine wipes its disk, installs unattended, and reconnects to Vigil under the
+same host record. You can give it a tag and run a baseline when it is back.
 
-Free feature. Lives in `server/apps/reprovision/` under AGPLv3.
+Use it to return a machine to a known-good state without walking to it. This
+is useful after configuration drift, after a suspected compromise, or after a
+ransomware clean-up.
 
----
+Reprovisioning is available in the Free edition.
 
-## 1. Scope
+**Warning:** A rebuild erases the disk of the target machine. Check the
+hostname and disk before you confirm. Read [Limitations](#limitations) before
+you use this feature on a machine that may be compromised.
 
-**In, for 2026.6.0:** Ubuntu (subiquity autoinstall), Debian (preseed), and the
-RHEL family — Rocky, Alma, RHEL, Fedora — (kickstart). Image catalog, install
-profiles, the confirmation ceremony, the rebuild job state machine, agent-side
-pre-flight and staging, identity-preserving re-enrolment, completion tagging,
-and baseline chaining.
+## What you need
 
-**Out, deliberately:** Windows. It shares almost nothing with the Linux path —
-`unattend.xml` instead of kickstart, WinPE staged via `bcdedit` instead of a
-GRUB one-shot entry, a different agent installer. It is planned for 2026.7 or
-2026.8, and §12 records the seams that keep it a drop-in rather than a rewrite.
+- A Vigil server with administrator access, or an operator account with the
+  `rebuild` permission on the host's site (see [Roles and permissions](rbac.md)).
+- An agent on the target machine, installed with `allow_reprovision` enabled
+  (see [Allow a machine to be rebuilt](#allow-a-machine-to-be-rebuilt)).
+- An operating system image in the image library, or a URL Vigil can download
+  one from.
+- An install profile for the image.
+- The machine's root password, or the password of the account that confirms
+  the rebuild, and a time-based one-time password (TOTP) code from your
+  authenticator app.
 
-**Out, on the evidence:** PXE/netboot and out-of-band BMC (Redfish/IPMI). Both
-were considered and rejected for this release — PXE needs control of DHCP
-options 66/67 and per-machine firmware changes, which is a heavy ask for a
-1–50 device product; BMC needs enterprise hardware most of the target fleet
-does not have. §11 records the limitation that decision leaves behind.
+## Supported systems
 
-## 2. Inherited constraints
-
-These come from `CLAUDE.md` and are not up for renegotiation here.
-
-- **Agent-based, outbound-only.** No inbound connection to a monitored host,
-  ever. Everything below rides the existing check-in/task-result channel.
-- **The agent's mode is authoritative.** A compromised server cannot escalate
-  an agent's permissions. §4.1 is the whole design consequence of this.
-- **Structured actions, never raw commands.** New action types go in
-  `ACTION_REGISTRY` and are mirrored by the agent executor.
-- **Nothing ever blocks.** Reprovisioning is Free, so no licensing path touches
-  it at all — no `require_feature`, no 402, nothing to degrade.
-- **Extension tables FK into core; core gains no columns.** That rule governs
-  `apps_business`. `apps/reprovision` is core, so the one core column this adds
-  (§6, `Host.maintenance_until`) is legitimate — but it is the only one.
-
-## 3. Architecture
-
-### 3.1 Mechanism
-
-The agent, running on the live OS, stages an installer kernel and initrd into
-`/boot`, writes a **one-shot** bootloader entry, and reboots. The installer
-boots, fetches a generated answer file from Vigil, wipes the disk, installs
-unattended, and its post-install stage runs Vigil's `install.sh` with a
-one-time enrolment token.
-
-**One-shot bootloader entry, not `kexec`.** `kexec` is faster and skips
-firmware, but it has no fallback: if the installer kernel fails to come up, the
-machine is simply down. A one-shot entry (`grub-reboot` / `grub2-reboot` writing
-`next_entry` to grubenv, or `bootctl set-oneshot`) lapses on its own, so a
-failed installer boot lands back in the old OS unaided. That single property
-converts the scariest failure class into a self-healing one and is worth more
-than the seconds `kexec` saves.
-
-Supported bootloaders: GRUB2 (BIOS and UEFI) and systemd-boot. Anything else
-fails pre-flight rather than being guessed at.
-
-### 3.2 The point of no return
-
-**The answer-file fetch is the only positive proof the installer booted, and it
-is also the moment the disk starts being destroyed.** The entire state machine
-is organised around that line.
-
-Before it, nothing is committed: `/boot` has some extra files and a one-shot
-entry that expires. After it, the machine is being wiped and remote recovery is
-no longer possible. Every design decision below asks which side of the line it
-is on.
-
-### 3.3 Lifecycle
-
-```
-PENDING ──60s abort window──► STAGING ──► STAGED ──► REBOOTING
-   │                             │           │           │
-   └──────── ABORTED ────────────┴───────────┘           │
-                                                          │
-                     old agent checks in ─────────────► FAILED
-                     (installer never booted)             │
-                                                          │
-                          ═══════ POINT OF NO RETURN ═════╪═══
-                                                          │
-                                                     INSTALLING
-                                                          │
-                                                     ENROLLING
-                                                          │
-                                                     COMPLETED
-```
-
-| State | Meaning | Exit |
+| Family | Distributions | Installer |
 |---|---|---|
-| `PENDING` | Ceremony passed; 60s abort window open | 60s elapse → `STAGING`; operator aborts → `ABORTED` |
-| `STAGING` | Agent fetching kernel/initrd, verifying checksums | success → `STAGED`; any error → `FAILED`; operator aborts → `ABORTED` |
-| `STAGED` | Artifacts on disk, pre-flight green, bootloader untouched | commit dispatched → `REBOOTING`; operator aborts → `ABORTED` |
-| `REBOOTING` | One-shot entry written, reboot issued | answer fetched → `INSTALLING`; old agent check-in → `FAILED`; deadline → `TIMED_OUT` |
-| `INSTALLING` | Installer confirmed running; disk being wiped | enrol token redeemed → `ENROLLING`; deadline → `TIMED_OUT` |
-| `ENROLLING` | New agent registered, awaiting first check-in | check-in → `COMPLETED`; deadline → `TIMED_OUT` |
-| `COMPLETED` | Tag applied, maintenance cleared, baseline dispatched | terminal |
-| `FAILED` / `ABORTED` / `TIMED_OUT` | With a recorded reason | terminal |
+| Ubuntu | Ubuntu | Autoinstall |
+| Debian | Debian | Preseed |
+| RHEL | Rocky, Alma, RHEL, Fedora | Kickstart |
 
-The 60-second `PENDING` window implements the high-risk convention
-(2FA + 60s delay) as a real abort button rather than a spinner. `ABORTED` is
-only reachable before the reboot is issued; after that the honest answer is
-that it is out of our hands. Aborting from `STAGING` or `STAGED` dispatches a
-cleanup action removing `/boot/vigil-reprovision/`; no bootloader entry exists
-yet at that point, since only `reprovision_commit` writes one. An abandoned job
-leaves nothing behind.
+Vigil supports these bootloaders on the target machine:
 
-A Celery beat task sweeps for jobs past their deadline and moves them to
-`TIMED_OUT`. Default deadline: 60 minutes from `REBOOTING`, configurable per
-profile, because a RHEL install over a slow link legitimately takes longer than
-a Debian netinstall.
+- GRUB2, in BIOS or UEFI mode
+- systemd-boot
 
-## 4. Security
+A machine with any other bootloader fails the pre-flight check. Windows is not
+supported.
 
-This is the highest-consequence feature in Vigil: it destroys data by design,
-and no revocation undoes it after the fact. Security is therefore the spine of
-the design, not a review pass over it.
+## Set up a rebuild
 
-### 4.1 `reprovision` is carved out of the mode system
+### 1. Allow a machine to be rebuilt
 
-`AgentConfig.task_allowed()` returns `True` for **any** action when
-`mode: full_control`. A naive `reprovision` action would therefore mean:
-compromise the Vigil server, and every full-control host in the fleet wipes
-itself on command. That directly contradicts the standing principle that a
-compromised server cannot escalate an agent's permissions — and a rebuild is
-the ultimate escalation.
-
-**So the reprovision actions are exempt from mode entirely.** They require a
-separate explicit opt-in in `agent.yml`:
+By default, an agent refuses rebuild actions. To allow a machine to be rebuilt,
+set `allow_reprovision` in its `agent.yml` file:
 
 ```yaml
 # Permit this machine to be remotely wiped and reinstalled.
@@ -144,311 +57,245 @@ separate explicit opt-in in `agent.yml`:
 allow_reprovision: false
 ```
 
-`task_allowed()` gains an explicit branch: reprovision actions consult
-`allow_reprovision` and nothing else — not mode, not the allowlist. The
-authority to wipe a machine lives on that machine.
+Set the value to `true` to allow rebuilds. The `full_control` mode does not
+allow them on its own. The install one-liner can set this flag when you enrol
+a new agent.
 
-The install one-liner can set it at enrolment time, so adoption is a flag, not
-a chore. The read-only `reprovision_preflight` probe is **not** covered by the
-carve-out — it changes nothing, so it behaves as an ordinary low-risk
-allowlistable action, which lets an operator check rebuild-readiness across a
-fleet without arming anything.
+Rebuild actions ignore the agent's mode and task allowlist. The permission to
+wipe a machine is set on that machine only.
 
-### 4.2 The answer file
+### 2. Add an image
 
-It is fetched by an installer that holds no credentials, so an unguessable URL
-is the only available gate: `secrets.token_urlsafe(32)`, 256 bits. Rather than
-rely on that alone, the file is made **not worth stealing**:
+You can add an image in two ways. Only administrators can add images, because
+an image decides what code runs as root on every machine you rebuild.
 
-- **Root password stored only as a crypt hash**, never plaintext. SSH keys are
-  the documented preference. Profile secrets are encrypted at rest with the
-  existing `apps/hosts/crypto.py` Fernet helper — the same one behind
-  `ADConfig.bind_password_encrypted`.
-- **The enrolment token is one-time and job-scoped.** Redeeming it grants
-  exactly one thing: become this one existing host. It cannot enrol a second
-  machine and cannot outlive the job deadline. Stored hashed, so a database
-  read does not yield a usable token.
-- **Rendered lazily on fetch**, never written to disk. Served `Cache-Control:
-  no-store`. Never logged in full.
-- **Servable only while the job is in `REBOOTING` or `INSTALLING`.** Outside
-  that window the URL 404s, including after the job completes.
-- **Repeat fetches are allowed but pinned.** Strict single-fetch would break
-  real installers — subiquity re-reads its data source — so subsequent fetches
-  are served only to the IP that made the first one, and each is audited.
+**Pull an image.** Vigil downloads the image itself. You can choose a distribution
+from the built-in catalog, or enter a custom URL. Every pull requires a SHA-256
+checksum.
 
-A full interception yields a crackable password hash, public SSH keys, and a
-token that is already consumed. Not nothing; not a foothold.
+**Upload an image.** Upload an ISO file directly. Vigil computes its SHA-256
+checksum as it receives the file.
 
-**Transport.** If `VIGIL_PUBLIC_URL` is plain HTTP, that file crosses the LAN
-in the clear. This is not hard-blocked, because that would break exactly the
-homelab setups Vigil targets — but it must be acknowledged, and the insecure
-path stops being silent.
+Vigil does not download from cloud metadata addresses, loopback addresses, or
+link-local addresses. Private network addresses are allowed, so you can use an
+internal mirror.
 
-Since 2026.12.0 the acknowledgement is a **standing decision about the
-instance**, made under Settings → Identity & Security → Transport Security and
-stored on `hosts.TransportAck` with the admin who made it and when. It can be
-withdrawn. Asked inside every rebuild it read as one more box on the way to the
-button, which is the opposite of what an acknowledgement is for; asked once, by
-name, it is a posture decision someone owns.
+When Vigil imports an image, it:
 
-`acknowledge_plaintext_transport` on the ceremony payload still works, for API
-callers and for an instance that has not recorded the standing one. The
-rebuild is refused only when neither is present (and the request is neither
-HTTPS nor from a private network).
+1. Reads the ISO and extracts the kernel, the initrd, and the install tree.
+2. Checks the checksum.
+3. Deletes the ISO and keeps the checksum.
 
-### 4.3 Credential rotation and revocation
+Because the ISO is deleted, you cannot check the image again later. Vigil checks
+it once, at import.
 
-At the transition into `INSTALLING` the **old `agent_token` is revoked**.
-Without this, a token recovered from a backup or forensic image of the wiped
-disk authenticates as that host indefinitely.
+If you pull an image that is already downloading, importing, or ready, Vigil
+returns a conflict error that names the existing entry. If a pull failed, you
+can retry it, and Vigil reuses the same entry.
 
-The handoff: post-install runs `install.sh` with a one-time
-`VIGIL_ENROLL_TOKEN`. The new agent generates its own `agent_token` as it
-normally does and POSTs both to `/api/v1/reprovision/enroll`. The server:
+Image management is not available through the per-site operator permissions.
 
-1. Looks the job up by **token hash**, rejecting if consumed, expired, or the
-   job is not in `INSTALLING`/`ENROLLING`.
-2. Consumes the token **atomically** — a single conditional
-   `UPDATE ... WHERE consumed_at IS NULL` returning a rowcount, not
-   read-then-write — so a replay race cannot mint two approved hosts.
-3. Rotates `agent_token` on the existing `Host` row, sets status `APPROVED`,
-   stamps `rebuilt_at`.
-4. **Clears stale `HostInventory`, `DockerContainer` rows, and vuln findings.**
-   They describe an operating system that no longer exists; leaving them means
-   the dashboard reports packages and CVEs for a dead install.
+### 3. Create an install profile
 
-The endpoint is throttled per IP exactly as `hosts.register()` already is.
+An install profile holds the settings that the installer uses. Open
+**Reprovision > Install profiles** to create or edit one. You can also use the
+API.
 
-### 4.4 Authorization
-
-The ceremony requires password **and** TOTP **and** the typed hostname — all
-three. The existing `require_totp_confirmation` verifies **only** TOTP — the
-`"password": "..."` in `definition_deploy`'s docstring is stale and is never
-read — so rebuild gets its own confirmation function rather than reusing that
-one, and adds a real password check on top. Re-authentication
-happens at confirm time regardless of session age: an idle hijacked session
-must not be able to rebuild a fleet.
-
-`CAPABILITIES` in `apps/accounts/permissions.py` gains:
-
-```python
-"reprovision": frozenset({"view", "rebuild"}),
-```
-
-grantable per-site through the operator matrix from 2026.5.0. Admins get both.
-
-**Image management is admin-only and deliberately absent from the operator
-matrix.** Whoever can upload an ISO chooses what code runs as root on every
-rebuilt machine — the same reasoning that already makes `upload_agent`
-admin-only. There is no per-site delegation of it.
-
-Images require a SHA-256 at registration, verified after fetch, and displayed
-in the ceremony next to the target disk.
-
-### 4.5 Audit
-
-Every state transition emits through `vigil/hooks.py` rather than importing
-`apps_business.audits` directly — reprovision is Free, audits is Business, and
-the event bus is exactly the seam for that. Events carry: actor, source IP,
-which auth factors were satisfied, image name and checksum, profile, target
-disk, and every answer-file fetch with its source IP.
-
-## 5. Pre-flight
-
-Dispatched before staging; its snapshot is stored on the job. Any failure
-aborts before the bootloader is touched.
-
-| Check | Fails when |
+| Setting | What it does |
 |---|---|
-| Bootloader family | Not GRUB2 (BIOS/UEFI) or systemd-boot |
-| `/boot` free space | Less than kernel + initrd + 20% headroom |
-| RAM | Below the installer's documented minimum for the family |
-| Architecture | Host arch ≠ image arch |
-| Target disk present | Named device absent |
-| Network match | Profile is static and its subnet ≠ the host's current address |
+| Name | A label for the profile. |
+| Image | The image the profile installs. |
+| Disk target | The disk the installer wipes and installs to. |
+| Partition scheme and filesystem | How the installer partitions and formats the disk. |
+| Network mode | `dhcp`, or `static` with an address, gateway, and DNS servers. |
+| Timezone, locale, keyboard | System regional settings. |
+| Admin username and password | The first account. The password is stored as a hash. |
+| SSH authorized keys | Public keys for the admin account. |
+| Extra packages | Packages the installer adds. |
+| Completion tags | Tags applied to the host when the rebuilt machine checks in. |
+| Raw append | Text added to the end of the answer file, for settings the form does not cover. |
+| Deadline minutes | How long the rebuild may take. The default is 60 minutes from the reboot. |
 
-The disk check reports **every** detected disk with size and current mount
-points, not just the target — because the failure this guards against is
-selecting the data disk by mistake, and that is caught by a human reading the
-list, not by a predicate.
+The profile must have an SSH key or a password hash. Otherwise nobody can log
+in to the rebuilt machine. A static network mode must have both an address and
+a gateway. The API rejects a profile that breaks either rule.
 
-The network check is the one that earns its place: the dominant cause of
-"installed fine, never came back" is a static profile that does not match the
-network the machine is actually on. It can be overridden explicitly for a
-deliberate re-addressing, and the override is audited.
+Completion tags use the form `key:value`. You cannot use the `agent:` prefix,
+because Vigil uses it for tags that agents report.
 
-## 6. Data model
+Vigil reads completion tags when the machine checks in, so an edit to the
+profile during a rebuild changes the tags that are applied.
 
-`apps/reprovision/models.py`:
+To preview the answer file for a host, use
+`POST /api/v1/reprovision/profiles/{id}/preview/`. Secrets are hidden in the
+preview.
 
-**`OSImage`** — `name`, `os_family` (`ubuntu`/`debian`/`rhel`), `version`,
-`architecture`, `sha256`, `size_bytes`, `status`
-(`downloading`/`importing`/`ready`/`failed`), `import_error`, `kernel_path`,
-`initrd_path`, `tree_path`, `source_url` (set when the image was pulled rather
-than uploaded), `bytes_downloaded`, `created_by`, `created_at`.
+### 4. Run a pre-flight check
 
-Two ways to fill an `OSImage`: **pull** it (Vigil fetches the URL itself, from
-a curated catalog of anonymously-fetchable distros or a custom URL — see
-§9's `images/pull/` and `apps/reprovision/catalog.py`) or **upload** it (the
-operator POSTs the file directly, streamed to disk and hashed in one pass —
-see `images/upload/`). Every URL Vigil fetches, catalog or custom, is checked
-against `apps/reprovision/fetch_guard.py` before anything is created: it
-refuses cloud instance metadata addresses, loopback, and link-local ranges —
-the destinations with no legitimate ISO on them — while allowing private
-ranges, since an internal mirror is a legitimate source. A SHA-256 digest is
-required either way; `images.verify_checksum` refuses an empty one rather
-than importing unverified.
+Before you rebuild, run a pre-flight check on the host. It changes nothing on
+the machine. Use it to check whether a host is ready for a rebuild.
 
-A pull is keyed on the digest, so the same bytes cannot enter the library
-twice. Re-pulling an image that is already downloading, importing, or ready
-answers **409** naming the existing entry; re-pulling one that **failed**
-retries in place on the existing row instead of creating a second. Before
-2026.7.2 every pull created a new row, so retrying a failing import left the
-library holding several identical entries.
+Vigil checks:
 
-On import Vigil reads the ISO with **`pycdlib`** — a pure-Python ISO9660
-reader, because a Docker container cannot loop-mount — extracts kernel and
-initrd, unpacks the install tree, verifies the checksum, then **discards the
-ISO and keeps the checksum**. Storage stays at roughly 1× per image rather
-than 2×. The trade-off is that the original cannot be re-verified later; it is
-verified once, at import, and the digest is recorded.
+| Check | The check fails when |
+|---|---|
+| Bootloader | The bootloader is not GRUB2 (BIOS or UEFI) or systemd-boot. |
+| `/boot` free space | `/boot` has less than the kernel and initrd size plus 20 percent. |
+| RAM | The machine has less RAM than the installer needs for its family. |
+| Architecture | The machine's architecture does not match the image's architecture. |
+| Target disk | The disk named in the profile is not present. |
+| Network | The profile uses a static address on a different subnet from the machine's current address. |
 
-**Naming inside the ISO.** The same file is reachable under up to three
-naming schemes, and pycdlib makes the caller say which one it means.
-`iso_path` is bare ISO-9660, where `/casper/vmlinuz` is spelled
-`/CASPER/VMLINUZ.;1`; Rock Ridge and Joliet carry the real names. Both
-`_find_record` (kernel/initrd) and `_extract_tree` (the install tree) ask
-Rock Ridge first, then Joliet, then munged ISO-9660. Getting this wrong is
-quiet in both directions: looking up a lowercase path under `iso_path` misses
-on every ISO ever made, and walking `iso_path` extracts a tree of uppercase
-names with trailing dots that imports cleanly and then 404s for every file
-the installer requests.
+The disk check lists every disk with its size and current mount points. Check
+this list before you confirm. Selecting the wrong disk is the most likely
+mistake, and only a person reading the list can catch it.
 
-**`InstallProfile`** — `name`, `image` FK, `disk_target`, `partition_scheme`,
-`filesystem`, `network_mode` (`dhcp`/`static`) with `static_address`,
-`gateway`, `dns`, `timezone`, `locale`, `keyboard`, `admin_username`,
-`admin_password_encrypted`, `ssh_authorized_keys`, `extra_packages` (JSON
-list), `completion_tags` (JSON list), `raw_append`, `deadline_minutes`,
-`created_by`.
+If the network check fails, the machine may install correctly and then never
+come back online. You can override the check for a planned change of address.
+Vigil records the override in the audit log.
 
-`raw_append` is the escape hatch: appended verbatim to the rendered answer
-file for anything the typed fields do not model.
+### 5. Start a rebuild
 
-`completion_tags` (2026.7.4) are applied to the host when the rebuilt machine
-checks back in. As of 2026.12.0 they are the **only** way a rebuild tags a
-host: `RebuildJob.completion_tag` is no longer accepted from the ceremony, and
-the one-off field has gone from the dialog. Two ways to say the same thing
-meant the ceremony asked twice and the answers could disagree. The column
-remains so existing jobs read back, and a request still sending the field is
-ignored rather than refused. `agent:*` is refused at save time on the profile
-and again at apply time. They are read at completion rather than snapshotted
-onto the job, so editing the profile mid-rebuild changes what lands; the
-window is one rebuild and the effect is a tag.
+Open the host, choose **Rebuild**, and select an image and a profile. To
+confirm, enter:
 
-Edited through **Reprovision → Install profiles** since 2026.7.3. The API
-predates the UI by several releases; before then the page could only list
-profiles created through the API directly. Two invariants the serializer
-enforces, both otherwise discovered after the disk is wiped: a profile needs
-an SSH key or a password hash or nobody can log into the result, and static
-addressing needs both an address and a gateway. `admin_password` is
-write-only — a blank value on an edit means *keep the stored hash*, since the
-API never returns one.
+1. The account password.
+2. A TOTP code from your authenticator app.
+3. The host's hostname.
 
-**`RebuildJob`** — `host` FK, `image` FK, `profile` FK, `requested_by`,
-`requested_at`, `confirmed_ip`, `state`, `state_changed_at`, `deadline`,
-`answer_token_hash`, `answer_fetched_at`, `answer_fetch_ip`,
-`enroll_token_hash`, `enroll_consumed_at`, `preflight` (JSON snapshot),
-`completion_tag`, `post_playbook` FK (nullable), `post_run` FK to `TaskRun`
-(nullable), `failure_reason`.
+Vigil asks for your password and TOTP code each time you confirm, even if you
+signed in recently.
 
-`completion_tag` and `post_playbook` are no longer written by the ceremony as
-of 2026.12.0 — the columns are retained so historical jobs still read back.
+The confirmation shows the image checksum and the target disk. Check both
+before you confirm.
 
-The job holds the `TaskRun` FK, so `apps/tasks` needs no new column —
-`TaskRun.Source` gains a `REPROVISION` choice and nothing else.
+## What happens during a rebuild
 
-**Core change (the only one):** `Host.maintenance_until`, nullable datetime,
-honoured by the alert evaluator. A rebuild means ~40 minutes of "host down";
-without suppression the first real rebuild pages everyone and teaches people to
-ignore the alerts. `apps/alerts` has no maintenance-window concept today. The
-job sets it entering `REBOOTING` and clears it on every terminal state.
+A rebuild moves through these states.
 
-Jobs are site-scoped through their host via the existing `vigil.scoping`
-façade, which degrades correctly when `apps_business` is absent. The image and
-profile catalog is global in 2026.6.0; per-site catalogs can be added later
-with an assignment table exactly as baselines were, and are not built now.
-
-## 7. Answer-file rendering
-
-One renderer per family behind a common interface, registered by `os_family`
-so a fourth can be added without touching callers.
-
-| Family | Kernel cmdline | Endpoint shape |
+| State | What it means | Next state |
 |---|---|---|
-| Ubuntu | `autoinstall ds=nocloud-net;s=<base>/reprovision/answer/<tok>/` | Directory: serves `user-data` and `meta-data` |
-| Debian | `auto=true priority=critical url=<base>/reprovision/answer/<tok>` | Single preseed file |
-| RHEL | `inst.ks=<base>/reprovision/answer/<tok> inst.repo=<base>/reprovision/tree/<image_id>/` | Single kickstart file |
+| `PENDING` | You confirmed the rebuild. Vigil waits 60 seconds. | `STAGING` after 60 seconds, or `ABORTED` if you abort. |
+| `STAGING` | The agent downloads the kernel and initrd and checks their checksums. | `STAGED`, or `FAILED`. You can also abort. |
+| `STAGED` | The files are on the disk, the pre-flight check passed, and the bootloader is unchanged. | `REBOOTING` when the commit starts, or `ABORTED`. |
+| `REBOOTING` | The agent sets a one-time boot entry and restarts the machine. | `INSTALLING` when the installer fetches its answer file. |
+| `INSTALLING` | The installer is running and is wiping the disk. | `ENROLLING` when the new agent redeems its token. |
+| `ENROLLING` | The new agent is registered and waits for its first check-in. | `COMPLETED` at check-in. |
+| `COMPLETED` | The tags are applied, the maintenance window is cleared, and the baseline starts. | None. This is the final state. |
+| `FAILED`, `ABORTED`, `TIMED_OUT` | The rebuild stopped. Vigil records the reason. | None. |
 
-Each renderer emits the Vigil enrolment block into the family's post-install
-stage (`late-commands`, `d-i preseed/late_command`, `%post`), invoking
-`install.sh` with the one-time token and the server URL.
+You can abort during `PENDING`, `STAGING`, or `STAGED`. When you abort, Vigil
+removes the staged files from `/boot/vigil-reprovision/`. Nothing is changed on
+the bootloader until the reboot. After the reboot starts, you cannot abort the
+rebuild.
 
-**Golden-file tests are mandatory here.** A renderer regression produces a
-machine that wipes itself and then hangs at an interactive prompt — this
-feature's worst outcome — so each renderer is pinned byte-for-byte against a
-committed expected output.
+If a rebuild passes its deadline, Vigil marks it `TIMED_OUT`. The default
+deadline is 60 minutes from the reboot. You can change it in the install
+profile. A slow network may need more time for a RHEL install than for a
+Debian netinstall.
 
-## 8. Agent-side changes
+While a rebuild runs, Vigil suppresses alerts for the host. When the rebuild
+ends, the suppression is removed.
 
-New module `agent/vigil_agent/reprovision.py`. Four actions, mirrored in
-`ACTION_REGISTRY`:
+### The point of no return
 
-- **`reprovision_preflight`** — risk `low`, allowlistable, read-only. Returns
-  the §5 snapshot.
-- **`reprovision_stage`** — risk `high`, requires `allow_reprovision`.
-  Downloads kernel and initrd, verifies SHA-256, writes them under
-  `/boot/vigil-reprovision/`. Reversible: touches nothing but those files.
-- **`reprovision_commit`** — risk `high`, requires `allow_reprovision`. Writes
-  the one-shot bootloader entry and reboots.
-- **`reprovision_cleanup`** — risk `low`, requires `allow_reprovision`. Removes
-  `/boot/vigil-reprovision/`. Dispatched on abort, and on `FAILED` when the old
-  OS is still reachable.
+The installer's first request for its answer file is the point of no return.
+At that point the disk starts to be wiped, and you can no longer recover the
+machine remotely.
 
-Staging and committing are separate on purpose: `STAGED` is a genuine
-checkpoint where the slow, failure-prone work is already done and the operator
-can still abort with nothing damaged.
+Before that point, a failed boot returns the machine to its old operating
+system. The boot entry is a one-time entry, so it expires on its own.
 
-## 9. API surface
+### After the rebuild
+
+When the new agent checks in, Vigil:
+
+1. Applies the profile's completion tags. Tags that you set before the rebuild
+   stay in place.
+2. Clears the host's maintenance window.
+3. Marks the rebuild job `COMPLETED`.
+
+Vigil also:
+
+- Replaces the host's agent token. The old token stops working when the
+  installer starts.
+- Clears the host's package inventory, container list, and vulnerability
+  findings. They describe the old system.
+- Sets the host's `rebuilt_at` time.
+
+To return a host to a known-good state, give the machine a completion tag that
+an auto-enrol rule uses. When the machine checks in with that tag, the rule
+runs its playbook. The run appears in the host's run history. Playbooks that
+run on a rebuilt machine work the same way for a machine rebuilt by any other
+route.
+
+## Security
+
+Vigil protects a rebuild in these ways:
+
+- **Password and TOTP.** A rebuild needs your password, a TOTP code, and the
+  hostname. Vigil checks them each time.
+- **Answer file.** The answer file is available only while the rebuild is in
+  the `REBOOTING` or `INSTALLING` state. The URL has 256 bits of randomness. The
+  file is generated when it is requested and is never stored on disk. It
+  returns `Cache-Control: no-store`, and Vigil does not log it in full.
+- **Stored secrets.** The root password is stored as a hash. Other secrets in
+  the profile are encrypted at rest.
+- **Enrolment token.** The token works once, for one job. It can enrol only
+  the host that the job names, and it expires when the job's deadline passes.
+  Vigil stores it as a hash.
+- **Repeat fetches.** The installer can fetch the answer file again. Vigil
+  serves repeat fetches only to the IP address that made the first request, and
+  it logs each fetch.
+- **Audit log.** Vigil records each state change, the user, the source IP
+  address, the authentication factors, the image, the profile, the target disk,
+  and each answer-file fetch.
+
+### Plain HTTP
+
+If `VIGIL_PUBLIC_URL` uses plain HTTP, the answer file crosses your network
+without encryption. Vigil allows this for home labs. Before you rebuild, an
+administrator must accept the risk.
+
+Accept the risk once for the whole instance under **Settings > Identity &
+Security > Transport Security**. Vigil records who accepted it and when. You
+can withdraw the acceptance at any time.
+
+API clients can instead send `acknowledge_plaintext_transport: true` with each
+rebuild request. Vigil refuses a rebuild over plain HTTP from a public address
+unless one of these is set.
+
+## API reference
 
 ```
-GET    /api/v1/reprovision/catalog/               distros Vigil can fetch on its own
-POST   /api/v1/reprovision/images/pull/           queue a download (catalog id or custom url+sha256, admin only)
-POST   /api/v1/reprovision/images/upload/         upload an ISO directly (admin only)
-GET    /api/v1/reprovision/images/                list the library
-POST   /api/v1/reprovision/images/                register without fetching (admin only)
-GET    /api/v1/reprovision/images/{id}/           detail + import status
-DELETE /api/v1/reprovision/images/{id}/           admin only
+GET    /api/v1/reprovision/catalog/               distributions Vigil can download
+POST   /api/v1/reprovision/images/pull/           download an image (administrators only)
+POST   /api/v1/reprovision/images/upload/         upload an ISO (administrators only)
+GET    /api/v1/reprovision/images/                list the image library
+POST   /api/v1/reprovision/images/                register an image without downloading it (administrators only)
+GET    /api/v1/reprovision/images/{id}/           image details and import status
+DELETE /api/v1/reprovision/images/{id}/           delete an image (administrators only)
 
-GET    /api/v1/reprovision/profiles/              list
-POST   /api/v1/reprovision/profiles/              create
+GET    /api/v1/reprovision/profiles/              list profiles
+POST   /api/v1/reprovision/profiles/              create a profile
 GET|PATCH|DELETE /api/v1/reprovision/profiles/{id}/
-POST   /api/v1/reprovision/profiles/{id}/preview/ render for a host, secrets redacted
+POST   /api/v1/reprovision/profiles/{id}/preview/ preview the answer file, secrets hidden
 
-POST   /api/v1/reprovision/preflight/             dispatch the probe (host in body)
-GET    /api/v1/reprovision/jobs/                  list, site-scoped via host
-POST   /api/v1/reprovision/jobs/                  create — the ceremony
-GET    /api/v1/reprovision/jobs/{id}/             detail + timeline
-POST   /api/v1/reprovision/jobs/{id}/abort/       PENDING | STAGING | STAGED only
+POST   /api/v1/reprovision/preflight/             run the pre-flight check (host in the body)
+GET    /api/v1/reprovision/jobs/                  list rebuild jobs for sites you can see
+POST   /api/v1/reprovision/jobs/                  start a rebuild
+GET    /api/v1/reprovision/jobs/{id}/             job details and timeline
+POST   /api/v1/reprovision/jobs/{id}/abort/       abort a job in PENDING, STAGING, or STAGED
 
-GET    /reprovision/answer/<opaque>               installer-facing, unauthenticated
-GET    /reprovision/tree/<image_id>/...           installer-facing, unauthenticated
-POST   /api/v1/reprovision/enroll                 one-time token, throttled per IP
+GET    /reprovision/answer/<opaque>               used by the installer, no login
+GET    /reprovision/tree/<image_id>/...           used by the installer, no login
+POST   /api/v1/reprovision/enroll                 redeem the one-time token, limited per IP
 ```
 
-The two installer-facing routes sit outside `/api/v1` and outside session auth
-by necessity — the installer has no credentials. Their security is §4.2.
+The installer uses the `answer` and `tree` routes without credentials. These
+routes are outside `/api/v1`.
 
-Ceremony payload:
+Start a rebuild with a request like this:
 
 ```json
 {
@@ -459,111 +306,42 @@ Ceremony payload:
 }
 ```
 
-`completion_tag` and `post_playbook` were removed from this payload in
-2026.12.0 — tags come from the install profile, and a playbook that should run
-on a rebuilt machine is auto-enroll's job: it fires when the machine checks
-back in carrying the profile's tags, and it keeps working for a machine
-rebuilt by any other route. `acknowledge_plaintext_transport` is optional when
-the standing acknowledgement is recorded (§4.2).
+`acknowledge_plaintext_transport` is optional when the instance-wide
+acceptance is recorded.
 
-## 10. Completion chain
+## Limitations
 
-On the first check-in from the rebuilt agent the job:
+- **Compromised hosts.** A rebuild does not guarantee that malware is removed.
+  If an attacker has control of the machine's kernel, the attacker can stop the
+  wipe and report that it succeeded. Use a rebuild to return a drifted machine
+  to a known-good state or to clean up after ransomware. For a host you suspect
+  is compromised, reinstall it from out-of-band media that you control, such as
+  a bare-metal reinstall or a management controller (BMC).
+- **Proof of the wipe.** To confirm a rebuild worked, check the host's
+  `rebuilt_at` time and whether its inventory was cleared. Do not rely only on
+  the agent's report.
+- **Stuck installs.** If an install stops part way through, or the machine
+  installs but never reconnects, the rebuild ends as `TIMED_OUT`. You must
+  fix the machine in person.
+- **One host at a time.** Each rebuild job covers one host. Vigil does not
+  support bulk rebuilds.
+- **Image checks.** Vigil checks images with SHA-256 only. It does not verify
+  GPG signatures from distributions.
+- **Images are global.** Every site shares the same image library and profile
+  list.
+- **PXE and BMC.** Vigil does not support PXE network boot or out-of-band
+  management (Redfish or IPMI).
+- **Windows.** Windows is not supported. Vigil does not accept Windows images.
 
-1. Applies the free-form `key:value` completion tag, **rejecting the reserved
-   `agent:` namespace** so it cannot collide with agent-advertised tags.
-   Operator-set tags from before the rebuild survive; this appends.
-2. Clears `Host.maintenance_until`.
-3. Dispatches the chosen baseline via the existing `dispatch_to_host`, records
-   the `TaskRun` on the job, and stamps `COMPLETED`.
+## Testing
 
-`rebuilt:need config` → baseline reinstalls the stack → compromised box back to
-known-good, with the whole path visible in the run history shipped in 2026.5.0.
+Each release is tested as follows:
 
-## 11. Failure modes
+- The answer files for each family are checked against stored expected output.
+  A change to the output fails the tests.
+- Every state change and timeout path is tested.
+- Security checks cover the answer-file window, repeat fetches from other
+  addresses, token reuse, permissions, and the confirmation factors.
 
-| What breaks | Where | Outcome |
-|---|---|---|
-| Pre-flight fails | before staging | `FAILED`, nothing touched |
-| Download or checksum mismatch | staging | `FAILED`, bootloader untouched |
-| Installer never boots | after reboot | one-shot entry lapses, old OS returns, old agent checks in → `FAILED` |
-| Install dies mid-way | after the line | `TIMED_OUT` — **needs physical access** |
-| Installed, agent never enrols | after the line | `TIMED_OUT`, machine alive but invisible |
-
-Rows four and five are the irreducible risk and the docs will say so plainly.
-Row five is engineered against by the pre-flight network check (§5); row four
-is not recoverable by any means available to an agent-driven design.
-
-**The limitation this design accepts.** If a host is genuinely rooted, the
-agent on it is rooted too, and an attacker with kernel-level persistence can
-no-op the wipe while reporting success. Agent-driven reinstall is excellent for
-drift, ransomware cleanup, and returning a box to known-good; it is **not** a
-trustworthy eradication path against a sophisticated attacker. What proves the
-wipe happened is the post-rebuild evidence — a rotated `agent_token`, a fresh
-`rebuilt_at`, cleared inventory — not the agent's own success report. Users
-who need guaranteed eradication need out-of-band reinstall, which is the BMC
-path deferred in §1. The documentation must say this rather than implying the
-feature is an incident-response silver bullet.
-
-## 12. Windows readiness
-
-Windows is not built here, but three seams keep it additive:
-
-1. **Renderer registry keyed by `os_family`** — `unattend.xml` becomes a fourth
-   registration, not a branch in shared code.
-2. **Boot staging behind an interface** — `stage()` / `commit()` are agent-side
-   operations with family-specific implementations, so WinPE + `bcdedit`
-   replaces GRUB one-shot without changing the job, the ceremony, or the state
-   machine.
-3. **Enrolment is transport-agnostic** — the one-time token exchange is a plain
-   HTTPS POST, so `install.ps1` uses the identical endpoint.
-
-Nothing in the catalog, ceremony, RBAC, or re-enrolment design is Linux-specific.
-
-## 13. Testing
-
-- **Renderers:** golden-file, byte-for-byte, per family. Non-negotiable (§7).
-- **State machine:** every transition and every timeout path.
-- **Security:**
-  - answer file 404s outside `REBOOTING`/`INSTALLING`, including after completion
-  - second fetch from a different IP is refused
-  - concurrent double-redeem of an enrolment token yields exactly one winner
-  - a `full_control` agent without `allow_reprovision` refuses the action
-  - old `agent_token` stops authenticating once `INSTALLING` is reached
-  - each RBAC denial path, including operator without `rebuild`
-  - ceremony rejects a correct password with a wrong hostname, and vice versa
-- **Pre-flight:** each check's failure path, and the network-mismatch override.
-- **Completion chain:** tag applied, `agent:` namespace rejected,
-  `maintenance_until` cleared, baseline dispatched.
-- **AGPL probe:** `vigil/_agpl_probe.py` extended, since jobs are site-scoped
-  through the scoping façade.
-
-**The gap, named rather than papered over:** no CI job can test an actual wipe.
-Everything above the boot boundary is covered; the boot-and-install itself
-needs a real VM. That becomes a documented manual smoke procedure — one per OS
-family, run before tagging — not something claimed as automated coverage. The
-migration failure earlier in this release cycle is the standing reminder that a
-green suite proves only what it actually exercises: the whole 338-test run
-passed on SQLite while the migration was broken on PostgreSQL.
-
-## 14. Deliberate deferrals
-
-- **Windows** — still deferred; 2026.7.1 shipped without it and no release is
-  committed to yet. Seams in §12. As of 2026.7.0 this also covers
-  images specifically: `OSImage.Family` and `images.KERNEL_PATHS` have no
-  Windows entry, so an upload or pull for it is refused rather than accepted
-  and failed after the transfer. The UI's Windows button is disabled with the
-  same explanation. Vigil's importer extracts a PXE `vmlinuz`/`initrd` pair;
-  Windows boots `bootmgr` against `boot.wim`, a different pipeline that
-  doesn't exist yet.
-- **BMC/Redfish and PXE** — the eradication and dead-box paths, §1 and §11.
-- **Per-site image catalogs** — global, as in 6.0; the assignment-table
-  pattern from baselines applies when needed.
-- **GPG signature verification of distro images** — SHA-256 plus admin-only
-  upload/pull is the floor. As of 2026.7.0, Vigil can also fetch a curated
-  catalog of images on its own (`apps/reprovision/catalog.py`) rather than
-  upload being the only path in — see the image library docs in the README
-  and wiki — but the images themselves are still verified by checksum only,
-  never a signature.
-- **Bulk rebuild** — one host per job. Fleet-wide rebuild multiplies the blast
-  radius of every failure mode above and deserves its own design.
+No automated test can run a complete wipe. Before each release, someone runs
+a manual rebuild in a virtual machine for each family.
