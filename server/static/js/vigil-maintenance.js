@@ -175,8 +175,8 @@ async function openMaintenanceForm(w) {
       <select class="form-control" id="mwf-hosts" multiple size="6">${hosts}</select>
       <div class="totp-sub">${escHtml(t('Leave empty, with no tags, to cover every host in the site.'))}</div></div>
     <div class="form-group"><label class="form-label" for="mwf-tags">${escHtml(t('Tags'))}</label>
-      <input type="text" class="form-control" id="mwf-tags" autocomplete="off"
-             placeholder="${escAttr(t('db, edge'))}" value="${editing ? escAttr((w.tags || []).join(', ')) : ''}"></div>
+      <div class="mwf-tag-row"><input type="text" class="form-control" id="mwf-tags" autocomplete="off"
+             placeholder="${escAttr(t('db, edge'))}" value="${editing ? escAttr((w.tags || []).join(', ')) : ''}"></div></div>
     <div class="form-group" id="mwf-site-field" hidden><label class="form-label" for="mwf-site">${escHtml(t('Site'))}</label>
       <select class="form-control" id="mwf-site"></select>
       <div class="totp-sub">${escHtml(t("A site's window covers only that site's hosts."))}</div></div>
@@ -194,6 +194,10 @@ async function openMaintenanceForm(w) {
   kindSel.onchange = () => _maintShowScheduleGroups(m);
   _maintShowScheduleGroups(m);
   sitePickFill($('#mwf-site'), $('#mwf-site-field'), editing ? w.site_id : null, { editing });
+  // The same Pick… button and tag list every other tag field has.
+  if (typeof attachTagPicker === 'function') {
+    attachTagPicker('mwf-tags', { title: t('Hosts in this window are tagged'), includeReserved: true });
+  }
 
   const close = () => m.close();
   $('#mwf-x').onclick = close;
