@@ -33,7 +33,13 @@ Alert.objects.create(host=hosts[0], rule=rule, severity="warning", message="upgr
 definition = TaskDefinition.objects.create(
     name="upg restart", owner=admin, risk_level="low",
     yaml_source="name: upg restart\nrisk: low\nactions:\n  - action: service_restart\n    params:\n      name: nginx\n")
-playbook = Playbook.objects.create(name="upg baseline", created_by=admin, target_tags=["web"])
+# Decision 16 backfills auto-sync onto playbooks made before the field existed.
+# A previous release that already has the field made this one with the normal
+# default, so the verify script must not expect the backfill: say which here.
+_had_auto_sync = any(f.name == "tasks_auto_sync" for f in Playbook._meta.get_fields())
+playbook = Playbook.objects.create(
+    name="upg baseline", created_by=admin, target_tags=["web"],
+    description="seeded with tasks_auto_sync" if _had_auto_sync else "")
 PlaybookStep.objects.create(playbook=playbook, definition=definition, order=0)
 UpdatePolicy.objects.create(name="upg nightly", target_tags=["prod"])
 
