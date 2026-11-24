@@ -260,10 +260,16 @@ async function renderDockerContainers(hostId, fromCache) {
   // All and Stopped, and when the filter text names it.
   const downStacks = allDown.filter(s => (!ctrState.chip || ctrState.chip === 'stopped')
     && (!ctrState.q || s.project.toLowerCase().includes(ctrState.q.toLowerCase())));
+  // A host with nothing at all gets New stack under its empty message, where
+  // the eye already is, instead of in the bar above it.
+  const hostIsEmpty = !allContainers.length && !allDown.length;
+  if (typeof setContainersEmpty === 'function') setContainersEmpty(hostIsEmpty);
   if (!containers.length && !downStacks.length) {
     countEl.textContent = '';
     wrap.innerHTML = `<div class="docker-empty">${filtering && allContainers.length
-      ? escHtml(t('No containers match this filter.')) : escHtml(t('No containers reported for this host.'))}</div>`;
+      ? escHtml(t('No containers match this filter.')) : escHtml(t('No containers reported for this host.'))}</div>`
+      + (hostIsEmpty && typeof setContainersEmpty === 'function'
+        ? `<div class="docker-empty-act"><button class="btn btn-sm btn-mint" type="button" data-stack-new>${escHtml(t('New stack'))}</button></div>` : '');
     return;
   }
   countEl.textContent = filtering
@@ -631,7 +637,9 @@ function _renderCtrChips() {
     + `
              <button class="btn btn-outline btn-xs" type="button" data-ctr-task="Prune unused images">${t('Prune unused')}</button>`;  // i18n-ignore
   const acts = {
-    containers: '',
+    // The image prunes are what frees space after container churn, so the
+    // tab people land on carries them too.
+    containers: imagesActs,
     images: imagesActs,
     volumes: `<button class="btn btn-outline btn-xs ctr-danger" type="button" data-ctr-task="Prune unused volumes">${t('Prune unused…')}</button>`,  // i18n-ignore
     networks: `<button class="btn btn-outline btn-xs" type="button" data-ctr-task="Prune unused networks">${t('Prune unused')}</button>`,  // i18n-ignore
