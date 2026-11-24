@@ -35,16 +35,19 @@ class TopologyPageTests(SimpleTestCase):
         page = _read("templates/pages/_topology.html")
         for needle in ('id="page-topology"', 'id="topo-q"', 'id="topo-site"', 'id="topo-tags"',
                        'id="topo-banner"', 'id="topo-canvas"', 'id="topo-panel"',
-                       'data-topo-toggle="containers"', 'data-topo-toggle="external"',
-                       'id="topo-fit"', 'id="topo-refresh"'):
+                       'data-topo-opt="links"', 'data-topo-opt="containers"', 'data-topo-opt="external"',
+                       'data-topo-opt="devices"', 'data-topo-opt="offline"', 'data-topo-opt="onlyTagged"',
+                       'id="topo-tag-q"', 'id="topo-views-menu"', 'id="topo-refresh"'):
             self.assertIn(needle, page)
+        # The zoom controls on the map carry Fit; a second one in the toolbar was redundant.
+        self.assertNotIn('id="topo-fit"', page)
         self.assertIn('hidden', page.split('id="topo-banner"')[1][:40], "the banner starts hidden")
 
     def test_the_script_owns_the_map(self):
         js = _read("static/js/vigil-topology.js")
         for needle in ("/api/v1/hosts/topology/", "function layoutTopology(data, sitesIn, chosenSite)",
                        "function renderTopology(", "function fitTopology(", "function openTopoHost(",
-                       "localStorage", "delegateClick(", "vigil-topo-tags", "pageName !== 'topology'",
+                       "localStorage", "delegateClick(", "vigil-topo-tags", "vigil-topo-views", "pageName !== 'topology'",
                        "selectContainersHost(", "openHostDetail(", "2026.14.4 agent"):
             self.assertIn(needle, js)
 

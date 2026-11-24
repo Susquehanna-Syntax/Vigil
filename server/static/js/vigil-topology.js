@@ -16,9 +16,14 @@
 /** A card's text line, or its port strip (at most four ports, then "+N"). */
 /** @typedef {{cls?: string, text?: string, ports?: {port: number, public: boolean}[], more?: number}} TopoCardRow */
 
-const topoState = /** @type {{data: any, site: string, tags: Set<string>, links: boolean, containers: boolean, external: boolean, q: string, selected: string|null, view: {x: number, y: number, k: number}, layout: any, loadedOnce: boolean, timer: ReturnType<typeof setTimeout>|null}} */ ({ data: null, site: '', tags: new Set(), links: true, containers: false, external: false, q: '', selected: null, view: { x: 0, y: 0, k: 1 }, layout: null, loadedOnce: false, timer: null });
+const topoState = /** @type {{data: any, site: string, tags: Set<string>, links: boolean, containers: boolean, external: boolean, devices: boolean, offline: boolean, onlyTagged: boolean, viewName: string, tagQ: string, q: string, selected: string|null, view: {x: number, y: number, k: number}, layout: any, loadedOnce: boolean, timer: ReturnType<typeof setTimeout>|null}} */ ({ data: null, site: '', tags: new Set(), links: true, containers: false, external: false, devices: true, offline: true, onlyTagged: false, viewName: '', tagQ: '', q: '', selected: null, view: { x: 0, y: 0, k: 1 }, layout: null, loadedOnce: false, timer: null });
 
 const TOPO_TAG_KEY = 'vigil-topo-tags';
+//: Saved views, and what the map showed last: both stay in this browser.
+const TOPO_VIEWS_KEY = 'vigil-topo-views';
+const TOPO_CURRENT_KEY = 'vigil-topo-current';
+//: The switches a view holds besides its site and tags.
+const TOPO_OPTS = ['links', 'containers', 'external', 'devices', 'offline', 'onlyTagged'];
 const TOPO_COLORS = ['lavender', 'mint', 'sky', 'peach', 'rose', 'lemon'];
 const TOPO_CARD_W = 200, TOPO_CARD_H = 96, TOPO_DEV_W = 150, TOPO_DEV_H = 56;
 const TOPO_STACK_ROW_H = 22, TOPO_GAP = 28, TOPO_PAD = 36, TOPO_TITLE_H = 52;
@@ -292,11 +297,17 @@ function _topoSiteCards(groups, hosts, devices, activeTags, internetSite, device
     Takes the whole site list and the selected site rather than reading them
     from state, so the same response twice lays out the same map twice. */
 function layoutTopology(data, sitesIn, chosenSite) {
-  const hosts = (data.hosts || []).map(host => ({ ...host, site_id: host.site_id || '' }));
-  const devices = (data.devices || []).slice().sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  const links = data.links || [];
   const activeTags = (data.tags || []).map(t => t.name).filter(name => topoState.tags.has(name));
+  // The Show menu's filters: offline hosts, hosts outside the picked tags, and
+  // devices can each leave the map. A link whose end left goes with it.
+  const hosts = (data.hosts || [])
+    .filter(host => topoState.offline || host.status === 'online')
+    .filter(host => !topoState.onlyTagged || !activeTags.length
+      || (host.tags || []).some(tag => activeTags.includes(tag)))
+    .map(host => ({ ...host, site_id: host.site_id || '' }));
+  const devices = topoState.devices ? (data.devices || []).slice().sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })) : [];
+  const links = data.links || [];
 
   let sites = (sitesIn || data.sites || []).map(site => ({ id: site.id, name: site.name }));
   if (!sites.length) sites = [{ id: '', name: hosts.length ? t('All hosts') : t('No hosts') }];
@@ -989,7 +1000,10 @@ async function loadTopology() {
     for (const tag of [...topoState.tags]) if (!known.has(tag)) topoState.tags.delete(tag);
   } else {
     topoState.loadedOnce = true;
-    for (const tag of _topoStoredTags()) if (known.has(tag)) topoState.tags.add(tag);
+    let current = null;
+    try { current = JSON.parse(localStorage.getItem(TOPO_CURRENT_KEY) || 'null'); } catch { current = null; /* state-ok: nothing remembered */ }
+    if (current) _topoApplySnapshot(current, known);
+    else for (const tag of _topoStoredTags()) if (known.has(tag)) topoState.tags.add(tag);
   }
   if (topoState.site && !(data.sites || []).some(s => s.id === topoState.site)) topoState.site = '';
   _renderTopoToolbar();
@@ -1008,15 +1022,8 @@ function _renderTopoToolbar() {
     /** @type {HTMLSelectElement} */ (site).value = topoState.site;
     /** @type {HTMLSelectElement} */ (site).disabled = !(data.sites || []).length;
   }
-  const tags = _topoEl('topo-tags');
-  if (tags) {
-    tags.innerHTML = (data.tags || []).length
-      ? data.tags.map((tag, i) =>
-        `<button type="button" class="topo-tag" data-topo-tag="${escAttr(tag.name)}"`
-        + ` aria-pressed="${topoState.tags.has(tag.name)}" data-topo-color="${i % TOPO_COLORS.length}">` // i18n-ignore — tag names and counts are data
-        + `${escHtml(tag.name)}<span class="topo-tag-n">${escHtml(String(tag.count))}</span></button>`).join('') // i18n-ignore
-      : `<span class="topo-tags-none">${escHtml(t('No tags on your hosts'))}</span>`;
-  }
+  _renderTopoTagList();
+  _renderTopoViews();
   const count = _topoEl('topo-count');
   if (count) {
     const online = data.hosts.filter(h => h.status === 'online').length;
@@ -1026,8 +1033,100 @@ function _renderTopoToolbar() {
       + ' · ' + tn('{n} connection', '{n} connections', (data.links || []).length) // i18n-ignore
       + ((data.devices || []).length ? ` · ${tn('{n} device', '{n} devices', data.devices.length)}` : '');
   }
-  document.querySelectorAll('[data-topo-toggle]').forEach((/** @type {HTMLElement} */ btn) => {
-    btn.setAttribute('aria-pressed', String(!!topoState[btn.dataset.topoToggle]));
+  document.querySelectorAll('[data-topo-opt]').forEach((/** @type {HTMLInputElement} */ box) => {
+    box.checked = !!topoState[box.dataset.topoOpt];
+  });
+}
+
+/** The Tags menu: every tag with a checkmark when it is in the view, filtered
+ *  by the menu's own search box. The colour dot matches the tag's box. */
+function _renderTopoTagList() {
+  const data = topoState.data;
+  const list = _topoEl('topo-tags');
+  const label = _topoEl('topo-tags-label');
+  if (label) {
+    label.textContent = topoState.tags.size
+      ? tn('{n} tag', '{n} tags', topoState.tags.size) : t('Tags');
+  }
+  if (!list || !data) return;
+  const all = data.tags || [];
+  if (!all.length) {
+    list.innerHTML = `<div class="topo-dd-none">${escHtml(t('No tags on your hosts'))}</div>`;
+    return;
+  }
+  const q = topoState.tagQ;
+  const rows = all.map((tag, i) => ({ tag, i }))
+    .filter(({ tag }) => !q || tag.name.toLowerCase().includes(q));
+  list.innerHTML = rows.length ? rows.map(({ tag, i }) => {
+    const on = topoState.tags.has(tag.name);
+    return `<button type="button" class="topo-dd-row" role="menuitemcheckbox" aria-checked="${on}" data-topo-tag="${escAttr(tag.name)}">`
+      + `<span class="topo-dd-mark">${on ? '✓' : ''}</span>` // i18n-ignore — a check mark
+      + `<span class="topo-dd-dot" data-topo-color="${i % TOPO_COLORS.length}"></span>`
+      + `<span class="topo-dd-name">${escHtml(tag.name)}</span>`
+      + `<span class="topo-dd-n">${escHtml(String(tag.count))}</span></button>`;
+  }).join('') : `<div class="topo-dd-none">${escHtml(t('No tag matches'))}</div>`;
+}
+
+/* ── Saved views ─────────────────────────────────────────────────────────
+   A view is a site, a set of tags and the Show switches, under a name. The
+   map also remembers what it showed last, so a reload comes back to it. */
+
+/** @returns {{name: string, site: string, tags: string[], opts: Record<string, boolean>}[]} */
+function _topoViews() {
+  try {
+    const list = JSON.parse(localStorage.getItem(TOPO_VIEWS_KEY) || '[]');
+    return Array.isArray(list) ? list.filter(v => v && typeof v.name === 'string') : [];
+  } catch { return []; /* state-ok: a blocked localStorage has no saved views to list */ }
+}
+
+function _topoSaveViews(list) {
+  try { localStorage.setItem(TOPO_VIEWS_KEY, JSON.stringify(list)); } catch { /* state-ok: storage blocked; the view lasts this visit */ }
+}
+
+function _topoSnapshot(name) {
+  return { name, site: topoState.site, tags: [...topoState.tags],
+    opts: Object.fromEntries(TOPO_OPTS.map(k => [k, !!topoState[k]])) };
+}
+
+function _topoRemember() {
+  _topoSaveTags();
+  try { localStorage.setItem(TOPO_CURRENT_KEY, JSON.stringify(_topoSnapshot(topoState.viewName))); } catch { /* state-ok: storage blocked */ }
+}
+
+/** Put a saved (or remembered) view on the map. Tags no host carries any more are dropped. */
+function _topoApplySnapshot(v, known) {
+  if (!v) return;
+  topoState.viewName = v.name || '';
+  topoState.site = v.site || '';
+  topoState.tags = new Set((v.tags || []).filter(tag => !known || known.has(tag)));
+  for (const k of TOPO_OPTS) if (v.opts && typeof v.opts[k] === 'boolean') topoState[k] = v.opts[k];
+}
+
+function _renderTopoViews() {
+  const menu = _topoEl('topo-views-menu');
+  const name = _topoEl('topo-view-name');
+  if (name) name.textContent = topoState.viewName ? t('View: {name}', { name: topoState.viewName }) : t('Views');
+  if (!menu) return;
+  const views = _topoViews();
+  menu.innerHTML = (views.length ? views.map(v => `<div class="topo-dd-viewrow">`
+      + `<button type="button" class="topo-dd-row" role="menuitemradio" aria-checked="${v.name === topoState.viewName}" data-topo-view="${escAttr(v.name)}">`
+      + `<span class="topo-dd-mark">${v.name === topoState.viewName ? '✓' : ''}</span>` // i18n-ignore — a check mark
+      + `<span class="topo-dd-name">${escHtml(v.name)}</span>`
+      + `<span class="topo-dd-n">${escHtml(tn('{n} tag', '{n} tags', (v.tags || []).length))}</span></button>`
+      + `<button type="button" class="topo-dd-del" data-topo-view-del="${escAttr(v.name)}" aria-label="${escAttr(t('Delete view {name}', { name: v.name }))}">×</button></div>`).join('') // i18n-ignore — a close glyph
+    : `<div class="topo-dd-none">${escHtml(t('No saved views yet. Pick a site, tags and what to show, then save it.'))}</div>`)
+    + `<div class="topo-dd-foot"><button type="button" class="btn btn-xs btn-mint" id="topo-view-save">${escHtml(t('Save this view…'))}</button>`
+    + `<button type="button" class="btn btn-xs btn-ghost" id="topo-view-reset">${escHtml(t('Reset'))}</button></div>`;
+}
+
+/* ── Dropdowns: one open at a time, closed by a click outside or Escape. */
+
+function _topoCloseMenus(except) {
+  document.querySelectorAll('.topo-dd').forEach((dd) => {
+    if (dd === except) return;
+    const menu = /** @type {HTMLElement|null} */ (dd.querySelector('.topo-dd-menu'));
+    if (menu) menu.hidden = true;
+    dd.querySelector('[data-topo-dd-btn]')?.setAttribute('aria-expanded', 'false');
   });
 }
 
@@ -1049,16 +1148,102 @@ function _topoBanner() {
 delegateClick('[data-topo-tag]', (el) => {
   const tag = el.dataset.topoTag;
   if (topoState.tags.has(tag)) topoState.tags.delete(tag); else topoState.tags.add(tag);
-  _topoSaveTags();
-  el.setAttribute('aria-pressed', String(topoState.tags.has(tag)));
+  topoState.viewName = '';
+  _topoRemember();
+  _renderTopoTagList();
+  _renderTopoViews();
   renderTopology();
 });
 
-delegateClick('[data-topo-toggle]', (el) => {
-  const key = el.dataset.topoToggle;
-  topoState[key] = !topoState[key];
-  el.setAttribute('aria-pressed', String(topoState[key]));
+delegateClick('#topo-tags-clear', () => {
+  topoState.tags.clear();
+  topoState.viewName = '';
+  _topoRemember();
+  _renderTopoTagList();
+  _renderTopoViews();
   renderTopology();
+});
+
+delegateClick('[data-topo-dd-btn]', (el) => {
+  const dd = el.closest('.topo-dd');
+  const menu = /** @type {HTMLElement|null} */ (dd && dd.querySelector('.topo-dd-menu'));
+  if (!dd || !menu) return;
+  const opening = menu.hidden;
+  _topoCloseMenus(dd);
+  menu.hidden = !opening;
+  el.setAttribute('aria-expanded', String(opening));
+  if (opening) /** @type {HTMLElement|null} */ (menu.querySelector('input[type="search"]'))?.focus();
+});
+
+document.addEventListener('click', (ev) => {
+  const target = /** @type {HTMLElement} */ (ev.target);
+  // A tag row re-renders as it is clicked: a detached target was inside.
+  if (!target.isConnected) return;
+  if (!target.closest?.('.topo-dd')) _topoCloseMenus(null);
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && document.querySelector('.topo-dd-menu:not([hidden])')) _topoCloseMenus(null);
+});
+
+delegateClick('[data-topo-view]', (el) => {
+  const v = _topoViews().find(x => x.name === el.dataset.topoView);
+  if (!v) return;
+  _topoApplySnapshot(v, new Set(((topoState.data && topoState.data.tags) || []).map(tag => tag.name)));
+  _topoRemember();
+  _topoCloseMenus(null);
+  _renderTopoToolbar();
+  topoState.view = { x: 0, y: 0, k: 1 };
+  renderTopology();
+  fitTopology();
+});
+
+delegateClick('[data-topo-view-del]', async (el) => {
+  const name = el.dataset.topoViewDel;
+  if (!(await confirmModal(t('Delete the view “{name}”?', { name }), { danger: true, confirmText: t('Delete') }))) return;
+  _topoSaveViews(_topoViews().filter(v => v.name !== name));
+  if (topoState.viewName === name) topoState.viewName = '';
+  _topoRemember();
+  _renderTopoViews();
+});
+
+delegateClick('#topo-view-save', async () => {
+  _topoCloseMenus(null);
+  const name = await promptModal(t('Name this view'), { value: topoState.viewName, placeholder: t('e.g. Lab network'), confirmText: t('Save') });
+  if (!name) return;
+  const list = _topoViews().filter(v => v.name !== name);
+  list.push(_topoSnapshot(name));
+  list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  _topoSaveViews(list);
+  topoState.viewName = name;
+  _topoRemember();
+  _renderTopoViews();
+  showToast(t('Saved the view “{name}”', { name }), 'success');
+});
+
+delegateClick('#topo-view-reset', () => {
+  _topoApplySnapshot({ name: '', site: '', tags: [], opts: { links: true, containers: false, external: false, devices: true, offline: true, onlyTagged: false } }, null);
+  _topoRemember();
+  _topoCloseMenus(null);
+  _renderTopoToolbar();
+  topoState.view = { x: 0, y: 0, k: 1 };
+  renderTopology();
+  fitTopology();
+});
+
+document.addEventListener('change', (ev) => {
+  const box = /** @type {HTMLInputElement} */ (ev.target);
+  if (!box.dataset || !box.dataset.topoOpt) return;
+  topoState[box.dataset.topoOpt] = box.checked;
+  topoState.viewName = '';
+  _topoRemember();
+  _renderTopoViews();
+  renderTopology();
+});
+
+document.addEventListener('input', (ev) => {
+  if (/** @type {HTMLElement} */ (ev.target).id !== 'topo-tag-q') return;
+  topoState.tagQ = /** @type {HTMLInputElement} */ (ev.target).value.trim().toLowerCase();
+  _renderTopoTagList();
 });
 
 delegateClick('[data-topo-card]', (el) => {
@@ -1088,7 +1273,6 @@ delegateClick('[data-topo-containers]', (el) => {
   if (typeof selectContainersHost === 'function') selectContainersHost(el.dataset.topoContainers);
 });
 
-delegateClick('#topo-fit', () => fitTopology());
 delegateClick('[data-topo-zoom]', (el) => {
   const how = el.dataset.topoZoom;
   if (how === 'fit') fitTopology();
@@ -1099,6 +1283,9 @@ delegateClick('#topo-refresh', () => loadTopology());
 document.addEventListener('change', (ev) => {
   if (/** @type {HTMLElement} */ (ev.target).id !== 'topo-site') return;
   topoState.site = /** @type {HTMLSelectElement} */ (ev.target).value;
+  topoState.viewName = '';
+  _topoRemember();
+  _renderTopoViews();
   topoState.view = { x: 0, y: 0, k: 1 };
   renderTopology();
   fitTopology();
