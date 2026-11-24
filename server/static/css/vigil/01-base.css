@@ -260,6 +260,13 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]::file-selector-button:hover { border-color: var(--text-3); color: var(--text-1); }
 input.form-control[type="file"] { padding: 6px 8px; }
+/* A button whose request is on its way: a spinner before its label. */
+.btn.is-busy { cursor: progress; opacity: 0.8; }
+.btn.is-busy::before {
+  content: ''; width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 2px solid currentColor; border-right-color: transparent; animation: btn-spin 0.7s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
 .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ═══════════════════════════════════════════

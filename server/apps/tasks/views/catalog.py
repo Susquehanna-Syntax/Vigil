@@ -105,6 +105,7 @@ def community_fork_plan(request, kind: str, filename: str):
         400: TasksDetailSerializer,
         403: TasksErrorSerializer,
         404: TasksErrorSerializer,
+        409: TasksErrorSerializer,
         502: TasksErrorSerializer,
     },
 )
@@ -118,9 +119,6 @@ def community_fork(request, kind: str, filename: str):
     half-forked playbook missing its third step is not a state worth leaving
     an operator in.
     """
-    from apps.automations.views import automation_from_yaml
-    from apps.playbooks.views import playbook_from_yaml
-
     from ..authz import author_denied
 
     # Forking creates tasks, playbooks and automations: the same role gate as
@@ -130,6 +128,21 @@ def community_fork(request, kind: str, filename: str):
         return denied
     if kind not in COMMUNITY_KINDS:
         return Response({"error": f"unknown content kind {kind!r}"}, status=404)
+    # One fork at a time per operator: a double click used to send two, both
+    # planned before either wrote, and the library got the item twice.
+    from vigil import locks
+
+    with locks.advisory_lock(f"community_fork:{request.user.pk}") as acquired:
+        if not acquired:
+            return Response({"error": "A fork is already in progress. Wait for it to finish."},
+                            status=status.HTTP_409_CONFLICT)
+        return _community_fork_locked(request, kind, filename)
+
+
+def _community_fork_locked(request, kind: str, filename: str):
+    from apps.automations.views import automation_from_yaml
+    from apps.playbooks.views import playbook_from_yaml
+
     try:
         plan = _plan_fork(kind, filename, request.user)
     except Exception:
@@ -172,6 +185,20 @@ def community_fork(request, kind: str, filename: str):
             created.append({"kind": "playbooks", "name": need["name"]})
 
         item = plan["item"]
+        if kind != "tasks":
+            # The item's own name already belongs to something else in the
+            # library (not a copy of this item: that is plan["have"]). Ask for
+            # another name rather than fail the import on the duplicate.
+            wanted = str(request.data.get("name") or "").strip()
+            if wanted:
+                item = {**item, "name": wanted,
+                        "yaml_source": _renamed_yaml(item["yaml_source"], wanted)}
+            if _name_taken(kind, item["name"], request.user):
+                transaction.set_rollback(True)
+                return Response(
+                    {"error": f"You already have a {kind[:-1]} named {item['name']!r}.",
+                     "conflict": {"name": item["name"], "kind": kind}},
+                    status=status.HTTP_409_CONFLICT)
         if kind == "tasks":
             definition = _fork_task_from_catalog(item, request.user)
             created.append({"kind": "tasks", "name": definition.name})
@@ -184,3 +211,23 @@ def community_fork(request, kind: str, filename: str):
             created.append({"kind": kind, "name": item["name"]})
 
     return Response({"created": created}, status=status.HTTP_201_CREATED)
+
+
+def _name_taken(kind: str, name: str, user) -> bool:
+    from apps.automations.models import Automation
+    from apps.playbooks.models import Playbook
+
+    model = {"playbooks": Playbook, "automations": Automation}[kind]
+    _, by_name = _library_index(model, user)
+    return (name or "").strip().lower() in by_name
+
+
+def _renamed_yaml(source: str, name: str) -> str:
+    """The catalog file with its top-level name replaced (a fork the operator
+    renamed to dodge a clash). Comments do not survive the round trip; the
+    content does."""
+    import yaml
+
+    doc = yaml.safe_load(source) or {}
+    doc["name"] = name
+    return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)

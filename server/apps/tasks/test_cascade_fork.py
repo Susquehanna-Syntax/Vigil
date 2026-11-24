@@ -160,6 +160,33 @@ class CascadeForkTests(TestCase):
         self.assertEqual(second.json()["created"], [])
         self.assertEqual(self._counts(), before)
 
+    def test_a_name_clash_asks_for_another_name_and_forks_under_it(self):
+        Playbook.objects.create(name="Standard Build", created_by=self.user)
+        before = self._counts()
+        clash = self._fork("playbooks", "standard-build.yaml")
+        self.assertEqual(clash.status_code, 409, clash.content[:300])
+        self.assertEqual(clash.json()["conflict"]["name"], "Standard Build")
+        self.assertEqual(self._counts(), before, "a clash must roll the whole fork back")
+
+        renamed = self.client.post("/api/v1/tasks/community/playbooks/standard-build.yaml/fork/",
+                                   {"name": "Standard Build (community)"},
+                                   content_type="application/json")
+        self.assertEqual(renamed.status_code, 201, renamed.content[:400])
+        forked = Playbook.objects.get(name="Standard Build (community)")
+        self.assertEqual(forked.steps.count(), 2)
+
+    def test_a_fork_already_running_for_this_user_is_refused(self):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def held(_name):
+            yield False
+
+        with patch("vigil.locks.advisory_lock", held):
+            r = self._fork("playbooks", "standard-build.yaml")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(self._counts(), (0, 0))
+
     def test_a_forked_playbook_records_the_catalog_uid(self):
         """What makes the no-op above possible."""
         self._fork("playbooks", "standard-build.yaml")

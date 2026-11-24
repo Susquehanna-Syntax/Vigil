@@ -258,7 +258,6 @@ async function loadCommunityKind(kind, force) {
  * kinds that reference anything. */
 /** @param {string} kind @returns {Promise<void>} */
 async function _annotateFork(kind) {
-  if (kind === 'tasks') return;
   const items = communityCache[kind] || [];
   await Promise.all(items.map(async item => {
     if (item._planned) return;
@@ -303,13 +302,35 @@ function _communityItem(kind, encodedFilename) {
 
 /** Fork one item into the operator's own library. */
 /** @param {string} kind @param {string} encodedFilename @returns {Promise<void>} */
-async function openCommunityItem(kind, encodedFilename) {
+async function openCommunityItem(kind, encodedFilename, btn) {
   const item = _communityItem(kind, encodedFilename);
   if (!item || !item.yaml_source) {
     showToast(t('Not loaded — hit Refresh and try again'), 'error');
     return;
   }
+  // One fork per item at a time: a second click while the first is on its
+  // way used to fork the item twice.
+  if (_forking.has(item.filename)) return;
+  _forking.add(item.filename);
+  if (btn) { btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true'); }
+  try {
+    await _openCommunityItem(kind, item);
+  } finally {
+    _forking.delete(item.filename);
+    if (btn && btn.isConnected) { btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); }
+  }
+}
+
+/** Items with a fork on its way, by filename. */
+const _forking = new Set();
+
+/** @param {string} kind @param {CommunityItem} item @param {string} [name] */
+async function _openCommunityItem(kind, item, name) {
   if (kind === 'tasks') {
+    // Saving the catalog copy again would add a second task of the same name.
+    if (item.have && !(await confirmModal(
+      t('You already have “{name}” in your library. Open the catalog copy anyway?', { name: item.name }),
+      { title: t('Already yours'), confirmText: t('Open anyway') }))) return;
     // Self-contained and nothing to resolve: straight into the editor,
     // unsaved, so it can be read before it is kept.
     openDefinitionEditor(null, item.yaml_source);
@@ -322,7 +343,7 @@ async function openCommunityItem(kind, encodedFilename) {
   try {
     const result = await apiJson(
       `/api/v1/tasks/community/${kind}/${encodeURIComponent(item.filename)}/fork/`,
-      { method: 'POST', body: JSON.stringify({}) });
+      { method: 'POST', body: JSON.stringify(name ? { name } : {}) });
     if (result.already) {
       showToast(t('You already have “{name}”', { name: item.name }), 'success');
       item.have = true;
@@ -344,6 +365,16 @@ async function openCommunityItem(kind, encodedFilename) {
     if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
+    const clash = e.status === 409 && e.body && e.body.conflict;
+    if (clash) {
+      // Something of yours already has this name: fork it under another.
+      const renamed = await promptModal(
+        t('You already have a {kind} called “{name}”. Fork this one under another name:',
+          { kind: _communityKindWord(kind), name: clash.name }),
+        { value: t('{name} (community)', { name: item.name }), confirmText: t('Fork') });
+      if (renamed) await _openCommunityItem(kind, item, renamed);
+      return;
+    }
     showToast(e.message || t('Could not fork this {kind}', { kind: _communityKindWord(kind) }), 'error');
   }
 }
@@ -386,7 +417,8 @@ if (typeof navigateTo === 'function') {
 delegateClick('[data-comm-kind]', (el, ev) => {
   if (el.hasAttribute('data-stop')) ev.stopPropagation();
   else if (ev.target.closest('button, a')) return;
-  openCommunityItem(el.dataset.commKind, el.dataset.commFile);
+  const btn = el.matches('button') ? el : el.querySelector('button[data-comm-open]');
+  openCommunityItem(el.dataset.commKind, el.dataset.commFile, btn);
 });
 delegateClick('[data-comm-serving]', () => toggleCommunityServing());
 delegateClick('a[data-stop]', (el, ev) => ev.stopPropagation());
