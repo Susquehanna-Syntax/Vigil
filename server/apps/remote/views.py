@@ -154,8 +154,13 @@ def _start(request):
     if active >= MAX_ACTIVE_PER_USER:
         # Name the sessions holding the slots, so the dialog can offer to close
         # them: a slot held by a socket that died is invisible anywhere else.
-        held = [{"id": str(s.id), "host": s.host.hostname, "kind": s.kind,
-                 "container": s.container, "state": s.state,
+        # A slot held on a site this user can no longer see is still theirs to
+        # free, but the host and container behind it are not theirs to read.
+        visible = set(scoping.filter_by_site(Host.objects.all(), request.user)
+                      .values_list("pk", flat=True))
+        held = [{"id": str(s.id), "kind": s.kind, "state": s.state,
+                 **({"host": s.host.hostname, "container": s.container}
+                    if s.host_id in visible else {"host": "a host you cannot see", "container": ""}),
                  "created_at": s.created_at.isoformat() if s.created_at else None}
                 for s in RemoteSession.objects.filter(
                     user=request.user,

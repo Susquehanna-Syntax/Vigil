@@ -679,7 +679,7 @@ def _check_outdated_agents():
         ).first()
 
         if is_outdated and not existing:
-            Alert.objects.create(
+            alert = Alert.objects.create(
                 host=host,
                 rule=None,
                 state=Alert.State.FIRING,
@@ -690,6 +690,9 @@ def _check_outdated_agents():
             )
             fired += 1
             logger.info("Agent outdated alert fired: %s (v%s → v%s)", host.hostname, host.agent_version, current_version)
+            # Every other alert here reaches the notification channels; this
+            # one used to stop at the alerts page, so nobody heard about it.
+            dispatch_alert_notification(alert, event="firing")
 
         elif not is_outdated and existing and existing.state in (
             Alert.State.FIRING, Alert.State.ACKNOWLEDGED,
@@ -702,6 +705,7 @@ def _check_outdated_agents():
             existing.save(update_fields=["state", "resolved_at"])
             resolved += 1
             logger.info("Agent outdated alert resolved: %s", host.hostname)
+            dispatch_alert_notification(existing, event="resolved")
 
     return f"Agent version check: {fired} fired, {resolved} resolved"
 

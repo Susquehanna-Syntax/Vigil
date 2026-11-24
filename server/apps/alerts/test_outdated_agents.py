@@ -115,6 +115,22 @@ class CheckOutdatedAgentsTests(TestCase):
         stale.refresh_from_db()
         self.assertEqual(stale.state, Alert.State.RESOLVED)
 
+    def test_a_new_outdated_alert_is_sent_to_the_channels_and_so_is_its_resolution(self):
+        from unittest import mock
+
+        host = self._host("behind2", "2026.5.0")
+        with mock.patch("apps.alerts.tasks.dispatch_alert_notification") as sent:
+            check_outdated_agents()
+            check_outdated_agents()  # still outdated: no second message
+        self.assertEqual([c.kwargs["event"] for c in sent.call_args_list], ["firing"])
+        self.assertEqual(sent.call_args.args[0].host, host)
+
+        host.agent_version = "2026.6.2"
+        host.save(update_fields=["agent_version"])
+        with mock.patch("apps.alerts.tasks.dispatch_alert_notification") as sent:
+            check_outdated_agents()
+        self.assertEqual([c.kwargs["event"] for c in sent.call_args_list], ["resolved"])
+
     def test_a_host_with_no_reported_version_is_skipped(self):
         host = self._host("silent", "")
         check_outdated_agents()

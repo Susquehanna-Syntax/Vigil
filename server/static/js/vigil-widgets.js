@@ -196,6 +196,7 @@ function _dashHostCard(h) {
         <div class="status-dot ${escAttr(h.status)}"></div>
         <div class="host-name">${escHtml(h.hostname)}</div>
         <div class="mode-badge mode-${escAttr(h.mode)}">${escHtml(_MODE_LABEL[h.mode] || h.mode)}</div>
+        ${h.agent_outdated ? `<span class="chip chip-peach" title="${escAttr(t('Agent v{v} is behind this server', { v: h.agent_version || '' }))}">${escHtml(t('Agent update'))}</span>` : ''}
       </div>
       <div class="host-card-id-meta">
         <span class="host-os-logo" data-os="${escAttr(os)}"></span>

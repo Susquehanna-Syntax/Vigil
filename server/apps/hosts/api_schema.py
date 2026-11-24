@@ -44,6 +44,8 @@ class HostsHostSerializer(serializers.Serializer):
         help_text="How the agent's last self-update ended, as it reported: state "
                   "(confirmed, rolled_back or not_applied), from_version, to_version, "
                   "running, reason and at. Null when it has reported none.")
+    agent_outdated = serializers.BooleanField(
+        help_text="True when agent_version is behind the agent this server ships.")
     reboot_required = serializers.BooleanField()
     last_checkin = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()

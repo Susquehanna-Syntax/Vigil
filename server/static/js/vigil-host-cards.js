@@ -188,18 +188,31 @@ async function forceUpdateAgent() {
   if (!hostId) return;
   const totp = await totpPrompt(t('Force the agent to self-update on this host. It applies on the next check-in.'));
   if (!totp) return;
+  const send = (replace) => fetch(`/api/v1/hosts/${hostId}/update-agent/`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken() },
+    body: JSON.stringify(replace ? { totp, replace: true } : { totp }),
+  });
   try {
-    const resp = await fetch(`/api/v1/hosts/${hostId}/update-agent/`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken() },
-      body: JSON.stringify({ totp }),
-    });
-    const body = await resp.json().catch(() => ({}));
+    let resp = await send(false);
+    let body = await resp.json().catch(() => ({}));
+    if (resp.status === 409 && body.state !== 'executing') {
+      // The earlier update never reported back. Say so, and offer to replace
+      // it: the server checked this before spending the code, so it resends.
+      const since = body.dispatched_at || body.created_at;
+      const when = since ? new Date(since).toLocaleString() : t('earlier');
+      const msg = body.state === 'dispatched'
+        ? t('An update was sent to this agent at {when} and it has not reported back. Send a new one in its place?', { when })
+        : t('An update has been waiting for this agent since {when}. Send a new one in its place?', { when });
+      if (!(await confirmModal(msg, { title: t('Update already queued'), confirmText: t('Send a new update') }))) return;
+      resp = await send(true);
+      body = await resp.json().catch(() => ({}));
+    }
     if (resp.status === 201) {
       showToast(t('Agent update queued — applies on the next check-in'), 'success');
     } else if (resp.status === 409) {
-      showToast(t('An agent update is already queued for this host'), 'info');
+      showToast(t('This agent is installing an update right now'), 'info');
     } else {
       throw new Error(body.error || `HTTP ${resp.status}`);
     }

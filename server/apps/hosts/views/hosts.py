@@ -920,28 +920,41 @@ def host_update_agent(request, host_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Don't stack duplicate update tasks. Checked before the code is spent, so
+    # the dialog can ask whether to replace one that never reported back and
+    # resend the same code.
+    existing = Task.objects.filter(
+        host=host,
+        action="update_agent",
+        state__in=[Task.State.PENDING, Task.State.DISPATCHED, Task.State.EXECUTING],
+    ).first()
+    if existing and not (request.data.get("replace") and existing.state != Task.State.EXECUTING):
+        return Response(
+            {"status": "already_queued", "task_id": str(existing.id),
+             "state": existing.state,
+             "created_at": existing.created_at.isoformat() if existing.created_at else None,
+             "dispatched_at": existing.dispatched_at.isoformat() if existing.dispatched_at else None},
+            status=status.HTTP_409_CONFLICT,
+        )
+
     error = require_totp_confirmation(request.user, request.data)
     if error:
         return Response({"error": error}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if existing:
+        # The operator chose to replace an update the agent never answered.
+        existing.state = Task.State.EXPIRED
+        existing.completed_at = now()
+        existing.result_output = ((existing.result_output or "").rstrip()
+                                  + f"\n[replaced by a new update request from "
+                                  f"{request.user.username}]").strip()
+        existing.save(update_fields=["state", "completed_at", "result_output"])
 
     sha_map = all_binary_sha256()
     if not sha_map:
         return Response(
             {"error": "No agent binaries are available on the server to update to"},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
-    # Don't stack duplicate update tasks — if one is already queued or in
-    # flight for this host, point the caller at it instead.
-    existing = Task.objects.filter(
-        host=host,
-        action="update_agent",
-        state__in=[Task.State.PENDING, Task.State.DISPATCHED, Task.State.EXECUTING],
-    ).first()
-    if existing:
-        return Response(
-            {"status": "already_queued", "task_id": str(existing.id)},
-            status=status.HTTP_409_CONFLICT,
         )
 
     task = Task.objects.create(
