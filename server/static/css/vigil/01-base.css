@@ -129,6 +129,9 @@ body {
 :root[data-sidebar="expanded"] .sidebar-icon .badge-dot { left: 26px; right: auto; }
 .sidebar-avatar {
   width: 34px; height: 34px;
+  /* A flex item in the sidebar column: on a short window the column shrank it
+     in height only and the circle went oval. It keeps its size. */
+  flex: none; aspect-ratio: 1;
   border-radius: 50%;
   background: var(--peach);
   display: grid; place-items: center;
@@ -246,6 +249,17 @@ body {
   border: none; padding: 7px 14px;
 }
 .btn-ghost:hover { background: var(--wash); color: var(--text-1); }
+/* A file input's own button is the browser's grey default unless styled: it
+   reads as an outline button, the way every other secondary action does. */
+input[type="file"] { font-family: inherit; font-size: 13px; color: var(--text-2); }
+input[type="file"]::file-selector-button {
+  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 7px 14px; margin-right: 12px; border-radius: var(--r-md);
+  background: none; color: var(--text-2); border: 1.5px solid var(--border);
+  transition: border-color 0.2s, color 0.2s;
+}
+input[type="file"]::file-selector-button:hover { border-color: var(--text-3); color: var(--text-1); }
+input.form-control[type="file"] { padding: 6px 8px; }
 .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ═══════════════════════════════════════════

@@ -45,7 +45,7 @@
         <form id="license-paste-form" class="license-paste-form">
           <input type="text" class="form-control license-paste-field" id="license-paste" placeholder='{% translate "Paste a license key (SQSY-LICENSE-V1.…)" %}'>
           <button type="submit" class="btn btn-mint btn-sm">{% translate "Apply" %}</button>
-          <a class="btn btn-sky btn-sm" id="license-get" target="_blank" rel="noopener">{% translate "Get a license" %}</a>
+          <a class="btn btn-sky btn-sm" id="license-get" href="https://www.susquehannasyntax.com/pricing" target="_blank" rel="noopener">{% translate "Get a license" %}</a>
           <button type="button" class="btn btn-outline btn-sm" id="license-refresh" style="display:none;">{% translate "Refresh now" %}</button>
         </form>
         <p id="license-paste-result" class="muted"></p>
@@ -602,6 +602,7 @@
                 <option value="linux-arm64">{% translate "Linux (ARM64)" %}</option>
                 <option value="darwin-arm64">{% translate "macOS (Apple Silicon)" %}</option>
                 <option value="windows-amd64">{% translate "Windows (x86-64)" %}</option>
+                <option value="freebsd-amd64">{% translate "FreeBSD (x86-64)" %}</option>
               </select>
             </div>
             <div>

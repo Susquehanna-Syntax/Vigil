@@ -429,7 +429,7 @@ def upgrade_body(name: str) -> dict:
         "feature": name,
         "licensed": False,
         "detail": f"'{name}' requires a SQSY Business license.",
-        "upgrade_url": "https://susquehannasyntax.com/subscribe",
+        "upgrade_url": "https://www.susquehannasyntax.com/pricing",
     }
 
 
