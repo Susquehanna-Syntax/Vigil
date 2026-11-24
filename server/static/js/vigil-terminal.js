@@ -26,16 +26,8 @@ async function openSession(hostId, kind, container) {
     { title: t('Start a session'), confirmText: t('Connect') });
   if (!code) return;
 
-  let started;
-  try {
-    started = await apiJson('/api/v1/sessions/', {
-      method: 'POST',
-      body: JSON.stringify({ host: hostId, kind: kind, container: container, totp: code }),
-    });
-  } catch (err) {
-    showToast(err.message, 'error');
-    return;
-  }
+  const started = await startRemoteSession({ host: hostId, kind: kind, container: container, totp: code });
+  if (!started) return;
   _mountTermDialog(started, kind, container);
 }
 

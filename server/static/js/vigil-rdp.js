@@ -27,16 +27,8 @@ async function openRdpSession(hostId) {
     { title: t('Start a session'), confirmText: t('Continue') });
   if (!code) return;
 
-  let started;
-  try {
-    started = await apiJson('/api/v1/sessions/', {
-      method: 'POST',
-      body: JSON.stringify({ host: hostId, kind: 'rdp', totp: code }),
-    });
-  } catch (err) {
-    showToast(err.message, 'error');
-    return;
-  }
+  const started = await startRemoteSession({ host: hostId, kind: 'rdp', totp: code });
+  if (!started) return;
   _signInThenConnect(started);
 }
 
@@ -83,12 +75,19 @@ function _signInThenConnect(started) {
       domain: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-domain')).value,
     };
     drop();
-    if (!login.username) { showToast(t('A username is required.'), 'error'); return; }
+    if (!login.username) {
+      showToast(t('A username is required.'), 'error');
+      _endRdpSession(started.id, true);
+      return;
+    }
     _connectRdp(started, login);
   });
-  m.modal.querySelector('#rdp-login-cancel').addEventListener('click', drop);
-  m.modal.querySelector('#rdp-login-x').addEventListener('click', drop);
-  m.overlay.addEventListener('click', drop);
+  // Cancelling the sign-in leaves a session no socket will ever open: close it
+  // now rather than let it hold one of the user's three slots until the sweep.
+  const cancel = () => { drop(); _endRdpSession(started.id, true); };
+  m.modal.querySelector('#rdp-login-cancel').addEventListener('click', cancel);
+  m.modal.querySelector('#rdp-login-x').addEventListener('click', cancel);
+  m.overlay.addEventListener('click', cancel);
 
   m.open();
 }
@@ -195,9 +194,12 @@ function _connectRdp(started, login) {
 
 //: End it server-side as well: closing the socket ends the pipe, and this is
 //: what puts "closed" on the row the sessions list shows.
-async function _endRdpSession(sessionId) {
+//: *force* is for a session no socket ever opened (a cancelled sign-in): the
+//: server would otherwise wait out the agent's answer window before closing it.
+async function _endRdpSession(sessionId, force) {
   try {
-    await apiJson(`/api/v1/sessions/${sessionId}/close/`, { method: 'POST' });
+    await apiJson(`/api/v1/sessions/${sessionId}/close/`,
+      { method: 'POST', body: JSON.stringify({ force: !!force }) });
   } catch (e) { /* state-ok: the socket we just closed is the authoritative end; a 404 means it had already finished */ }
 }
 

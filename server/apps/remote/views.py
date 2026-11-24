@@ -152,10 +152,20 @@ def _start(request):
         state__in=[RemoteSession.State.PENDING, RemoteSession.State.OPEN],
     ).count()
     if active >= MAX_ACTIVE_PER_USER:
+        # Name the sessions holding the slots, so the dialog can offer to close
+        # them: a slot held by a socket that died is invisible anywhere else.
+        held = [{"id": str(s.id), "host": s.host.hostname, "kind": s.kind,
+                 "container": s.container, "state": s.state,
+                 "created_at": s.created_at.isoformat() if s.created_at else None}
+                for s in RemoteSession.objects.filter(
+                    user=request.user,
+                    state__in=[RemoteSession.State.PENDING, RemoteSession.State.OPEN],
+                ).select_related("host").order_by("created_at")]
         return _refused(request, host, 429,
                         f"{active} sessions already open for this user",
                         {"error": f"You already have {MAX_ACTIVE_PER_USER} "
-                                  f"sessions open. Close one first."},
+                                  f"sessions open. Close one first.",
+                         "open": held},
                         kind, container)
 
     session = RemoteSession.objects.create(
@@ -339,6 +349,11 @@ def session_close(request, session_id):
     can interrupt a colleague's live shell."""
     session = _visible_session(request, session_id)
     if session is None:
+        # Your own session counts against your slots on every site, so you can
+        # close it from any site you are looking at.
+        session = (RemoteSession.objects.filter(pk=session_id, user=request.user)
+                   .select_related("host").first())
+    if session is None:
         return Response({"error": "Not found"}, status=404)
     if session.user_id != request.user.id and not _admin_for(request.user, session):
         return Response({"error": "Not permitted"}, status=403)
@@ -356,7 +371,12 @@ def session_close(request, session_id):
 
     from .ws import _close_now, _socket_gone
 
-    if _socket_gone(session, now()):
+    # "force": the owner, freeing a slot from the too-many-sessions prompt. They
+    # have no dialog open for it, so whatever socket may still hold it is not
+    # one they can see; the row closes now and the socket's own close finds it
+    # done (its byte totals are still written by _persist_bytes).
+    force = bool(request.data.get("force")) and session.user_id == request.user.id
+    if force or _socket_gone(session, now()):
         _close_now(session, "closed", reason)
     return Response({"status": reason}, status=202)
 

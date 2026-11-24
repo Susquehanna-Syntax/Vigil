@@ -432,6 +432,39 @@ function mountModal(id, opts) {
   return { overlay, modal, open, close, setBody: (html) => { modal.innerHTML = html; } };
 }
 
+/* ── Remote sessions: start one, or free a slot first ────────────────────
+   A user holds at most three sessions. When all three are taken the server
+   names them in the 429, and a slot held by a socket that died (a closed tab,
+   a restart) is visible nowhere else, so the prompt offers to close them. */
+async function startRemoteSession(payload) {
+  try {
+    return await apiJson('/api/v1/sessions/', { method: 'POST', body: JSON.stringify(payload) });
+  } catch (err) {
+    const held = err.status === 429 && err.body && Array.isArray(err.body.open) ? err.body.open : null;
+    if (!held || !held.length) { showToast(err.message, 'error'); return null; }
+    const rows = held.map((s) => `<li>${escHtml(s.kind === 'container' && s.container
+      ? t('{container} on {host}', { container: s.container, host: s.host })
+      : t('{kind} on {host}', { kind: s.kind, host: s.host }))}</li>`).join('');
+    const ok = await confirmModal(
+      `<p>${escHtml(t('You already have {n} sessions open. These are holding the slots:', { n: held.length }))}</p><ul>${rows}</ul>`
+      + `<p>${escHtml(t('Close them and start this one?'))}</p>`,
+      { html: true, title: t('Too many sessions'), confirmText: t('Close them'), danger: true });
+    if (!ok) return null;
+    for (const s of held) {
+      try {
+        await apiJson(`/api/v1/sessions/${encodeURIComponent(s.id)}/close/`,
+          { method: 'POST', body: JSON.stringify({ force: true }) });
+      } catch (e) { /* state-ok: a row another close already finished; the retry below says if a slot is still taken */ }
+    }
+    try {
+      return await apiJson('/api/v1/sessions/', { method: 'POST', body: JSON.stringify(payload) });
+    } catch (again) {
+      showToast(again.message, 'error');
+      return null;
+    }
+  }
+}
+
 /* ── Custom confirm modal (replaces window.confirm) ──────────────────── */
 function confirmModal(message, opts) {
   opts = opts || {};
