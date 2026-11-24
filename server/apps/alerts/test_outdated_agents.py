@@ -54,6 +54,14 @@ class IsOlderTests(TestCase):
         self.assertFalse(_is_older("2026.7.0", "2026.7"))
         self.assertTrue(_is_older("2026.7", "2026.7.1"))
 
+    def test_a_prerelease_is_behind_its_final_and_an_earlier_one(self):
+        self.assertTrue(_is_older("2026.17.0-rc1", "2026.17.0"))
+        self.assertTrue(_is_older("2026.17.0-rc1", "2026.17.0-rc2"))
+        self.assertFalse(_is_older("2026.17.0-rc2", "2026.17.0-rc1"))
+        self.assertFalse(_is_older("2026.17.0", "2026.17.0-rc1"))
+        self.assertFalse(_is_older("2026.17.0-ex1", "2026.17.0-rc1"))
+        self.assertTrue(_is_older("2026.16.0", "2026.17.0-rc1"))
+
     def test_an_unreadable_version_never_warns(self):
         self.assertFalse(_is_older("garbage", "2026.7.1"))
         self.assertFalse(_is_older("2026.7.1", "garbage"))

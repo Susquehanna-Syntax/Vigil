@@ -61,3 +61,6 @@ server/RELEASE_BUILD
 # (pip install -e ../Vigil_Business) rather than copying it here.
 server/apps_business/
 business-wheels/*.whl
+
+# Stamped by tag builds (CI), never committed.
+server/vigil/BUILD_VERSION

@@ -230,6 +230,13 @@ function isOlderVersion(reported, expected) {
     const b = right[i] || 0;
     if (a !== b) return a < b;
   }
+  // Same release number: an rc or ex build is behind its final, rc1 behind
+  // rc2; rc against ex has no order, so it never warns (alerts/tasks.py too).
+  const pre = (v) => { const m = /-(rc|ex)(\d+)\s*$/.exec(String(v)); return m ? [m[1], parseInt(m[2], 10)] : null; };
+  const lp = pre(reported);
+  const rp = pre(expected);
+  if (lp && !rp) return true;
+  if (lp && rp && lp[0] === rp[0]) return lp[1] < rp[1];
   return false;
 }
 
