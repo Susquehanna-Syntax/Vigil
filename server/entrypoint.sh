@@ -15,6 +15,12 @@ echo "PostgreSQL is up."
 echo "Running migrations..."
 python manage.py migrate_once
 
+# The web server is the only end of a remote session's socket, and none of the
+# last run's sockets survived it: free every session slot they were holding.
+case "$1" in
+    gunicorn|uvicorn|daphne) python manage.py close_open_sessions || true ;;
+esac
+
 # Drop privileges for the actual work. Everything above needs root only
 # because the mounted volumes arrive owned by root on an install that has
 # been upgraded from a version that ran as root throughout.

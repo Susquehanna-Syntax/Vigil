@@ -33,7 +33,12 @@ RELOAD_SECONDS = 15
 STATUS_SECONDS = 30
 REQUEST_TIMEOUT = 55
 
-MAX_MSG_SIZE = 32 * 1024 * 1024
+#: The largest frame either end of the link takes; the relay's link_max_msg
+#: matches it. An agent binary travels base64-encoded inside JSON, a third
+#: larger than the file.
+MAX_MSG_SIZE = 128 * 1024 * 1024
+#: Room for a res frame's JSON around its body.
+_FRAME_OVERHEAD = 64 * 1024
 BACKOFF_CEILING = 30
 HEALTHY_SECONDS = 60
 
@@ -329,10 +334,18 @@ class Uplink:
             body = await resp.read()
             headers = {name: value for name, value in resp.headers.items()
                        if name.lower() not in DROP_RESPONSE_HEADERS}
+        encoded = _b64encode(body)
+        if len(encoded) + _FRAME_OVERHEAD > MAX_MSG_SIZE:
+            # Too big for one frame: the relay would close the whole link on
+            # it and fail every other request in flight. Answer this one alone.
+            log.warning("reply to %s is %d bytes, over the relay link's limit", path, len(body))
+            await self._send({"t": "res", "id": rid, "status": 502, "headers": {},
+                              "body": _b64encode(b'{"error": "This reply is too large to pass through the relay."}')})
+            return
         # A reply for every req id, always — the relay parks the agent's request
         # on this frame and nothing else will wake it.
         await self._send({"t": "res", "id": rid, "status": resp.status,
-                          "headers": headers, "body": _b64encode(body)})
+                          "headers": headers, "body": encoded})
 
     # --------------------------------------------------------------- pipes
 

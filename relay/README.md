@@ -22,6 +22,7 @@ never stores or logs request bodies or `Authorization` headers.
 | `RELAY_QUEUE_DIR` | offline buffer directory (default `/var/lib/vigil-relay/queue`) |
 | `RELAY_TLS_CERT` / `RELAY_TLS_KEY` | serve TLS itself; otherwise plain HTTP behind a proxy |
 | `RELAY_TRUST_PROXY` | take the client IP from the first `X-Forwarded-For` entry |
+| `RELAY_LINK_MAX_MSG` | largest frame the dashboard link may send, in bytes (default 128 MiB: an agent binary has to fit, base64-encoded) |
 
 With several tenants an agent's URL is `https://relay.example/t/<slug>/api/v1/checkin`;
 the relay strips `/t/<slug>`. The key itself never crosses the wire — the link

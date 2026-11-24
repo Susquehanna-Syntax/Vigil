@@ -2,8 +2,8 @@ name: Build & Publish
 
 on:
   push:
-    # Every branch push builds an experimental image (ex-latest); see publish.
-    # Dependabot's branches are tested through their pull requests instead.
+    # Every branch push runs the checks; only a version tag publishes (see
+    # publish). Dependabot's branches are tested through their pull requests.
     branches: ["**", "!dependabot/**"]
     tags:
       - "v*.*.*"
@@ -713,6 +713,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      # A -rcN / -exN tag stamps its full version into the agent it builds.
+      - name: Stamp the build version
+        shell: bash
+        working-directory: .
+        run: scripts/stamp-build-version.sh
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -871,6 +876,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      # A -rcN / -exN tag stamps its full version into the agent it builds.
+      - name: Stamp the build version
+        shell: bash
+        working-directory: .
+        run: scripts/stamp-build-version.sh
       - name: Build in FreeBSD 14
         uses: vmactions/freebsd-vm@v1.6.0
         with:
@@ -1180,10 +1190,11 @@ jobs:
     #   v2026.17.0       -> 2026.17.0 and latest        (production)
     #   v2026.17.0-rc1   -> 2026.17.0-rc1 and rc-latest (release candidate)
     #   v2026.17.0-ex1   -> 2026.17.0-ex1 and ex-latest (experimental)
-    #   any branch push  -> ex-<commit> and ex-latest   (experimental)
-    # Only a version tag can reach latest or rc-latest. Pull requests from
-    # forks never publish: they are pull_request events, not pushes.
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/'))
+    # A branch push publishes nothing: an image per commit flooded Docker Hub
+    # and left ex-latest pointing at whichever branch pushed last. Tag a
+    # finished branch vX.Y.Z-exN to publish it. Pull requests from forks never
+    # publish either: they are pull_request events, not pushes.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     # Third-party actions in this job are pinned to commits, not tags: it holds
     # the Docker Hub token and can mint signing identities, so a moved tag
     # must not be able to change what runs here. Bump the hash with the tag.
@@ -1195,6 +1206,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      # A -rcN / -exN tag stamps its full version into the agent it builds.
+      - name: Stamp the build version
+        shell: bash
+        working-directory: .
+        run: scripts/stamp-build-version.sh
 
       # The tag names the release: its version must be the one the code says it
       # is, and anything after it must be a release candidate or experimental
@@ -1257,8 +1273,7 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
             type=raw,value=rc-latest,enable=${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-rc') }}
-            type=raw,value=ex-latest,enable=${{ startsWith(github.ref, 'refs/heads/') || contains(github.ref_name, '-ex') }}
-            type=sha,prefix=ex-,format=short,enable=${{ startsWith(github.ref, 'refs/heads/') }}
+            type=raw,value=ex-latest,enable=${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-ex') }}
 
       - name: Build and push
         id: build
@@ -1290,8 +1305,7 @@ jobs:
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
             type=raw,value=rc-latest,enable=${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-rc') }}
-            type=raw,value=ex-latest,enable=${{ startsWith(github.ref, 'refs/heads/') || contains(github.ref_name, '-ex') }}
-            type=sha,prefix=ex-,format=short,enable=${{ startsWith(github.ref, 'refs/heads/') }}
+            type=raw,value=ex-latest,enable=${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-ex') }}
 
       - name: Build and push relay
         id: buildrelay

@@ -17,7 +17,7 @@
 
 const stackEd = {
   hostId: null, stack: null, env: [], stacks: [], listed: new Set(), running: new Set(), revisions: [], dirty: false,
-  source: 'editor', gitCreds: null, gitSnapshot: null,
+  source: 'editor', gitCreds: null, gitSnapshot: null, empty: false,
 };
 let _stackCheckSeq = 0;
 let _stackCheckTimer = null;
@@ -50,11 +50,21 @@ function _renderManagedBar() {
   const wrap = document.getElementById('managed-stacks');
   if (!wrap) return;
   const rest = stackEd.stacks.filter(s => !stackEd.listed.has(s.name));
+  // On a host with no containers New stack sits under the empty message
+  // instead (vigil-containers.js), so the bar only shows saved stacks.
+  if (stackEd.empty && !rest.length) { wrap.innerHTML = ''; return; }
   wrap.innerHTML = `<div class="managed-stacks-bar">
       ${rest.length ? `<span class="managed-stacks-label">${escHtml(t('Managed by Vigil, not deployed'))}</span>` : ''}
       ${rest.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
-      <button class="btn btn-xs btn-mint" type="button" data-stack-new>${escHtml(t('New stack'))}</button>
+      ${stackEd.empty ? '' : `<button class="btn btn-xs btn-mint" type="button" data-stack-new>${escHtml(t('New stack'))}</button>`}
     </div>`;
+}
+
+/** Whether the host has no containers and no down stacks at all. */
+function setContainersEmpty(empty) {
+  if (stackEd.empty === empty) return;
+  stackEd.empty = empty;
+  if (stackEd.stacks) _renderManagedBar();
 }
 
 /** The Containers page lists these stacks; their Edit sits in their header. */

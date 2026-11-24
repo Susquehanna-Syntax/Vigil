@@ -23,6 +23,9 @@ test('versions compare numerically and unknown never warns', () => {
   assert.equal(w.isOlderVersion('2026.9.1', '2026.10.0'), true);   // 9 < 10, not string order
   assert.equal(w.isOlderVersion('2026.16.1', '2026.16'), false);   // newer agent is not outdated
   assert.equal(w.isOlderVersion('2026.16', '2026.16.0'), false);   // missing parts are zero
+  assert.equal(w.isOlderVersion('2026.17.0-rc1', '2026.17.0'), true);   // an rc is behind its final
+  assert.equal(w.isOlderVersion('2026.17.0-rc2', '2026.17.0-rc1'), false);
+  assert.equal(w.isOlderVersion('2026.17.0-ex1', '2026.17.0-rc1'), false); // no order across kinds
   assert.equal(w.isOlderVersion('garbage', '2026.16.0'), false);
   assert.equal(w.isOlderVersion(null, '1'), false);
 });

@@ -18,14 +18,37 @@
         <select class="form-control topo-site" id="topo-site" aria-label="{% translate "Filter by site" %}">
           <option value="">{% translate "All sites" %}</option>
         </select>
-        <div class="topo-tags" id="topo-tags" aria-label="{% translate "Tag boxes" %}"></div>
-        <div class="topo-toggles">
-          <button type="button" class="btn btn-sm btn-outline" id="topo-t-links" data-topo-toggle="links" aria-pressed="true">{% translate "Links" %}</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-t-containers" data-topo-toggle="containers" aria-pressed="false">{% translate "Containers" %}</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-t-external" data-topo-toggle="external" aria-pressed="false">{% translate "External" %}</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-fit">{% translate "Fit" %}</button>
-          <button type="button" class="btn btn-sm btn-outline" id="topo-refresh">{% translate "Refresh" %}</button>
+        {# Saved views, the tag picker and the display options: one dropdown each (rc2). #}
+        <div class="topo-dd" data-topo-dd="views">
+          <button type="button" class="btn btn-sm btn-outline topo-dd-btn" data-topo-dd-btn aria-haspopup="true" aria-expanded="false">
+            <span id="topo-view-name">{% translate "View" %}</span></button>
+          <div class="topo-dd-menu" id="topo-views-menu" role="menu" hidden></div>
         </div>
+        <div class="topo-dd" data-topo-dd="tags">
+          <button type="button" class="btn btn-sm btn-outline topo-dd-btn" data-topo-dd-btn aria-haspopup="true" aria-expanded="false">
+            <span id="topo-tags-label">{% translate "Tags" %}</span></button>
+          <div class="topo-dd-menu topo-dd-tags" role="menu" hidden>
+            <input type="search" class="form-control topo-dd-search" id="topo-tag-q" placeholder="{% translate "Search tags…" %}"
+              autocomplete="off" spellcheck="false" aria-label="{% translate "Search tags" %}">
+            <div class="topo-dd-list" id="topo-tags"></div>
+            <div class="topo-dd-foot">
+              <label class="topo-dd-check"><input type="checkbox" data-topo-opt="onlyTagged"> {% translate "Show only hosts with these tags" %}</label>
+              <button type="button" class="btn btn-xs btn-ghost" id="topo-tags-clear">{% translate "Clear" %}</button>
+            </div>
+          </div>
+        </div>
+        <div class="topo-dd" data-topo-dd="show">
+          <button type="button" class="btn btn-sm btn-outline topo-dd-btn" data-topo-dd-btn aria-haspopup="true" aria-expanded="false">
+            {% translate "Show" %}</button>
+          <div class="topo-dd-menu" role="menu" hidden>
+            <label class="topo-dd-check"><input type="checkbox" data-topo-opt="links"> {% translate "Links between machines" %}</label>
+            <label class="topo-dd-check"><input type="checkbox" data-topo-opt="containers"> {% translate "Containers on each host" %}</label>
+            <label class="topo-dd-check"><input type="checkbox" data-topo-opt="external"> {% translate "Traffic leaving the fleet" %}</label>
+            <label class="topo-dd-check"><input type="checkbox" data-topo-opt="devices"> {% translate "Network devices" %}</label>
+            <label class="topo-dd-check"><input type="checkbox" data-topo-opt="offline"> {% translate "Offline hosts" %}</label>
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline topo-refresh" id="topo-refresh">{% translate "Refresh" %}</button>
       </div>
 
       <div class="topo-banner" id="topo-banner" hidden></div>

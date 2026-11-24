@@ -315,7 +315,7 @@ async function loadJackilKeys() {
     + `<div class="ak-form-row">`
       + `<input type="text" class="form-control ak-name-field" id="jackil-key-name" maxlength="80"`
         + ` placeholder="${escAttr(t('Key name, e.g. Helpdesk'))}">`
-      + `<button type="button" class="btn btn-primary btn-sm" data-jk-create>${escHtml(t('Create key'))}</button>`
+      + `<button type="button" class="btn btn-mint btn-sm" data-jk-create>${escHtml(t('Create key'))}</button>`
     + `</div>`;
   const rows = (data.keys || []).map(_jkRow).join('');
   host.innerHTML = form

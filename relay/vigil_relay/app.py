@@ -137,7 +137,8 @@ async def _uplink_handler(request: web.Request) -> web.WebSocketResponse | web.R
 
     slug = keyed
     uplink = request.app[UPLINKS][slug]
-    ws = web.WebSocketResponse(heartbeat=None, max_msg_size=cfg.max_body * 2)
+    ws = web.WebSocketResponse(heartbeat=None,
+                               max_msg_size=max(cfg.link_max_msg, cfg.max_body * 2))
     await ws.prepare(request)
 
     previous = uplink.ws

@@ -578,6 +578,7 @@ async function openTaskDetail(runId) {
   metaEl.replaceChildren();
   document.getElementById('task-detail-jackil').style.display = 'none';
   actionsEl.hidden = true;
+  modal.dataset.popout = `#open/run/${runId}`;
   overlay.classList.add('open');
   modal.classList.add('open');
 

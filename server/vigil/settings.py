@@ -667,6 +667,17 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
 VIGIL_VERSION = "2026.17.0"
+#: The release number alone, whatever the build. VIGIL_VERSION below becomes
+#: the full build version when a tag build stamped one: CI writes the tag
+#: (2026.17.0-rc1, 2026.17.0-ex2) to vigil/BUILD_VERSION, so About, the
+#: licence report and backups say which candidate this is.
+VIGIL_RELEASE = VIGIL_VERSION
+try:
+    _stamped = (BASE_DIR / "vigil" / "BUILD_VERSION").read_text(encoding="utf-8").strip()
+except OSError:
+    _stamped = ""
+if _stamped.startswith(VIGIL_RELEASE + "-"):
+    VIGIL_VERSION = _stamped
 SPECTACULAR_SETTINGS["VERSION"] = VIGIL_VERSION
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted

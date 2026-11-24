@@ -15,6 +15,7 @@
   padding: 24px;
   text-align: center;
 }
+.docker-empty-act { display: flex; justify-content: center; margin-top: -8px; }
 .docker-stack {
   background: var(--s1);
   border: 1px solid var(--border);

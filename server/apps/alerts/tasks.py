@@ -643,7 +643,25 @@ def _is_older(reported: str, expected: str) -> bool:
     width = max(len(left), len(right))
     left += (0,) * (width - len(left))
     right += (0,) * (width - len(right))
-    return left < right
+    if left != right:
+        return left < right
+    # Same release number: a release candidate or experimental build is behind
+    # its final release, and rc1 behind rc2. An rc against an ex build has no
+    # order between them, so it never warns.
+    lpre, rpre = _prerelease(reported), _prerelease(expected)
+    if lpre and not rpre:
+        return True
+    if lpre and rpre and lpre[0] == rpre[0]:
+        return lpre[1] < rpre[1]
+    return False
+
+
+def _prerelease(version: str) -> tuple[str, int] | None:
+    """("rc", 1) for "2026.17.0-rc1", ("ex", 3) for "-ex3", else None."""
+    import re
+
+    match = re.search(r"-(rc|ex)(\d+)\s*$", version or "")
+    return (match.group(1), int(match.group(2))) if match else None
 
 
 @shared_task(name="alerts.check_outdated_agents")
@@ -679,7 +697,7 @@ def _check_outdated_agents():
         ).first()
 
         if is_outdated and not existing:
-            Alert.objects.create(
+            alert = Alert.objects.create(
                 host=host,
                 rule=None,
                 state=Alert.State.FIRING,
@@ -690,6 +708,9 @@ def _check_outdated_agents():
             )
             fired += 1
             logger.info("Agent outdated alert fired: %s (v%s → v%s)", host.hostname, host.agent_version, current_version)
+            # Every other alert here reaches the notification channels; this
+            # one used to stop at the alerts page, so nobody heard about it.
+            dispatch_alert_notification(alert, event="firing")
 
         elif not is_outdated and existing and existing.state in (
             Alert.State.FIRING, Alert.State.ACKNOWLEDGED,
@@ -702,6 +723,7 @@ def _check_outdated_agents():
             existing.save(update_fields=["state", "resolved_at"])
             resolved += 1
             logger.info("Agent outdated alert resolved: %s", host.hostname)
+            dispatch_alert_notification(existing, event="resolved")
 
     return f"Agent version check: {fired} fired, {resolved} resolved"
 

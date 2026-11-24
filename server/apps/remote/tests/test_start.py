@@ -218,6 +218,25 @@ class StartApiTests(_Audited):
         self.assertEqual(resp.status_code, 429)
         self._assert_refused("already open", sessions=3)
 
+    def test_the_refusal_names_the_sessions_holding_the_slots_and_frees_one(self):
+        enroll_totp(self.admin)
+        with patch("apps.accounts.totp.consume_totp", return_value=(True, None)):
+            ids = [self.post(totp="111111").json()["id"] for _ in range(3)]
+            resp = self.post(totp="111111")
+        self.assertEqual(resp.status_code, 429)
+        held = resp.json()["open"]
+        self.assertEqual([row["id"] for row in held], ids)
+        self.assertEqual(held[0]["host"], "shell-host")
+
+        # Each row's socket still looks alive (just created), so only "force"
+        # from its owner closes it straight away.
+        closed = self.client.post(f"/api/v1/sessions/{ids[0]}/close/",
+                                  {"force": True}, format="json")
+        self.assertEqual(closed.status_code, 202)
+        self.assertEqual(RemoteSession.objects.get(pk=ids[0]).state, "closed")
+        with patch("apps.accounts.totp.consume_totp", return_value=(True, None)):
+            self.assertEqual(self.post(totp="111111").status_code, 201)
+
     # -- the vocabulary itself --------------------------------------------
 
     def test_legacy_operator_cannot_shell_because_it_was_never_meant_to(self):

@@ -13,6 +13,13 @@ from ..api_schema import (
 )
 
 
+def _expired_by_server(task) -> bool:
+    """Expired by the sweep or replaced by an operator, not by the agent: only
+    then is a late result the better record of what happened."""
+    note = task.result_output or ""
+    return "[expired by server" in note or "[replaced by a new update request" in note
+
+
 @extend_schema(
     request=TasksTaskResultRequestSerializer,
     responses={
@@ -50,6 +57,18 @@ def task_result(request):
         task = Task.objects.get(pk=task_id, host=host)
     except Task.DoesNotExist:
         return Response({"error": "Task not found"}, status=404)
+
+    if task.state == Task.State.EXPIRED and _expired_by_server(task):
+        # The agent held this result while the server could not take it (a
+        # relay with no uplink, a restart) and sends it now. The expiry was the
+        # server's guess; the real outcome replaces it on the row. Nothing that
+        # follows a result runs again: the run already moved past this step.
+        task.state = new_state
+        task.result_output = (f"{output}\n[arrived late: the server had marked this task "
+                              f"expired at {task.completed_at:%Y-%m-%d %H:%M} UTC]").strip()
+        task.result_data = _clean_step_results(request.data.get("steps"))
+        task.save(update_fields=["state", "result_output", "result_data"])
+        return Response(TaskSerializer(task).data)
 
     if task.state not in _UPDATABLE_STATES:
         return Response(

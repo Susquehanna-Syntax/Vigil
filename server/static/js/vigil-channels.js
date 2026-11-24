@@ -17,6 +17,51 @@ async function _channelTypesLoad() {
   return _channelTypes;
 }
 
+/* ── What each channel type is, and which edition it comes with ──────────
+   Every type was one flat list, so nothing said which are free, which need
+   Business, and which talk to a system you run. "Webhook" in particular read
+   as the Business event webhooks under API & Webhooks; it is the free alert
+   channel, and its description now says so. */
+
+//: [group, description] per kind. Unknown kinds fall into Integrations.
+function _channelTypeInfo(kind) {
+  const info = {
+    slack: ['chat', t('Free. Posts to a Slack channel through an incoming webhook (Mattermost and Rocket.Chat work too).')],
+    teams: ['chat', t('Free. Posts to a Teams channel through a Workflows URL.')],
+    discord: ['chat', t('Free. Posts to a Discord channel through its webhook URL.')],
+    ntfy: ['chat', t('Free. Pushes to an ntfy topic, on ntfy.sh or your own server.')],
+    gotify: ['chat', t('Free. Pushes to your Gotify server.')],
+    pushover: ['chat', t('Free. Pushes to your phone through Pushover.')],
+    email: ['mail', t('Free. Sends through the mail server set under Settings › Email.')],
+    webhook: ['integration', t('Free. Posts each alert as JSON to a URL you run. This is the alert channel; event webhooks for tasks and hosts are the Business feature under API & Webhooks.')],
+    ticket: ['integration', t('Free. Opens a ticket in your helpdesk through its create-ticket API.')],
+  }[kind];
+  return info || ['integration', ''];
+}
+
+function _channelTypeAbout(ty) {
+  if (!ty) return '';
+  if (!ty.available) return t('Comes with SQSY Business. See Settings › License.');
+  return _channelTypeInfo(ty.kind)[1];
+}
+
+function _channelTypeOptions(types) {
+  const groups = [
+    ['chat', t('Chat and push (free)')],
+    ['mail', t('Email (free)')],
+    ['integration', t('Integrations (free)')],
+    ['business', t('SQSY Business')],
+  ];
+  const groupOf = (ty) => (ty.feature ? 'business' : _channelTypeInfo(ty.kind)[0]);
+  return groups.map(([key, label]) => {
+    const rows = types.filter((ty) => groupOf(ty) === key);
+    if (!rows.length) return '';
+    return `<optgroup label="${escAttr(label)}">` + rows.map((ty) => `<option value="${escAttr(ty.kind)}"`
+      + `${ty.available ? '' : ' disabled'}>${escHtml(ty.label)}${ty.available ? '' : ` ${escHtml(t('(Business)'))}`}</option>`).join('')
+      + '</optgroup>';
+  }).join('');
+}
+
 function _channelType(kind) {
   return (_channelTypes || []).find((t) => t.kind === kind) || null;
 }
@@ -144,8 +189,7 @@ async function openChannelForm(channel) {
   }
   const editing = Boolean(channel && channel.id);
   const m = mountModal('channel-form', { wide: true });
-  const typeOptions = types.map((ty) => `<option value="${escAttr(ty.kind)}"`
-    + `${ty.available ? '' : ' disabled'}>${escHtml(ty.label)}${ty.available ? '' : ` ${escHtml(t('(Business)'))}`}</option>`).join('');
+  const typeOptions = _channelTypeOptions(types);
   m.setBody(`
     <div class="modal-title"><span id="chf-title"></span>
       <button class="modal-close" id="chf-x" aria-label="${escAttr(t('Close'))}">
@@ -156,7 +200,8 @@ async function openChannelForm(channel) {
       <input type="text" class="form-control" id="chf-name" maxlength="255" autocomplete="off">
       <div class="totp-sub">${escHtml(t('Tasks can send to a channel by this name.'))}</div></div>
     <div class="form-group"><label class="form-label" for="chf-kind">${escHtml(t('Type'))}</label>
-      <select class="form-control" id="chf-kind"${editing ? ' disabled' : ''}>${typeOptions}</select></div>
+      <select class="form-control" id="chf-kind"${editing ? ' disabled' : ''}>${typeOptions}</select>
+      <div class="totp-sub chf-kind-about" id="chf-kind-about"></div></div>
     <div id="chf-fields"></div>
     <div class="form-group" id="chf-site-field" hidden><label class="form-label" for="chf-site">${escHtml(t('Site'))}</label>
       <select class="form-control" id="chf-site"></select>
@@ -180,7 +225,10 @@ async function openChannelForm(channel) {
   }
   $('#chf-firing').checked = editing ? channel.on_firing : true;
   $('#chf-resolved').checked = editing ? channel.on_resolved : true;
-  const render = () => _channelFormFields(m, _channelType(kindSel.value), editing ? channel : null);
+  const render = () => {
+    _channelFormFields(m, _channelType(kindSel.value), editing ? channel : null);
+    $('#chf-kind-about').textContent = _channelTypeAbout(_channelType(kindSel.value));
+  };
   kindSel.onchange = render;
   render();
   sitePickFill($('#chf-site'), $('#chf-site-field'), editing ? channel.site_id : null, { editing });

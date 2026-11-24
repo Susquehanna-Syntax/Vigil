@@ -207,6 +207,39 @@ class ForceUpdateAgentTests(TestCase):
         self.assertEqual(task.params["binary_sha256"]["linux-amd64"], "a" * 64)
         self.assertEqual(task.state, Task.State.PENDING)
 
+    @override_settings(VIGIL_AGENT_DIST_DIR="/nonexistent-vigil-test-dist")
+    def test_a_stuck_update_is_reported_without_spending_the_code_and_can_be_replaced(self):
+        from apps.agent_dist.models import AgentBinary
+        from apps.tasks.models import Task
+        AgentBinary.objects.create(platform="linux-amd64", version="1", sha256="a" * 64)
+        stuck = Task.objects.create(host=self.host, action="update_agent", params={},
+                                    state=Task.State.DISPATCHED, dispatched_at=now(),
+                                    nonce="n" * 64)
+        code = self._totp()
+        url = f"/api/v1/hosts/{self.host.id}/update-agent/"
+
+        resp = self.client.post(url, {"totp": code}, format="json")
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["state"], "dispatched")
+        self.assertIsNotNone(resp.data["dispatched_at"])
+
+        # The same code still works: the 409 did not consume it.
+        resp = self.client.post(url, {"totp": code, "replace": True}, format="json")
+        self.assertEqual(resp.status_code, 201, getattr(resp, "data", None))
+        stuck.refresh_from_db()
+        self.assertEqual(stuck.state, Task.State.EXPIRED)
+        self.assertIn("replaced by a new update request", stuck.result_output)
+        self.assertEqual(Task.objects.filter(host=self.host, action="update_agent",
+                                             state=Task.State.PENDING).count(), 1)
+
+    def test_a_running_update_is_never_replaced(self):
+        from apps.tasks.models import Task
+        Task.objects.create(host=self.host, action="update_agent", params={},
+                            state=Task.State.EXECUTING, nonce="m" * 64)
+        resp = self.client.post(f"/api/v1/hosts/{self.host.id}/update-agent/",
+                                {"totp": self._totp(), "replace": True}, format="json")
+        self.assertEqual(resp.status_code, 409)
+
 
 class AboutEndpointAuthTests(TestCase):
     """/api/v1/about/ leaks version/scanner fingerprints — session-gated."""

@@ -47,6 +47,12 @@ function _isOpen(el) {
   return el.isConnected && el.classList.contains('open');
 }
 
+//: Open *and* modal: a floating or minimised window is open but is not part
+//: of the stack — it neither takes Escape nor makes the page behind inert.
+function _isStacked(el) {
+  return _isOpen(el) && !el.classList.contains('floating') && !el.classList.contains('minimized');
+}
+
 function _visible(el) {
   return el.offsetParent !== null || getComputedStyle(el).position === 'fixed';
 }
@@ -86,9 +92,10 @@ function _focusInto(el) {
 //: Bring the stack in line with the DOM: drop what closed, push what opened.
 function _syncModals() {
   let changed = false;
+  _windowCleanup();
   for (let i = _modalStack.length - 1; i >= 0; i--) {
     const entry = _modalStack[i];
-    if (_isOpen(entry.el)) continue;
+    if (_isStacked(entry.el)) continue;
     _modalStack.splice(i, 1);
     if (entry.el.classList.contains('recede')) entry.el.classList.remove('recede');
     _overlayFor(entry.el)?.classList.remove('stacked');
@@ -96,13 +103,15 @@ function _syncModals() {
     const trig = entry.trigger;
     const focusLost = !document.activeElement || document.activeElement === document.body
       || entry.el.contains(document.activeElement);
-    if (focusLost && trig && trig.isConnected && typeof trig.focus === 'function') {
+    // A dialog that became a window or was minimised is still open: only a
+    // real close hands focus back to whatever opened it.
+    if (focusLost && !_isOpen(entry.el) && trig && trig.isConnected && typeof trig.focus === 'function') {
       // After the inert attributes are lifted, or the focus call is refused.
       requestAnimationFrame(() => trig.focus({ preventScroll: true }));
     }
   }
   document.querySelectorAll(_MODAL_SEL).forEach(el => {
-    if (!_isOpen(el) || _modalStack.some(e => e.el === el)) return;
+    if (!_isStacked(el) || _modalStack.some(e => e.el === el)) return;
     const below = _modalStack[_modalStack.length - 1];
     if (below) {
       if (below.el.classList.contains('modal')) below.el.classList.add('recede');
@@ -155,7 +164,9 @@ window.addEventListener('keydown', (e) => {
   const top = _modalStack[_modalStack.length - 1];
   if (!top) return;
   if (e.key === 'Escape') {
-    if (!_isOpen(top.el) || /** @type {HTMLElement} */ (e.target).closest?.('[role="menu"]')) return;
+    // A menu keeps its own Escape, and so does a terminal or remote desktop
+    // (vim and less need it): those dialogs close from their own buttons.
+    if (!_isStacked(top.el) || /** @type {HTMLElement} */ (e.target).closest?.('[role="menu"], [data-keeps-tab]')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     closeModalEl(top.el);
@@ -323,6 +334,7 @@ function _resizableInit(el) {
     });
     el.appendChild(grip);
   }
+  _windowChrome(el);
 
   const saved = _readModalSize(el);
   if (saved) {
@@ -340,3 +352,199 @@ window.addEventListener('resize', () => {
     _applyModalSize(el, size.w, size.h);
   });
 });
+
+
+/* ── Windows: move, minimise, float, pop out (2026.17 rc2) ──────────────────
+   User, 2026-11-23: "It would also be cool if we could minimize them and move
+   them around so we can have multiple at once open to work on things, maybe
+   even pop them into their own browser tab."
+
+   Every resizable dialog gets two buttons beside its close button and a
+   draggable title:
+   - Drag the title and the dialog becomes a window: its scrim goes, the page
+     behind works again, and another dialog can open beside it. Clicking a
+     window brings it to the front.
+   - Minimise parks it in the dock at the bottom of the screen with its title;
+     clicking the chip brings it back exactly as it was (a live shell keeps
+     running).
+   - Pop out, only on a dialog that names a link in data-popout ("#open/task/
+     <id>" and the like, see vigil-deeplink.js), opens that in a new tab.
+
+   The module that owns a dialog never learns any of this: it still adds and
+   removes `open`, and closing a window by any route puts it back to normal. */
+
+const _WINDOW_Z = 150;          // under every modal scrim (MODAL_BASE_Z = 200)
+let _windowOrder = [];          // floating windows, back to front
+
+function _windowTitleText(el) {
+  const title = el.querySelector('.modal-title');
+  const span = title && title.querySelector('span, h2, h3');
+  const text = ((span && span.textContent) || (title && title.textContent) || '').trim();
+  return (text || t('Dialog')).replace(/\s+/g, ' ').slice(0, 48);
+}
+
+function _windowButton(cls, label, svg) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'modal-close modal-winbtn ' + cls;
+  b.setAttribute('aria-label', label);
+  b.title = label;
+  b.innerHTML = svg;
+  return b;
+}
+
+function _windowChrome(el) {
+  const title = el.querySelector('.modal-title');
+  if (!title) return;
+  let group = title.querySelector('.modal-winbtns');
+  if (!group) {
+    const close = title.querySelector('.modal-close');
+    group = document.createElement('span');
+    group.className = 'modal-winbtns';
+    const min = _windowButton('modal-min', t('Minimise'),
+      '<svg viewBox="0 0 24 24"><line x1="6" y1="18" x2="18" y2="18"/></svg>');
+    min.addEventListener('click', () => windowMinimise(el));
+    group.appendChild(min);
+    if (close) { close.before(group); group.appendChild(close); } else title.appendChild(group);
+  }
+  // One dialog shows a different item each time it opens: the pop-out button
+  // follows whatever link the opener set on it this time, if any.
+  let pop = group.querySelector('.modal-pop');
+  if (el.dataset.popout && !pop) {
+    pop = _windowButton('modal-pop', t('Open in a new tab'),
+      '<svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
+    pop.addEventListener('click', () => _windowPopOut(el));
+    group.prepend(pop);
+  } else if (!el.dataset.popout && pop) {
+    pop.remove();
+  }
+  if (!title.dataset.dragReady) {
+    title.dataset.dragReady = '1';
+    title.classList.add('modal-title-drag');
+    title.addEventListener('pointerdown', ev => _windowDragStart(el, title, ev));
+  }
+  if (!el.dataset.windowReady) {
+    el.dataset.windowReady = '1';
+    el.addEventListener('pointerdown', () => { if (el.classList.contains('floating')) _windowRaise(el); }, true);
+  }
+}
+
+function _windowPopOut(el) {
+  const link = el.dataset.popout || '';
+  if (!/^#open\/[a-z]+\/[0-9A-Za-z-]{1,64}$/.test(link)) return;
+  window.open(location.pathname + link, '_blank', 'noopener');
+}
+
+function _windowRaise(el) {
+  _windowOrder = _windowOrder.filter(w => w !== el && w.isConnected);
+  _windowOrder.push(el);
+  _windowOrder.forEach((w, i) => { w.style.zIndex = String(_WINDOW_Z + i * 2); });
+}
+
+//: Turn a dialog into a window: no scrim, out of the modal stack.
+function _windowFloat(el) {
+  if (el.classList.contains('floating')) return;
+  _overlayFor(el)?.classList.add('released');
+  el.classList.add('floating');
+  _windowRaise(el);
+}
+
+function _windowDragStart(el, title, ev) {
+  if (ev.button !== 0 || /** @type {HTMLElement} */ (ev.target).closest('button, a, input, select, textarea, [contenteditable]')) return;
+  if (window.innerWidth <= 640) return;
+  ev.preventDefault();
+  const rect = el.getBoundingClientRect();
+  // The dialog is centred on its left/top by translate(-50%, -50%).
+  const startX = rect.left + rect.width / 2;
+  const startY = rect.top + rect.height / 2;
+  const fromX = ev.clientX;
+  const fromY = ev.clientY;
+  let moved = false;
+  try { title.setPointerCapture(ev.pointerId); } catch (e) { /* state-ok: the pointer can be gone already; move events still arrive */ }
+  const move = mv => {
+    const dx = mv.clientX - fromX;
+    const dy = mv.clientY - fromY;
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    if (!moved) { moved = true; el.classList.add('is-resized'); _windowFloat(el); }
+    // The whole window stays on screen (title and close button included);
+    // one wider than the screen can only slide as far as its own overflow.
+    const halfW = rect.width / 2;
+    const halfH = rect.height / 2;
+    const clamp = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
+    const x = clamp(startX + dx, halfW + 8, window.innerWidth - halfW - 8);
+    const y = clamp(startY + dy, halfH + 8, window.innerHeight - halfH - 8);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+  };
+  const stop = up => {
+    title.removeEventListener('pointermove', move);
+    title.removeEventListener('pointerup', stop);
+    title.removeEventListener('pointercancel', stop);
+    try { title.releasePointerCapture(up.pointerId); } catch (e) { /* state-ok: a cleanup on a pointer already released */ }
+  };
+  title.addEventListener('pointermove', move);
+  title.addEventListener('pointerup', stop);
+  title.addEventListener('pointercancel', stop);
+}
+
+function _windowDock() {
+  let dock = document.getElementById('modal-dock');
+  if (!dock) {
+    dock = document.createElement('div');
+    dock.id = 'modal-dock';
+    dock.className = 'modal-dock';
+    dock.setAttribute('role', 'toolbar');
+    dock.setAttribute('aria-label', t('Minimised dialogs'));
+    document.body.appendChild(dock);
+  }
+  return dock;
+}
+
+/** Park an open dialog in the dock. @param {HTMLElement} el */
+function windowMinimise(el) {
+  if (!_isOpen(el) || el.classList.contains('minimized')) return;
+  el.classList.add('minimized');
+  _overlayFor(el)?.classList.add('released');
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'modal-dock-chip';
+  chip.dataset.for = el.id || '';
+  chip.textContent = _windowTitleText(el);
+  chip.title = t('Restore');
+  chip.addEventListener('click', () => windowRestore(el));
+  /** @type {any} */ (chip)._vigilWindow = el;
+  _windowDock().appendChild(chip);
+}
+
+/** Bring a minimised dialog back. @param {HTMLElement} el */
+function windowRestore(el) {
+  _windowChipFor(el)?.remove();
+  el.classList.remove('minimized');
+  if (!el.classList.contains('floating')) _overlayFor(el)?.classList.remove('released');
+  else _windowRaise(el);
+  window.dispatchEvent(new Event('resize'));
+}
+
+function _windowChipFor(el) {
+  const dock = document.getElementById('modal-dock');
+  if (!dock) return null;
+  return [...dock.children].find(c => /** @type {any} */ (c)._vigilWindow === el) || null;
+}
+
+//: A window closed by any route goes back to an ordinary dialog, so the next
+//: open starts centred and modal.
+function _windowCleanup() {
+  document.querySelectorAll('.modal.floating, .modal.minimized').forEach(node => {
+    const el = /** @type {HTMLElement} */ (node);
+    if (_isOpen(el)) return;
+    el.classList.remove('floating', 'minimized');
+    el.style.left = '';
+    el.style.top = '';
+    _overlayFor(el)?.classList.remove('released');
+    _windowChipFor(el)?.remove();
+    _windowOrder = _windowOrder.filter(w => w !== el);
+  });
+  // A chip whose dialog left the page entirely.
+  const dock = document.getElementById('modal-dock');
+  if (dock) [...dock.children].forEach(c => { if (!(/** @type {any} */ (c)._vigilWindow || {}).isConnected) c.remove(); });
+}

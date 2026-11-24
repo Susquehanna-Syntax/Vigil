@@ -21,6 +21,12 @@ class Config:
     tls_key: str = ""
     trust_proxy: bool = False
     max_body: int = 10 * 1024 * 1024
+    #: The largest frame the dashboard's link may send. An agent binary comes
+    #: back through it base64-encoded inside JSON (a third larger than the
+    #: file), and 2026.17's Linux build no longer fit the old 2 x max_body:
+    #: the relay closed the whole link on it, failing every request in flight
+    #: with 503. Matches MAX_MSG_SIZE in the dashboard's apps/relays/link.py.
+    link_max_msg: int = 128 * 1024 * 1024
     request_timeout: float = 60.0
     queue_max_bytes: int = 50 * 1024 * 1024
     queue_max_items: int = 10_000
@@ -37,6 +43,7 @@ def from_env(env=os.environ) -> Config:
         tls_cert=env.get("RELAY_TLS_CERT", "").strip(),
         tls_key=env.get("RELAY_TLS_KEY", "").strip(),
         trust_proxy=env.get("RELAY_TRUST_PROXY", "").strip().lower() in _TRUE,
+        link_max_msg=_int(env, "RELAY_LINK_MAX_MSG", 128 * 1024 * 1024),
     )
 
 

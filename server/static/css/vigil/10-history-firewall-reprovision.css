@@ -378,14 +378,19 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
+/* Both methods end level: equal heights, each one's button on its bottom edge. */
 .repro-method {
   background: var(--s2);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 18px;
+  display: flex; flex-direction: column;
 }
+.repro-method > .btn { margin-top: auto; align-self: flex-start; }
+.repro-method > .muted-note, .repro-method > .repro-ack { margin-bottom: 14px; }
+.repro-add-note a { color: var(--sky-ink); text-decoration: underline; text-underline-offset: 2px; }
 .repro-method-title {
   font-size: 13px;
   font-weight: 600;
@@ -448,7 +453,7 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   aspect-ratio: 1 / 1;
-  justify-content: center;
+  justify-content: flex-start;
   transition: border-color 140ms cubic-bezier(0.4, 0, 0.2, 1),
               transform 140ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -462,18 +467,23 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Beats the .os-logo default so the card mark is legible at card size. */
 .repro-cat-logo .os-logo { width: 42px; height: 42px; }
 
+/* Every card lines up: the name always holds two lines, and the button sits
+   on the card's bottom edge, so a long name no longer pushes its button out
+   of the row. */
 .repro-cat-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-1);
   line-height: 1.35;
+  min-height: 2.7em;
+  display: flex; align-items: center; justify-content: center;
 }
 .repro-cat-meta {
   font-size: 11px;
   color: var(--text-3);
   font-family: 'IBM Plex Mono', monospace;
 }
-.repro-cat-btn { margin-top: 4px; min-width: 92px; }
+.repro-cat-btn { margin-top: auto; min-width: 92px; justify-content: center; }
 .repro-cat-btn:disabled { cursor: default; opacity: 0.75; }
 .repro-cat-retry { color: var(--peach-ink); border-color: var(--repro-retry-border); }
 

@@ -103,5 +103,7 @@ def _payload():
         ],
         "banners": licensing.banners(),
         "refresh": _refresh_status(),
-        "subscribe_url": "https://susquehannasyntax.com/subscribe",
+        # The bare domain does not answer (only www does), and pricing is where
+        # a licence is bought.
+        "subscribe_url": "https://www.susquehannasyntax.com/pricing",
     }

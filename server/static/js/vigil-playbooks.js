@@ -829,6 +829,7 @@ function _editBlInput(index) {
 function _openEditor(data, editingId) {
   const modal = document.getElementById('bl-editor-modal');
   modal.dataset.editing = editingId || '';
+  modal.dataset.popout = editingId ? `#open/playbook/${editingId}` : '';
   /** @type {HTMLElement} */ (document.getElementById('bl-editor-title')).textContent = editingId ? t('Edit playbook') : (data && data.name ? t('Duplicate playbook') : t('New playbook'));
   /** @type {HTMLInputElement} */ (document.getElementById('bl-name')).value = data ? (data.name || '') : '';
   /** @type {HTMLTextAreaElement} */ (document.getElementById('bl-desc')).value = data ? (data.description || '') : '';

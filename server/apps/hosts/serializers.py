@@ -9,6 +9,9 @@ class HostSerializer(serializers.ModelSerializer):
     # which is also what an AGPL-only build (no Business app) returns.
     site = serializers.SerializerMethodField()
     site_name = serializers.SerializerMethodField()
+    #: True when the agent is provably behind the version this server ships —
+    #: the same test the hourly "Agent outdated" alert makes.
+    agent_outdated = serializers.SerializerMethodField()
 
     class Meta:
         model = Host
@@ -29,6 +32,7 @@ class HostSerializer(serializers.ModelSerializer):
             "agent_allow_reprovision",
             "agent_runs_as_root",
             "agent_update",
+            "agent_outdated",
             "reboot_required",
             "last_checkin",
             "created_at",
@@ -37,6 +41,14 @@ class HostSerializer(serializers.ModelSerializer):
             "site_name",
         ]
         read_only_fields = fields
+
+    def get_agent_outdated(self, obj) -> bool:
+        from django.conf import settings
+
+        from apps.alerts.tasks import _is_older
+
+        expected = getattr(settings, "VIGIL_AGENT_VERSION", "") or ""
+        return bool(expected and obj.agent_version and _is_older(obj.agent_version, expected))
 
     def _site(self, obj):
         return (self.context.get("host_sites") or {}).get(obj.id)

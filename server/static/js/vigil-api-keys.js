@@ -79,11 +79,35 @@ function _akAbsence(status) {
   return null;
 }
 
+/* ── Business-only, shown rather than hidden ───────────────────────────────
+   On Free the form still appears, greyed out under a Business label with a
+   link to pricing: a feature that is simply absent reads as missing, not as
+   something an upgrade adds. */
+
+const AK_PRICING = 'https://www.susquehannasyntax.com/pricing';  // i18n-ignore — a URL
+
+function _akLocked(formHtml) {
+  return `<div class="ak-locked">`
+    + `<div class="ak-locked-note"><span class="chip chip-lavender">${escHtml(t('Business'))}</span>`
+    + `<span>${escHtml(AK_NOT_LICENSED)}</span>`
+    + `<a class="btn btn-outline btn-xs" href="${AK_PRICING}" target="_blank" rel="noopener">${escHtml(t('See pricing'))}</a></div>`
+    + `<fieldset class="ak-locked-form" disabled>${formHtml}</fieldset></div>`;
+}
+
+function _akIntroKeys() {
+  return `<p class="muted ak-pane-intro">${escHtml(t('A scoped key lets a script or Jackil use Vigil’s API as you, limited to the sites you pick. Read-only keys cannot change anything.'))}</p>`;
+}
+
+function _akIntroHooks() {
+  return `<p class="muted ak-pane-intro">${escHtml(t('Vigil posts signed JSON to these addresses. Check the X-Vigil-Signature header: sha256 HMAC of the body with the webhook’s secret.'))}</p>`;
+}
+
 /* ── Scoped API keys ───────────────────────────────────────────────────── */
 
 function _renderKeys() {
   const host = document.getElementById('api-keys');
   if (!host || !_akState) return;
+  if (_akState.keysStatus === 404) { host.innerHTML = _akIntroKeys() + _akLocked(_akKeyForm()); return; }
   const note = _akAbsence(_akState.keysStatus);
   if (note) { host.innerHTML = `<p class="muted">${escHtml(note)}</p>`; return; }
   // The list needs no licence — a key minted under one that lapsed must still
@@ -92,10 +116,9 @@ function _renderKeys() {
     host.innerHTML = `<p class="muted">${escHtml(_akState.keysMessage || t('Could not load keys'))}</p>`;
     return;
   }
-  const form = _akFeatureActive('api_keys') ? _akKeyForm()
-    : `<p class="muted">${escHtml(t('Creating keys needs an SQSY Business licence.'))}</p>`;
+  const form = _akFeatureActive('api_keys') ? _akKeyForm() : _akLocked(_akKeyForm());
   const rows = _akState.keys.map(_akKeyRow).join('');
-  host.innerHTML = `<p class="muted ak-pane-intro">${escHtml(t('A scoped key lets a script or Jackil use Vigil’s API as you, limited to the sites you pick. Read-only keys cannot change anything.'))}</p>`
+  host.innerHTML = _akIntroKeys()
     + form
     + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
             : `<p class="muted ak-empty-below">${escHtml(t('No keys yet.'))}</p>`);
@@ -109,7 +132,7 @@ function _akKeyForm() {
       + `<option value="read" selected>${escHtml(t('Read only'))}</option>`
       + `<option value="write">${escHtml(t('Read and write'))}</option>`
     + `</select>`
-    + `<button type="button" class="btn btn-primary btn-sm" data-ak-create>${escHtml(t('Create key'))}</button>`
+    + `<button type="button" class="btn btn-mint btn-sm" data-ak-create>${escHtml(t('Create key'))}</button>`
     + `</div>`
     + _akSitePicker('data-ak-site');
 }
@@ -221,16 +244,16 @@ delegateClick('[data-ak-revoke]', async (el) => {
 function _renderWebhooks() {
   const host = document.getElementById('webhooks');
   if (!host || !_akState) return;
+  if (_akState.hooksStatus === 404) { host.innerHTML = _akIntroHooks() + _akLocked(_akHookForm()); return; }
   const note = _akAbsence(_akState.hooksStatus);
   if (note) { host.innerHTML = `<p class="muted">${escHtml(note)}</p>`; return; }
   if (_akState.hooks === null) {
     host.innerHTML = `<p class="muted">${escHtml(_akState.hooksMessage || t('Could not load webhooks'))}</p>`;
     return;
   }
-  const form = _akFeatureActive('webhooks') ? _akHookForm()
-    : `<p class="muted">${escHtml(t('Adding webhooks needs an SQSY Business licence.'))}</p>`;
+  const form = _akFeatureActive('webhooks') ? _akHookForm() : _akLocked(_akHookForm());
   const rows = _akState.hooks.map(_akHookRow).join('');
-  host.innerHTML = `<p class="muted ak-pane-intro">${escHtml(t('Vigil posts signed JSON to these addresses. Check the X-Vigil-Signature header: sha256 HMAC of the body with the webhook’s secret.'))}</p>`
+  host.innerHTML = _akIntroHooks()
     + form
     + (rows ? `<div class="dash-cards ak-cards-below">${rows}</div>`
             : `<p class="muted ak-empty-below">${escHtml(t('No webhooks yet.'))}</p>`);
@@ -242,7 +265,7 @@ function _akHookForm() {
       + ` placeholder="${escAttr(t('Name, e.g. Helpdesk'))}">`
     + `<input type="url" class="form-control wh-url-field" id="wh-url"`
       + ` placeholder="${escAttr('https://example.com/hooks/vigil')}">` // i18n-ignore
-    + `<button type="button" class="btn btn-primary btn-sm" data-wh-create>${escHtml(t('Add webhook'))}</button>`
+    + `<button type="button" class="btn btn-mint btn-sm" data-wh-create>${escHtml(t('Add webhook'))}</button>`
     + `</div>`
     + `<div class="ak-sites-row">`
     + AK_EVENTS.map(([name, label], i) => `<label class="totp-sub ak-site-check">`
