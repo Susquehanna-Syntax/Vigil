@@ -757,3 +757,63 @@ def _apply_role(user, role: str):
     user.is_staff = role == Role.ADMIN
     user.save(update_fields=["is_staff"])
     return None
+
+
+# ---------------------------------------------------------------------------
+# Profile picture (design branch)
+# ---------------------------------------------------------------------------
+
+from drf_spectacular.utils import inline_serializer  # noqa: E402
+from rest_framework import serializers as drf_serializers  # noqa: E402
+
+AVATAR_MAX_BYTES = 256 * 1024
+_AVATAR_MAGIC = {"image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff", "image/webp": b"RIFF"}
+
+
+def clean_avatar(data_uri: str) -> tuple[str, str | None]:
+    """The data URI back if it is a real PNG, JPEG or WebP under the size
+    limit, else an error. The bytes are checked, not just the label: an SVG or
+    HTML file named image/png never reaches a page."""
+    import base64
+    import binascii
+    import re
+
+    m = re.fullmatch(r"data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)", data_uri or "")
+    if not m:
+        return "", "Send a PNG, JPEG or WebP image."
+    try:
+        raw = base64.b64decode(m.group(2), validate=False)
+    except (binascii.Error, ValueError):
+        return "", "That image could not be read."
+    if len(raw) > AVATAR_MAX_BYTES:
+        return "", "Use an image under 256 KB."
+    kind = m.group(1)
+    if not raw.startswith(_AVATAR_MAGIC[kind]) or (kind == "image/webp" and raw[8:12] != b"WEBP"):
+        return "", "That file is not the image type it says it is."
+    return f"data:{kind};base64,{base64.b64encode(raw).decode()}", None
+
+
+@extend_schema(methods=["GET", "DELETE"], request=None,
+               responses={200: inline_serializer("AccountsAvatar", {"avatar": drf_serializers.CharField()})})
+@extend_schema(methods=["PUT"],
+               request=inline_serializer("AccountsAvatarWrite", {"avatar": drf_serializers.CharField(
+                   help_text="A data: URI holding a PNG, JPEG or WebP image of at most 256 KB.")}),
+               responses={200: inline_serializer("AccountsAvatarSet", {"avatar": drf_serializers.CharField()}),
+                          400: inline_serializer("AccountsAvatarError", {"error": drf_serializers.CharField()})})
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([IsAuthenticated])
+def my_avatar(request):
+    """Your own profile picture: read, set (a data: URI) or remove."""
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == "GET":
+        return Response({"avatar": profile.avatar})
+    if request.method == "DELETE":
+        profile.avatar = ""
+        profile.save(update_fields=["avatar"])
+        return Response({"avatar": ""})
+    cleaned, error = clean_avatar(str(request.data.get("avatar") or ""))
+    if error:
+        return Response({"error": error}, status=400)
+    profile.avatar = cleaned
+    profile.save(update_fields=["avatar"])
+    return Response({"avatar": cleaned})

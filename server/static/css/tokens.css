@@ -65,6 +65,11 @@
   --coral-ink: var(--coral);
   --teal-ink: var(--teal);
 
+  /* The accent of the page's sidebar group (16-groups.css); sky outside one. */
+  --grp: var(--sky);
+  --grp-ink: var(--sky-ink);
+  --rgb-grp: var(--rgb-sky);
+
   /* Theme-dependent chrome that used to be hard-coded for the dark ground. */
   --on-accent: #1c1c21;
   --glass: rgba(28, 28, 33, 0.78);

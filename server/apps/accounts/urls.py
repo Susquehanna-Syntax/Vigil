@@ -24,4 +24,5 @@ urlpatterns = [
     path("security-keys/<int:key_id>/", views.security_key_detail, name="security-key-detail"),
     path("session/activity/", views.session_activity, name="session-activity"),
     path("session/", views.session_status, name="session-status"),
+    path("me/avatar/", views.my_avatar, name="my-avatar"),
 ]

@@ -33,9 +33,6 @@ function applyBranding(b) {
       : '';
     document.title = suffix ? `${b.product_name} ${suffix}` : b.product_name;
 
-    const avatar = document.querySelector('.sidebar-avatar');
-    if (avatar) avatar.textContent = b.product_name.trim().charAt(0).toUpperCase();
-
     const logoImg = /** @type {HTMLImageElement|null} */ (document.querySelector('.sidebar-logo img'));
     if (logoImg) logoImg.alt = b.product_name;
   }

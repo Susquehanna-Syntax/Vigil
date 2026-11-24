@@ -1049,3 +1049,94 @@ async function addSecurityKey() {
     }), 'error');
   }
 }
+
+
+/* ── Profile picture (design branch) ─────────────────────────────────────
+   Shrunk in the browser to a 256 px square before it is sent, so the stored
+   picture stays small whatever was picked. The server checks the bytes. */
+
+/** @param {string} dataUri */
+function _paintAvatar(dataUri) {
+  const preview = document.getElementById('avatar-preview');
+  const side = /** @type {HTMLElement|null} */ (document.querySelector('.sidebar-avatar'));
+  const remove = /** @type {HTMLElement|null} */ (document.getElementById('avatar-remove'));
+  const initial = (side && side.dataset.initial) || (side ? (side.textContent || '').trim().charAt(0) : '');
+  if (side && !side.dataset.initial && !side.querySelector('img')) side.dataset.initial = initial;
+  for (const el of [preview, side]) {
+    if (!el) continue;
+    el.replaceChildren();
+    if (dataUri) {
+      const img = document.createElement('img');
+      img.src = dataUri;
+      img.alt = '';
+      el.appendChild(img);
+    } else {
+      el.textContent = (side && side.dataset.initial) || initial || '?';
+    }
+  }
+  if (remove) remove.hidden = !dataUri;
+}
+
+async function loadAvatarCard() {
+  if (!document.getElementById('avatar-card')) return;
+  try {
+    const r = await apiJson('/api/v1/accounts/me/avatar/');
+    _paintAvatar(r.avatar || '');
+  } catch (e) { _paintAvatar(''); /* state-ok: the card still offers an upload */ }
+}
+
+/** @param {File} file @returns {Promise<string>} */
+function _shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(t('That file could not be read.')));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error(t('That file is not an image.')));
+      img.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        // Centre-crop to a square, then scale.
+        const s = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.addEventListener('change', async (ev) => {
+  const input = /** @type {HTMLInputElement} */ (ev.target);
+  if (input.id !== 'avatar-file' || !input.files || !input.files[0]) return;
+  try {
+    const dataUri = await _shrinkImage(input.files[0]);
+    const r = await apiJson('/api/v1/accounts/me/avatar/', { method: 'PUT', body: JSON.stringify({ avatar: dataUri }) });
+    _paintAvatar(r.avatar);
+    showToast(t('Profile picture saved'), 'success');
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    input.value = '';
+  }
+});
+
+delegateClick('#avatar-remove', async () => {
+  try {
+    await apiJson('/api/v1/accounts/me/avatar/', { method: 'DELETE' });
+    _paintAvatar('');
+  } catch (e) { showToast(e.message, 'error'); }
+});
+
+/** The sidebar avatar: your account settings, scrolled to your picture. */
+function openMyAccount() {
+  navigateTo('settings');
+  /** @type {HTMLElement|null} */ (document.querySelector('.settings-nav-item[data-pane="account"]'))?.click();
+  loadAvatarCard();
+  setTimeout(() => document.getElementById('avatar-card')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+}
+
+document.addEventListener('DOMContentLoaded', loadAvatarCard);

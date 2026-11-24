@@ -17,7 +17,8 @@ class SidebarLabelTests(SimpleTestCase):
         self.assertIn('data-act="toggleSidebar"', base)
         # Applied in the head script, before the layout first paints.
         head = base[:base.index("</head>")]
-        self.assertIn("localStorage.getItem('vigil-sidebar') === 'expanded'", head)
+        # Expanded unless folded (design branch): the groups need their names.
+        self.assertIn("localStorage.getItem('vigil-sidebar') !== 'collapsed'", head)
         self.assertIn("function toggleSidebar()", utils)
         self.assertIn("icon.dataset.tip", utils)
         self.assertIn(':root[data-sidebar="expanded"] .sidebar-label', css)

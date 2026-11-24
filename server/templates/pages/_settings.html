@@ -33,6 +33,20 @@
         <div class="settings-content">
         <div class="settings-pane active" data-pane="account">
 
+      <div class="section-label">{% translate "Your profile" %}</div>
+      <div class="totp-card avatar-card" id="avatar-card">
+        <div class="avatar-preview" id="avatar-preview" aria-hidden="true"></div>
+        <div class="avatar-copy">
+          <h3>{% translate "Profile picture" %}</h3>
+          <p class="muted">{% translate "Shown in the sidebar. A square PNG, JPEG or WebP works best; it is shrunk to 256 pixels." %}</p>
+          <div class="avatar-actions">
+            <label class="btn btn-accent btn-sm avatar-upload">{% translate "Upload a picture" %}
+              <input type="file" id="avatar-file" accept="image/png,image/jpeg,image/webp" hidden></label>
+            <button type="button" class="btn btn-outline btn-sm" id="avatar-remove" hidden>{% translate "Remove" %}</button>
+          </div>
+        </div>
+      </div>
+
       <div class="section-label">{% translate "License" %}</div>
 
       {# ---- License (all tiers, always visible — SQSY-LICENSING.md §5) ---- #}

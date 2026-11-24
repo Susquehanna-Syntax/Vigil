@@ -89,7 +89,13 @@ function _sbFollowPage(pageName, icon) {
   else delete document.documentElement.dataset.group;
   // A folded group opens to show the page you are on, and so does its list.
   if (name && group.classList.contains('is-folded')) _sbSetFolded(name, false);
-  if (document.querySelector(`[data-sb-subs="${pageName}"]`)) _sbSetOpen(pageName, true);
+  // The page you are on shows its sections; another page's list stays open
+  // only if you opened it yourself.
+  const pinned = _sbRead(SB_OPEN_KEY);
+  document.querySelectorAll('[data-sb-subs]').forEach((el) => {
+    const page = /** @type {HTMLElement} */ (el).dataset.sbSubs;
+    _sbSetOpen(page, page === pageName || pinned.has(page));
+  });
   _sbMarkCurrent(pageName, _sbActiveKey(pageName));
 }
 

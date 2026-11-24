@@ -41,6 +41,9 @@ class UserProfile(models.Model):
     # as strings. Empty means every site they can see. It narrows what their
     # browser session shows and never widens it; API keys ignore it.
     site_selection = models.JSONField(default=list, blank=True)
+    # The user's own picture for the sidebar avatar, as a data: URI (PNG, JPEG
+    # or WebP, at most AVATAR_MAX_BYTES once decoded). Empty shows the initial.
+    avatar = models.TextField(blank=True, default="")
 
     @property
     def totp_secret(self) -> str:
