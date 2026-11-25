@@ -129,7 +129,25 @@ function _syncModals() {
   if (changed) _applyInert();
 }
 
+//: Opening a dialog that is already open as a window or minimised: every
+//: module opens with classList.add('open'), which rewrites the class
+//: attribute unchanged. On a parked or floating dialog that is a reopen (a
+//: second run picked from Task History, say), so the window comes back to the
+//: front showing the new content instead of loading out of sight in the dock.
+//: Nothing else writes an unchanged class onto a parked dialog.
+function _windowReopened(records) {
+  for (const r of records) {
+    if (r.type !== 'attributes') continue;
+    const el = /** @type {HTMLElement} */ (r.target);
+    if (r.oldValue !== el.getAttribute('class') || !el.matches?.('.modal')) continue;
+    if (!_isOpen(el)) continue;
+    if (el.classList.contains('minimized')) windowRestore(el);
+    else if (el.classList.contains('floating')) _windowRaise(el);
+  }
+}
+
 new MutationObserver((records) => {
+  _windowReopened(records);
   for (const r of records) {
     if (r.type === 'attributes' ? /** @type {HTMLElement} */ (r.target).matches?.(_MODAL_SEL)
       : (_modalStack.length || [...r.addedNodes].some((/** @type {Node} */ n) => n.nodeType === 1 && /** @type {HTMLElement} */ (n).matches(_MODAL_SEL)))) {
@@ -138,7 +156,7 @@ new MutationObserver((records) => {
     }
   }
 }).observe(document.documentElement, {
-  subtree: true, childList: true, attributes: true, attributeFilter: ['class'],
+  subtree: true, childList: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true,
 });
 
 //: Close one dialog the way its module would: its own close function, else
